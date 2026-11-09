@@ -1,0 +1,39 @@
+{
+  "name": "@qm/api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Quartermaster API: procurement orchestration, TrustRail authorization and the protected PayPal gateway.",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsup",
+    "start": "node dist/server.js",
+    "sweep": "node dist/sweep.js",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@qm/contracts": "workspace:*",
+    "@qm/database": "workspace:*",
+    "@qm/integrations": "workspace:*",
+    "@qm/payments": "workspace:*",
+    "@qm/quartermaster": "workspace:*",
+    "@qm/trustrail": "workspace:*",
+    "@electric-sql/pglite": "^0.5.15",
+    "cookie-parser": "^1.4.7",
+    "drizzle-orm": "^0.45.4",
+    "express": "^5.3.0",
+    "express-rate-limit": "^8.7.3",
+    "helmet": "^8.3.0",
+    "pg": "^8.23.1",
+    "pino": "^10.4.0",
+    "pino-http": "^11.0.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/cookie-parser": "^1.4.10",
+    "@types/express": "^5.0.6",
+    "@types/supertest": "^7.2.1",
+    "supertest": "^7.3.2",
+    "tsup": "^8.5.1"
+  }
+}
