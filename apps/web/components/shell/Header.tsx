@@ -35,7 +35,11 @@ export function Header({ onOpenMenu }: { onOpenMenu: () => void }) {
         </div>
 
         <div className="hidden items-center gap-1.5 xl:flex" aria-label="Environment status">
-          {sandbox ? (
+          {!config.paypal.enabled ? (
+            <Badge tone="neutral" title="PayPal is not configured on this server; payments are unavailable">
+              PayPal off
+            </Badge>
+          ) : sandbox ? (
             <Badge tone="accent" title="PayPal sandbox: no real money moves">
               PayPal sandbox
             </Badge>
