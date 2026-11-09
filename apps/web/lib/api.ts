@@ -30,6 +30,7 @@ import type {
   PurchaseOrderDto,
   ReceiveDeliveryRequest,
   RefundRequest,
+  RejectRequest,
   SecurityFindingDto,
   SessionUser,
   SpendMandateDto,
@@ -132,7 +133,8 @@ export const api = {
     evaluate: (requestId: string) => post<ProcurementRequestDto>(`/procurement/requests/${id(requestId)}/evaluate`),
     approve: (requestId: string, body: ApproveRequest) =>
       idempotent<ApprovalResponse>("POST", `/procurement/requests/${id(requestId)}/approve`, body),
-    reject: (requestId: string, body: { reason: string }) =>
+    /** With `purchase_order_id` rejects only that proposal; without it, every open proposal on the request. */
+    reject: (requestId: string, body: RejectRequest) =>
       post<ProcurementRequestDto>(`/procurement/requests/${id(requestId)}/reject`, body),
   },
 
