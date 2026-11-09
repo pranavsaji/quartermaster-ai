@@ -1,0 +1,23 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      # Keep framework families moving together so their peer versions never drift apart.
+      vitest:
+        patterns: ["vitest", "@vitest/*"]
+      next-react:
+        patterns: ["next", "react", "react-dom", "@types/react*", "eslint-config-next", "@next/*"]
+      drizzle:
+        patterns: ["drizzle-orm", "drizzle-kit"]
+      ag:
+        patterns: ["ag-grid-*", "ag-charts-*"]
+      lint:
+        patterns: ["eslint*", "@eslint/*", "typescript-eslint", "prettier"]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
