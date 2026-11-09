@@ -27,6 +27,8 @@ export class FakePayPal {
   serverErrorAfterNextCapture = false;
   /** Next refund: perform it but drop the response. */
   dropNextRefundResponse = false;
+  /** Next refund: reject it with this PayPal error without refunding anything. */
+  rejectNextRefund: { status: number; issue: string } | null = null;
   refundCount = 0;
   /** Status PayPal reports for new refunds. */
   refundStatus: "COMPLETED" | "PENDING" = "COMPLETED";
@@ -161,6 +163,11 @@ export class FakePayPal {
 
     const refundMatch = /^\/v2\/payments\/captures\/([^/]+)\/refund$/.exec(url.pathname);
     if (refundMatch && method === "POST") {
+      if (this.rejectNextRefund) {
+        const fault = this.rejectNextRefund;
+        this.rejectNextRefund = null;
+        return json(fault.status, { name: fault.issue, details: [{ issue: fault.issue, description: "injected fault" }] });
+      }
       const body = JSON.parse(String(init?.body ?? "{}")) as { amount?: { value: string; currency_code: string } };
       const refund = { id: `REF${this.nonce}${++this.seq}`, status: this.refundStatus, amount: body.amount };
       this.refundCount++;
@@ -219,6 +226,7 @@ export class FakePayPal {
     this.failNextCaptureBeforeProcessing = false;
     this.serverErrorAfterNextCapture = false;
     this.dropNextRefundResponse = false;
+    this.rejectNextRefund = null;
     this.refundStatus = "COMPLETED";
     this.tamperNextCreateAmount = null;
     this.failNextCreate = null;

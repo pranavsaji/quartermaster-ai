@@ -136,3 +136,13 @@ export async function paidOrder(h: Harness, owner: Client, sku: string) {
   const po = (await owner.get(`/purchase-orders/${o.proposal.id}`)).body as PurchaseOrderDto;
   return { ...o, po };
 }
+
+/** Receives every outstanding unit of a paid order's delivery, so its SKU has nothing inbound again. */
+export async function receiveAll(client: Client, po: PurchaseOrderDto) {
+  const lines = po.items
+    .filter((i) => i.kind === "PRODUCT")
+    .map((i) => ({ purchase_order_item_id: i.id, quantity_received: i.quantity * (i.pack_quantity ?? 1) }));
+  const res = await client.post(`/deliveries/${po.delivery!.id}/receive`, { lines });
+  expect(res.status).toBe(200);
+  expect(res.body.delivery.status).toBe("DELIVERED");
+}
