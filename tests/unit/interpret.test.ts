@@ -55,7 +55,31 @@ describe("budget extraction", () => {
     }
   });
 
+  it.each([
+    ["Restock 2 cases of the $30 gloves, keep it under $500", 50_000],
+    ["Get the $12 liners and the $45 oil; budget $300", 30_000],
+    ["Order the $8.50 cups, $600 max", 60_000],
+    ["Two $25 sanitizer jugs without exceeding $90 total", 9_000],
+    ["Under $400 for the $35 boxes, and no more than $350 overall", 35_000],
+  ])("prefers the amount a budget cue marks: %s", (text, minor) => {
+    expect(parseBudget(text)).toBe(minor);
+  });
+
+  it.each(["Buy the $30 gloves and the $45 oil", "Restock 2 cases of the $30 gloves. The $12 liners too."])(
+    "returns null for several amounts none of which is a cap: %s",
+    (text) => {
+      expect(parseBudget(text)).toBeNull();
+    },
+  );
+
+  it("does not read a cue across a sentence end", () => {
+    expect(parseBudget("Keep it under control. Buy the $30 gloves and the $45 oil.")).toBeNull();
+  });
+
   it("feeds the deterministic interpreter", () => {
+    expect(interpretDeterministically("Restock 2 cases of the $30 gloves, keep it under $500", inventory, now).budget_limit_minor).toBe(
+      50_000,
+    );
     expect(interpretDeterministically("Restock oil, stay under $1500", inventory, now).budget_limit_minor).toBe(150_000);
   });
 });

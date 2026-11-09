@@ -108,14 +108,44 @@ function parseMultiplier(text: string): number {
 const BUDGET_RE =
   /\$\s?(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{1,2}))?(?:\s?([kK])(?![\p{L}\p{N}_-]))?(?![\d,.]?\d)|\b(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{1,2}))?(?![\d,.]?\d)\s*(?:dollars|usd|bucks)\b/iu;
 
-export function parseBudget(text: string): number | null {
-  const m = BUDGET_RE.exec(text);
-  if (!m) return null;
+const BUDGET_RE_GLOBAL = new RegExp(BUDGET_RE.source, "giu");
+
+/**
+ * Words that mark an amount as a spending cap: "under $500", "keep it below $1,200", "budget of
+ * $300", "cap it at $2k", "without exceeding $900" — or, after it, "$500 max", "2,500 USD tops".
+ * The cue must be in the same clause: at most a few words, no sentence end, between it and the
+ * amount.
+ */
+const CUE_BEFORE =
+  /\b(?:under|below|beneath|less\s+than|at\s+most|no\s+more\s+than|not\s+more\s+than|max(?:imum)?|budget(?:ed)?|cap(?:ped)?|ceiling|without\s+(?:exceeding|going\s+over)|(?:not|never)\s+(?:to\s+)?(?:exceed|go\s+over)|up\s+to|limit(?:ed)?|within|spend(?:ing)?)\b[^$\d.;!?]{0,16}$/i;
+const CUE_AFTER = /^[^\w$]{0,3}(?:max(?:imum)?|tops|limit|budget|cap|ceiling|or\s+less|at\s+most)\b/i;
+
+function amountOf(m: RegExpExecArray): number | null {
   const whole = (m[1] ?? m[4] ?? "0").replace(/,/g, "");
   const frac = (m[2] ?? m[5] ?? "").padEnd(2, "0");
   const thousands = m[3] ? 1000 : 1;
   const minor = (Number(whole) * 100 + Number(frac || "0")) * thousands;
   return Number.isSafeInteger(minor) && minor > 0 ? minor : null;
+}
+
+/**
+ * The spending cap stated in an instruction, in minor units, or null.
+ *
+ * A lone amount is the cap ("spend $2k on oil"). With several amounts, only the ones a budget
+ * cue marks count ("Restock 2 cases of the $30 gloves, keep it under $500" → $500, not the
+ * gloves' price); several cued amounts yield the smallest, and several amounts none of which is
+ * cued yield null rather than a guess.
+ */
+export function parseBudget(text: string): number | null {
+  const s = String(text ?? "");
+  const found = [...s.matchAll(BUDGET_RE_GLOBAL)];
+  if (found.length === 0) return null;
+  if (found.length === 1) return amountOf(found[0]!);
+  const cued = found
+    .filter((m) => CUE_BEFORE.test(s.slice(Math.max(0, m.index - 40), m.index)) || CUE_AFTER.test(s.slice(m.index + m[0].length)))
+    .map(amountOf)
+    .filter((v): v is number => v !== null);
+  return cued.length > 0 ? Math.min(...cued) : null;
 }
 
 /**
