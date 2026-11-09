@@ -590,6 +590,8 @@ export const paymentAttempts = pgTable(
     updatedAt: updatedAt(),
     completedAt: ts("completed_at"),
     lastReconciledAt: ts("last_reconciled_at"),
+    /** Definitive capture rejections so far; part of the capture's PayPal-Request-Id. */
+    captureAttempt: integer("capture_attempt").notNull().default(0),
   },
   (t) => [
     // A certificate can produce at most one logical payment attempt.

@@ -1,0 +1,1 @@
+ALTER TABLE "payment_attempts" ADD COLUMN "capture_attempt" integer DEFAULT 0 NOT NULL;

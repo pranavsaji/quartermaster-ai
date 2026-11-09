@@ -57,6 +57,13 @@
       "when": 1794251856431,
       "tag": "0007_rate_limit_hits",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1794252779838,
+      "tag": "0008_capture_attempt",
+      "breakpoints": true
     }
   ]
 }
