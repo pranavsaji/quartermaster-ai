@@ -10,14 +10,48 @@ import { ErrorSummary, useErrorFocus } from "@/components/ui/FormErrors";
 import { api } from "@/lib/api";
 import { num } from "@/lib/format";
 import { useAction } from "@/lib/hooks";
-import { parseNumberInput } from "@/lib/numbers";
+import { checkNumber, type NumberCheck } from "@/lib/numbers";
 
-const REASONS: { value: InventoryAdjustmentRequest["reason"]; label: string; sign: 1 | -1 | 0 }[] = [
-  { value: "COUNT_CORRECTION", label: "Count correction", sign: 0 },
-  { value: "WASTE", label: "Waste / spoilage", sign: -1 },
-  { value: "CONSUMPTION", label: "Consumption", sign: -1 },
-  { value: "MANUAL_RECEIPT", label: "Manual receipt", sign: 1 },
+type Reason = InventoryAdjustmentRequest["reason"];
+
+/**
+ * Every quantity is typed as a plain, non-negative number (so the numeric keypad,
+ * which has no minus key on iOS, is enough) and the reason decides the direction:
+ * waste and consumption remove, a receipt adds, and a count correction takes the
+ * counted on-hand quantity and adjusts by the difference.
+ */
+const REASONS: { value: Reason; label: string; mode: "remove" | "add" | "count" }[] = [
+  { value: "COUNT_CORRECTION", label: "Count correction", mode: "count" },
+  { value: "WASTE", label: "Waste / spoilage", mode: "remove" },
+  { value: "CONSUMPTION", label: "Consumption", mode: "remove" },
+  { value: "MANUAL_RECEIPT", label: "Manual receipt", mode: "add" },
 ];
+
+const MAX_UNITS = 1_000_000;
+
+type Plan = { ok: true; delta: number } | { ok: false; error: string };
+
+/** The signed `quantity_delta` for what was typed, or a message saying what to fix. */
+export function planAdjustment(mode: "remove" | "add" | "count", value: string, onHand: number): Plan {
+  const checked: NumberCheck = checkNumber(value, { integer: true, min: mode === "count" ? 0 : 1, max: MAX_UNITS });
+  if (!checked.ok) {
+    if (value.trim() === "") return { ok: false, error: mode === "count" ? "Enter the quantity you counted." : "Enter a quantity." };
+    return { ok: false, error: mode === "count" ? `Enter the counted quantity as a whole number, 0 or more.` : checked.error };
+  }
+  if (mode === "add") return { ok: true, delta: checked.value };
+  if (mode === "remove") {
+    if (checked.value > onHand) return { ok: false, error: `Only ${num(onHand)} on hand: you can remove at most that many.` };
+    return { ok: true, delta: -checked.value };
+  }
+  const delta = checked.value - onHand;
+  if (delta === 0) return { ok: false, error: "That matches the current on-hand quantity, so there is nothing to correct." };
+  return { ok: true, delta };
+}
+
+function describeDelta(delta: number, unit: string, onHand: number): string {
+  const verb = delta < 0 ? "remove" : "add";
+  return `Will ${verb} ${num(Math.abs(delta))} ${unit} — on hand after: ${num(onHand + delta)} ${unit}.`;
+}
 
 /** Stock adjustment for one item. Mount it only while open so each opening starts blank. */
 export function AdjustmentDialog({
@@ -29,8 +63,8 @@ export function AdjustmentDialog({
   onClose: () => void;
   onSaved: (item: InventoryItemDto) => void;
 }) {
-  const [delta, setDelta] = useState("");
-  const [reason, setReason] = useState<InventoryAdjustmentRequest["reason"]>("COUNT_CORRECTION");
+  const [quantity, setQuantity] = useState("");
+  const [reason, setReason] = useState<Reason>("COUNT_CORRECTION");
   const [note, setNote] = useState("");
   const [fieldError, setFieldError] = useState<string | null>(null);
   const formId = useId();
@@ -42,37 +76,46 @@ export function AdjustmentDialog({
     onClose();
   });
 
-  const parsedDelta = parseNumberInput(delta);
-  const preview = parsedDelta !== null && Number.isInteger(parsedDelta) ? item.on_hand + parsedDelta : null;
-  const sign = REASONS.find((r) => r.value === reason)?.sign ?? 0;
+  const mode = REASONS.find((r) => r.value === reason)?.mode ?? "count";
+  const plan = quantity.trim() === "" ? null : planAdjustment(mode, quantity, item.on_hand);
+
+  function changeReason(next: Reason) {
+    const nextMode = REASONS.find((r) => r.value === next)?.mode ?? "count";
+    // A counted total and an amount to add/remove mean different things: don't carry one over as the other.
+    if ((nextMode === "count") !== (mode === "count")) setQuantity("");
+    setFieldError(null);
+    setReason(next);
+  }
 
   function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (parsedDelta === null) {
-      setFieldError(delta.trim() === "" ? "Enter how many units to add or remove." : "Use digits only, like 24 or -12.");
-      focusFirstError();
-      return;
-    }
-    const parsed = InventoryAdjustmentRequest.safeParse({
-      quantity_delta: parsedDelta,
-      reason,
-      note: note.trim() || undefined,
-    });
-    if (!parsed.success) {
-      setFieldError("Enter a whole, non-zero number (negative to remove stock).");
-      focusFirstError();
-      return;
-    }
-    if (sign !== 0 && Math.sign(parsedDelta) !== sign) {
-      setFieldError(
-        sign < 0 ? "Waste and consumption remove stock: use a negative number." : "A receipt adds stock: use a positive number.",
-      );
+    const result = planAdjustment(mode, quantity, item.on_hand);
+    const parsed = result.ok
+      ? InventoryAdjustmentRequest.safeParse({ quantity_delta: result.delta, reason, note: note.trim() || undefined })
+      : null;
+    if (!result.ok || !parsed?.success) {
+      setFieldError(result.ok ? "Enter a whole number of units." : result.error);
       focusFirstError();
       return;
     }
     setFieldError(null);
     void save.run(item.id, parsed.data);
   }
+
+  const label =
+    mode === "count"
+      ? `Counted on hand (${item.unit})`
+      : mode === "remove"
+        ? `Quantity removed (${item.unit})`
+        : `Quantity received (${item.unit})`;
+  const hint =
+    plan?.ok === true
+      ? describeDelta(plan.delta, item.unit, item.on_hand)
+      : mode === "count"
+        ? `Enter what you counted; the adjustment is the difference from ${num(item.on_hand)} ${item.unit}.`
+        : mode === "remove"
+          ? "Enter how many units to take off stock."
+          : "Enter how many units to add to stock.";
 
   return (
     <Dialog
@@ -94,7 +137,7 @@ export function AdjustmentDialog({
       <form ref={containerRef} id={formId} onSubmit={submit} className="space-y-4" noValidate>
         <Field label="Reason" required>
           {(control) => (
-            <Select {...control} value={reason} onChange={(e) => setReason(e.target.value as InventoryAdjustmentRequest["reason"])}>
+            <Select {...control} value={reason} onChange={(e) => changeReason(e.target.value as Reason)}>
               {REASONS.map((r) => (
                 <option key={r.value} value={r.value}>
                   {r.label}
@@ -103,19 +146,15 @@ export function AdjustmentDialog({
             </Select>
           )}
         </Field>
-        <Field
-          label={`Quantity change (${item.unit})`}
-          required
-          error={fieldError}
-          hint={preview !== null ? `On hand after adjustment: ${num(preview)} ${item.unit}` : "Use a negative number to remove stock."}
-        >
+        <Field label={label} required error={fieldError} hint={<span aria-live="polite">{hint}</span>}>
           {(control) => (
             <Input
               {...control}
               inputMode="numeric"
-              value={delta}
-              onChange={(e) => setDelta(e.target.value)}
-              placeholder={sign < 0 ? "-12" : "24"}
+              autoComplete="off"
+              value={quantity}
+              onChange={(e) => setQuantity(e.target.value)}
+              placeholder={mode === "count" ? String(item.on_hand) : "12"}
               className="tnum"
             />
           )}
