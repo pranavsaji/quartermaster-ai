@@ -197,3 +197,71 @@ describe("property: certificates bind the cart", () => {
     );
   });
 });
+
+describe("property: verification is total", () => {
+  const input: IssueCertificateInput = {
+    intent_id: "i",
+    organization_id: "o",
+    buyer_id: "b",
+    purchase_order_id: "p",
+    supplier_id: "s",
+    cart_hash: `sha256:${"a".repeat(64)}`,
+    mandate_id: "m",
+    mandate_version: 1,
+    policy_decision_id: "d",
+    currency: "USD",
+    approved_amount_minor: 1_000,
+    approved_at: new Date("2026-11-10T18:00:00Z"),
+    ttl_minutes: 15,
+  };
+  const cert = issueCertificate(input, key);
+  const ctx = contextFor(input, cert, 0.5);
+
+  it("never throws and never reports VALID for an arbitrary JSON envelope", () => {
+    fc.assert(
+      fc.property(fc.jsonValue(), (envelope) => {
+        let r!: ReturnType<typeof verifyCertificate>;
+        expect(() => (r = verifyCertificate(envelope as never, ctx))).not.toThrow();
+        expect(r.valid).toBe(false);
+        expect(r.checks.some((c) => !c.passed)).toBe(true);
+      }),
+      RUNS,
+    );
+  });
+
+  it("never throws and never reports VALID for an arbitrary JSON payload, signature, key id or algorithm", () => {
+    fc.assert(
+      fc.property(fc.jsonValue(), fc.constantFrom("payload", "signature", "key_id", "algorithm"), (value, field) => {
+        const forged = { ...cert, [field]: value };
+        let r!: ReturnType<typeof verifyCertificate>;
+        expect(() => (r = verifyCertificate(forged, ctx))).not.toThrow();
+        expect(r.valid).toBe(false);
+      }),
+      RUNS,
+    );
+  });
+
+  it("never throws for arbitrary JSON in any single payload field", () => {
+    fc.assert(
+      fc.property(fc.constantFrom(...Object.keys(cert.payload)), fc.jsonValue(), (field, value) => {
+        const forged = { ...cert, payload: { ...cert.payload, [field]: value } };
+        let r!: ReturnType<typeof verifyCertificate>;
+        expect(() => (r = verifyCertificate(forged, ctx))).not.toThrow();
+        if (JSON.stringify(value) !== JSON.stringify((cert.payload as unknown as Record<string, unknown>)[field])) {
+          expect(r.valid).toBe(false);
+        }
+      }),
+      RUNS,
+    );
+  });
+
+  it("reports a null payload as a payload mismatch with a failed check", () => {
+    const r = verifyCertificate({ ...cert, payload: null } as never, ctx);
+    expect(r).toEqual({
+      status: "PAYLOAD_MISMATCH",
+      valid: false,
+      checks: [{ code: "WELL_FORMED", passed: false, detail: "Certificate envelope or payload is malformed." }],
+    });
+    expect(verifyCertificate(null as never, ctx).status).toBe("PAYLOAD_MISMATCH");
+  });
+});

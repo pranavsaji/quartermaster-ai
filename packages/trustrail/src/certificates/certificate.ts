@@ -116,7 +116,32 @@ export interface VerificationResult {
   checks: VerificationCheck[];
 }
 
+const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+
+/**
+ * Verifies a certificate against the persisted order. Total: it never throws. A certificate
+ * arrives from storage or from a caller, so its envelope and payload may have any JSON shape;
+ * a malformed shape (or anything that throws while it is checked) is PAYLOAD_MISMATCH with a
+ * failed WELL_FORMED check, never an exception and never VALID.
+ */
 export function verifyCertificate(cert: SignedCertificate, ctx: VerificationContext): VerificationResult {
+  const malformed = (detail: string): VerificationResult => ({
+    status: "PAYLOAD_MISMATCH",
+    valid: false,
+    checks: [{ code: "WELL_FORMED", passed: false, detail }],
+  });
+  const c = cert as unknown;
+  if (!isRecord(c) || !isRecord(c.payload)) {
+    return malformed("Certificate envelope or payload is malformed.");
+  }
+  try {
+    return verifyWellFormed(cert, ctx);
+  } catch (err) {
+    return malformed(`Certificate could not be verified: ${(err instanceof Error ? err.message : String(err)).slice(0, 120)}`);
+  }
+}
+
+function verifyWellFormed(cert: SignedCertificate, ctx: VerificationContext): VerificationResult {
   const checks: VerificationResult["checks"] = [];
   let status: CertificateVerificationStatus = "VALID";
   const fail = (s: CertificateVerificationStatus) => {
