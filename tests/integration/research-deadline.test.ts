@@ -10,38 +10,50 @@ import { approve, createRequest, relaxMandate, setStock } from "../helpers/flows
  * The research agent's deadline: slow optional stages degrade (market evidence is skipped, the
  * planning reserve is kept), and a deadline that still strikes mid-planning is a typed 503 that
  * leaves no approvable proposal behind.
+ *
+ * Time is moved forward by skewing Date.now (which the agent run measures its deadline with)
+ * rather than by waiting, so the outcomes do not depend on how fast the machine runs.
  */
+const realNow = Date.now.bind(Date);
+let skewMs = 0;
 
-/** A Channel3 endpoint that, while `channel3Hangs` is set, never answers unless the request is aborted. */
+/** Advances the agent's clock. */
+function advance(ms: number) {
+  skewMs += ms;
+}
+
+/** A Channel3 endpoint that, while `slowChannel3` is set, takes the whole optional-work budget. */
 let channel3Calls = 0;
-let channel3Hangs = false;
-const hangingChannel3: typeof fetch = async (_u, init) => {
+let slowChannel3 = false;
+const channel3: typeof fetch = async () => {
   channel3Calls++;
-  if (!channel3Hangs)
-    return new Response(JSON.stringify({ products: [] }), { status: 200, headers: { "content-type": "application/json" } });
-  return new Promise((_r, reject) => init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError"))));
+  if (slowChannel3) {
+    const deadline = h.ctx.config.agent.deadlineMs;
+    advance(deadline - planningReserveMs(deadline) + 1_000);
+  }
+  return new Response(JSON.stringify({ products: [] }), { status: 200, headers: { "content-type": "application/json" } });
 };
 
 let h: Harness;
 let owner: Client;
-let defaultDeadline: number;
 
 beforeAll(async () => {
-  h = await createHarness({ channel3Fetch: hangingChannel3 });
+  h = await createHarness({ channel3Fetch: channel3 });
   owner = await h.agent("owner");
   await relaxMandate(owner);
-  defaultDeadline = h.ctx.config.agent.deadlineMs;
 });
 afterEach(() => {
   vi.restoreAllMocks();
-  h.ctx.config.agent.deadlineMs = defaultDeadline;
-  channel3Hangs = false;
+  skewMs = 0;
+  slowChannel3 = false;
 });
 afterAll(async () => {
   await h.close();
 });
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+function skewClock() {
+  vi.spyOn(Date, "now").mockImplementation(() => realNow() + skewMs);
+}
 
 describe("planning reserve", () => {
   it("holds back a third of the deadline, at most 15 seconds", () => {
@@ -54,18 +66,18 @@ describe("planning reserve", () => {
 describe("research at the agent deadline", () => {
   it("skips market evidence that would eat the planning reserve and still proposes", async () => {
     vi.spyOn(h.ctx.log, "warn").mockImplementation(() => undefined);
-    h.ctx.config.agent.deadlineMs = 6_000;
     await setStock(owner, "PKG-TAKEOUT-32", 120);
     await setStock(owner, "ING-CANOLA", 10);
     const created = await createRequest(owner, DEMO_INSTRUCTION);
     channel3Calls = 0;
-    channel3Hangs = true;
+    slowChannel3 = true;
+    skewClock();
 
     const res = await owner.post(`/procurement/requests/${created.id}/research`);
     expect(res.status).toBe(200);
     const r = res.body as ProcurementRequestDto;
     expect(["READY_FOR_REVIEW", "BLOCKED"]).toContain(r.status);
-    // The first search hung until the reserve began; the remaining item was not searched.
+    // The first search used up the optional-work budget; the remaining item was not searched.
     expect(channel3Calls).toBe(1);
     expect(r.market.every((m) => m.status !== "AVAILABLE")).toBe(true);
     const skipped = r.agent_steps.find((s) => s.tool === "market.search" && s.status === "SKIPPED");
@@ -76,12 +88,11 @@ describe("research at the agent deadline", () => {
   });
 
   it("returns a retryable 503, marks the request FAILED and withdraws the run's proposals when the deadline strikes mid-planning", async () => {
-    h.ctx.config.agent.deadlineMs = 2_000;
     await setStock(owner, "PKG-TAKEOUT-32", 120);
     await setStock(owner, "ING-CANOLA", 10);
     const created = await createRequest(owner, DEMO_INSTRUCTION);
 
-    // The first TrustRail evaluation commits, then stalls past the deadline: the next step is refused.
+    // The first TrustRail evaluation commits, then the clock passes the deadline: the next step is refused.
     const real = h.ctx.db.transaction.bind(h.ctx.db);
     let stalled = false;
     vi.spyOn(h.ctx.db, "transaction").mockImplementation(async (fn: Parameters<typeof real>[0]) => {
@@ -89,10 +100,11 @@ describe("research at the agent deadline", () => {
       const isEvaluation = typeof result === "object" && result !== null && "po" in result && "ev" in result;
       if (isEvaluation && !stalled) {
         stalled = true;
-        await sleep(2_200);
+        advance(h.ctx.config.agent.deadlineMs + 1_000);
       }
       return result;
     });
+    skewClock();
     vi.spyOn(h.ctx.log, "error").mockImplementation(() => undefined);
     vi.spyOn(h.ctx.log, "warn").mockImplementation(() => undefined);
 
@@ -101,6 +113,7 @@ describe("research at the agent deadline", () => {
     expect(res.body.error).toMatchObject({ code: "AGENT_DEADLINE_EXCEEDED", details: { retryable: true } });
     expect(res.headers["retry-after"]).toBeDefined();
     vi.restoreAllMocks();
+    skewMs = 0;
 
     const [row] = await h.ctx.db.select().from(purchaseRequests).where(eq(purchaseRequests.id, created.id));
     expect(row!.status).toBe("FAILED");
@@ -116,8 +129,7 @@ describe("research at the agent deadline", () => {
     const refused = await approve(owner, created.id, seen.proposals[0]!);
     expect(refused.status).toBe(409);
 
-    // The request can be researched again once time allows.
-    h.ctx.config.agent.deadlineMs = defaultDeadline;
+    // The request can be researched again.
     const retry = await owner.post(`/procurement/requests/${created.id}/research`);
     expect(retry.status).toBe(200);
     expect(["READY_FOR_REVIEW", "BLOCKED"]).toContain((retry.body as ProcurementRequestDto).status);
