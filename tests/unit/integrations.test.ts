@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Channel3Client, Channel3Error, flattenOffers, Notifier, OpenAIClient, OpenAIError } from "@qm/integrations";
+import { Channel3Client, Channel3Error, flattenOffers, isReasoningModel, Notifier, OpenAIClient, OpenAIError } from "@qm/integrations";
 
 const jsonResponse = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -61,6 +61,26 @@ describe("OpenAI structured-output client", () => {
     expect(r.data.ok).toBe(true);
     expect((body.response_format as { json_schema: { strict: boolean } }).json_schema.strict).toBe(true);
     expect(c.totalTokens).toBe(15);
+  });
+
+  it.each([
+    ["gpt-5-mini", true],
+    ["o4-mini", true],
+    ["gpt-4o-mini", false],
+  ])("budgets hidden reasoning for %s (reasoning model: %s)", async (model, reasoning) => {
+    let body: Record<string, unknown> = {};
+    const c = new OpenAIClient({
+      apiKey: "k",
+      model,
+      fetch: async (_u, init) => {
+        body = JSON.parse(String(init?.body));
+        return jsonResponse({ choices: [{ message: { content: '{"ok":true}' }, finish_reason: "stop" }] });
+      },
+    });
+    await c.structured({ name: "t", system: "s", user: "u", schema: { type: "object" }, maxOutputTokens: 300 });
+    expect(isReasoningModel(model)).toBe(reasoning);
+    expect(body.max_completion_tokens).toBe(reasoning ? 2_300 : 300);
+    expect(body.reasoning_effort).toBe(reasoning ? "minimal" : undefined);
   });
 
   it.each([

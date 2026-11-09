@@ -79,6 +79,12 @@ const Envelope = z.object({
 
 const ErrorBody = z.object({ error: z.object({ message: z.string().nullish() }).nullish() });
 
+/** Models whose completion budget includes hidden reasoning tokens (gpt-5 family, o-series). */
+export function isReasoningModel(model: string): boolean {
+  return /^(gpt-5|o\d)/i.test(model);
+}
+const REASONING_ALLOWANCE = 2_000;
+
 export class OpenAIClient {
   private readonly baseUrl: string;
   private readonly fetchImpl: typeof fetch;
@@ -138,7 +144,10 @@ export class OpenAIClient {
           { role: "user", content: params.user },
         ],
         response_format: { type: "json_schema", json_schema: { name: params.name, strict: true, schema: params.schema } },
-        max_completion_tokens: params.maxOutputTokens ?? 1200,
+        // Reasoning models count hidden reasoning tokens against this limit, so they get an
+        // allowance on top of the visible-output budget and are asked to reason minimally.
+        max_completion_tokens: (params.maxOutputTokens ?? 1200) + (isReasoningModel(this.config.model) ? REASONING_ALLOWANCE : 0),
+        ...(isReasoningModel(this.config.model) ? { reasoning_effort: "minimal" } : {}),
       }),
       signal,
     });
