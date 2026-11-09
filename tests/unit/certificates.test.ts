@@ -246,6 +246,40 @@ describe("Intent Certificates", () => {
     expect(verifyCertificate(c, ctx(c, { stored_status: "CONSUMED", allow_consumed: true })).valid).toBe(true);
   });
 
+  it("marks consumption and expiry of a consumed certificate shown for display as informational", () => {
+    const c = issue();
+    const later = new Date("2026-11-10T19:00:00Z"); // after expires_at
+    const shown = verifyCertificate(c, ctx(c, { stored_status: "CONSUMED", allow_consumed: true, now: later }));
+    expect(shown).toMatchObject({ valid: true, status: "VALID" });
+    const failed = shown.checks.filter((x) => !x.passed);
+    expect(failed).toEqual([expect.objectContaining({ code: "NOT_EXPIRED", passed: false, informational: true })]);
+    expect(shown.checks.find((x) => x.code === "NOT_CONSUMED")).toMatchObject({ passed: true, informational: true });
+    // Invariant: VALID never coexists with a failed check that decides validity.
+    expect(shown.checks.filter((x) => !x.passed && !x.informational)).toEqual([]);
+
+    // Without allow_consumed nothing is informational and the certificate is not valid.
+    const strict = verifyCertificate(c, ctx(c, { stored_status: "CONSUMED", now: later }));
+    expect(strict.status).toBe("CONSUMED");
+    expect(strict.checks.some((x) => x.informational)).toBe(false);
+    // allow_consumed has no effect on an ACTIVE certificate's expiry.
+    const active = verifyCertificate(c, ctx(c, { allow_consumed: true, now: later }));
+    expect(active.status).toBe("EXPIRED");
+    expect(active.checks.find((x) => x.code === "NOT_EXPIRED")?.informational).toBeUndefined();
+  });
+
+  it("keeps valid equivalent to 'every deciding check passed' across stored statuses and clocks", () => {
+    const c = issue();
+    for (const stored_status of ["ACTIVE", "CONSUMED", "REVOKED", "EXPIRED"] as const) {
+      for (const allow_consumed of [undefined, true]) {
+        for (const now of ["2026-11-10T17:00:00Z", "2026-11-10T18:05:00Z", "2026-11-10T19:00:00Z"]) {
+          const r = verifyCertificate(c, ctx(c, { stored_status, allow_consumed, now: new Date(now) }));
+          expect(r.valid, `${stored_status} ${allow_consumed} ${now}`).toBe(r.checks.every((x) => x.passed || x.informational === true));
+          expect(r.valid).toBe(r.status === "VALID");
+        }
+      }
+    }
+  });
+
   it("fails closed on unknown stored statuses", () => {
     const c = issue();
     expect(verifyCertificate(c, ctx(c, { stored_status: "WEIRD" as never })).valid).toBe(false);

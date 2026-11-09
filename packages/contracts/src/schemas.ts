@@ -4,7 +4,29 @@ import { SUPPORTED_CURRENCIES } from "./money";
 
 const minor = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const currency = z.enum(SUPPORTED_CURRENCIES);
-const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Expected YYYY-MM-DD");
+
+/**
+ * True only for a real `YYYY-MM-DD` calendar date. `Date.parse("2026-02-30")` succeeds (it rolls
+ * over to March 2), so the components are round-tripped through UTC instead (`setUTCFullYear`,
+ * because `Date.UTC` maps years 0–99 onto 1900–1999). Year 0000 is rejected: the proleptic
+ * Gregorian calendar used by PostgreSQL has no year zero.
+ */
+export function isCalendarDate(value: string): boolean {
+  if (typeof value !== "string") return false;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!m) return false;
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  if (y < 1) return false;
+  const t = new Date(0);
+  t.setUTCFullYear(y, mo - 1, d);
+  return t.getUTCFullYear() === y && t.getUTCMonth() === mo - 1 && t.getUTCDate() === d;
+}
+
+/** A real calendar date: syntactically `YYYY-MM-DD` and not "2026-02-30" or "2026-13-45". */
+const isoDate = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "Expected YYYY-MM-DD")
+  .refine(isCalendarDate, "Not a real calendar date");
 
 /* ------------------------------------------------------------------ Auth */
 

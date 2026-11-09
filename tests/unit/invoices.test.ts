@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   INVOICE_HASH_VERSION,
+  INVOICE_NUMBER_NORMALIZATION_VERSION,
   analyzeInvoice,
+  isReadableInvoiceNumber,
   invoiceContentHash,
   legacyInvoiceContentHash,
+  legacyNormalizeInvoiceNumber,
   normalizeInvoiceNumber,
   type ExistingInvoiceView,
   type InvoiceInput,
@@ -75,6 +78,67 @@ describe("invoice reconciliation", () => {
     expect(normalizeInvoiceNumber("INV")).toBe("INV");
   });
 
+  describe("invoice number normalisation v2", () => {
+    it.each([
+      // [a, b, same?]
+      ["№ ٤٢", "№ ٥٠", false], // Arabic-Indic 42 vs 50: v1 made both "NO"
+      ["№ ٤٢", "INV-42", true],
+      ["४२", "42", true], // Devanagari 42
+      ["୪୨", "42", true], // Odia 42
+      ["４２", "42", true], // full-width (NFKC)
+      ["2024-001", "202-4001", false], // v1 merged both into 2024001
+      ["2024-001", "2024/001", true],
+      ["2024-001", "2024 - 001", true],
+      ["2024-001", "2024001", false],
+      ["GLV-1001", "glv 1001", true], // separators next to letters still fold
+      ["GLV-1001", "GLV1001", true],
+      ["INV-0042", "invoice #42", true],
+      ["QS-OLD-1", "QSOLD1", true],
+    ])("%s vs %s → same: %s", (a, b, same) => {
+      expect(normalizeInvoiceNumber(a) === normalizeInvoiceNumber(b)).toBe(same);
+    });
+
+    it("produces readable cores and keeps the v1 output where v1 was not lossy", () => {
+      expect(normalizeInvoiceNumber("№ ٤٢")).toBe("42");
+      expect(normalizeInvoiceNumber("2024-001")).toBe("2024-001");
+      expect(normalizeInvoiceNumber("INV-00-5")).toBe("0-5");
+      for (const n of ["INV-0042", "GLV-1001", "QS-OLD-1", "Inv #0007", "INVOICE123", "ＩＮＶ４２"]) {
+        expect(normalizeInvoiceNumber(n)).toBe(legacyNormalizeInvoiceNumber(n));
+      }
+      expect(legacyNormalizeInvoiceNumber("№ ٤٢")).toBe("NO");
+      expect(legacyNormalizeInvoiceNumber("2024-001")).toBe(legacyNormalizeInvoiceNumber("202-4001"));
+      expect(INVOICE_NUMBER_NORMALIZATION_VERSION).toBe(2);
+    });
+
+    it("does not call two digit-free invoice numbers the same invoice, and asks for review", () => {
+      expect(isReadableInvoiceNumber(normalizeInvoiceNumber("###"))).toBe(false);
+      expect(isReadableInvoiceNumber(normalizeInvoiceNumber("DRAFT"))).toBe(false);
+      expect(isReadableInvoiceNumber(normalizeInvoiceNumber("№ ٤"))).toBe(true);
+      const stored = {
+        ...existingFrom(invoice({ invoice_number: "###" })),
+        content_hash: "v2:sha256:other",
+        purchase_order_id: "po_other",
+      };
+      const r = analyzeInvoice(invoice({ invoice_number: "—" }), po, [stored]);
+      expect(r.status).toBe("DISCREPANCY");
+      expect(r.duplicate_of).toEqual([]);
+      const failed = r.checks.filter((c) => !c.passed);
+      expect(failed.map((c) => c.check)).toEqual(["INVOICE_NUMBER_READABLE"]);
+      expect(failed[0]!.severity).toBe("MEDIUM");
+    });
+
+    it("no longer flags distinct non-Latin numbers as duplicates of each other", () => {
+      const stored = {
+        ...existingFrom(invoice({ invoice_number: "№ ٤٢" })),
+        content_hash: "v2:sha256:other",
+        purchase_order_id: "po_other",
+      };
+      const r = analyzeInvoice(invoice({ invoice_number: "№ ٥٠" }), po, [stored]);
+      expect(r.checks.find((c) => c.check === "DUPLICATE_INVOICE_NUMBER")?.passed).toBe(true);
+      expect(r.status).toBe("MATCHED");
+    });
+  });
+
   it("detects a resubmission under a new number by content", () => {
     const r = analyzeInvoice(invoice({ invoice_number: "INV-2002" }), po, [existingFrom(invoice())]);
     expect(r.status).toBe("DUPLICATE");
@@ -131,7 +195,7 @@ describe("invoice reconciliation", () => {
       const qty = r.checks.find((c) => c.check === "QUANTITIES_WITHIN_ORDER")!;
       expect(qty).toMatchObject({ passed: false, severity: "MEDIUM" });
       expect(qty.detail).toContain("A (20 of 10)");
-      expect(r.checks.find((c) => c.check === "ORDER_FULLY_INVOICED")).toMatchObject({ passed: false, severity: "LOW" });
+      expect(r.checks.find((c) => c.check === "ORDER_FULLY_INVOICED")).toMatchObject({ passed: false, severity: "MEDIUM" });
     });
 
     it("accepts the same SKU split across lines when the sum is within the order", () => {
@@ -140,13 +204,93 @@ describe("invoice reconciliation", () => {
       expect(r.checks.every((c) => c.passed)).toBe(true);
     });
 
-    it("reports ordered products missing from the invoice without blocking a short invoice", () => {
+    it("withholds settlement from a short invoice, because only the completing invoice can settle the order", () => {
       const r = analyzeInvoice(invoice({ lines: [line("A", 10), line("B", 4)], total_minor: 14_000 }), twoSkuPo, []);
       const note = r.checks.find((c) => c.check === "ORDER_FULLY_INVOICED")!;
-      expect(note).toMatchObject({ passed: false, severity: "LOW" });
-      expect(note.detail).toContain("B (4 of 10)");
-      expect(r.status).toBe("MATCHED");
-      expect(r.settlement_allowed).toBe(true);
+      expect(note).toMatchObject({ passed: false, severity: "MEDIUM" });
+      expect(note.detail).toContain("Partial invoice: ordered products not (fully) invoiced: B (4 of 10).");
+      expect(note.detail).toMatch(/settlement waits for the invoice that completes the order/);
+      expect(r.status).toBe("DISCREPANCY");
+      expect(r.settlement_allowed).toBe(false);
+      expect(r.checks.filter((c) => !c.passed).map((c) => c.check)).toEqual(["ORDER_FULLY_INVOICED"]);
+    });
+
+    describe("follow-up invoices for the remainder", () => {
+      /** An earlier partial invoice for this order as the API stores it. */
+      const prior = (
+        id: string,
+        number: string,
+        lines: ReturnType<typeof line>[],
+        o: Partial<ExistingInvoiceView> = {},
+      ): ExistingInvoiceView => {
+        const inv = invoice({ invoice_number: number, lines, total_minor: lines.reduce((a, l) => a + l.line_total_minor, 0) });
+        return { ...existingFrom(inv, "DISCREPANCY"), id, lines, ...o };
+      };
+      const follow = (number: string, lines: ReturnType<typeof line>[]) =>
+        invoice({ invoice_number: number, lines, total_minor: lines.reduce((a, l) => a + l.line_total_minor, 0) });
+
+      it("matches the invoice that bills exactly the remainder, never as a duplicate", () => {
+        const first = prior("inv_a", "INV-1", [line("A", 10), line("B", 4)]);
+        const r = analyzeInvoice(follow("INV-2", [line("B", 6)]), twoSkuPo, [first]);
+        expect(r.status).toBe("MATCHED");
+        expect(r.settlement_allowed).toBe(true);
+        expect(r.duplicate_of).toEqual([]);
+        expect(r.checks.find((c) => c.check === "ORDER_FULLY_INVOICED")?.detail).toBe(
+          "Completes the order together with 1 earlier partial invoice(s).",
+        );
+      });
+
+      it("accumulates several partial invoices", () => {
+        const a = prior("inv_a", "INV-1", [line("A", 5)]);
+        const b = prior("inv_b", "INV-2", [line("A", 5), line("B", 2)]);
+        const third = analyzeInvoice(follow("INV-3", [line("B", 3)]), twoSkuPo, [a, b]);
+        expect(third.status).toBe("DISCREPANCY");
+        expect(third.checks.find((c) => c.check === "ORDER_FULLY_INVOICED")?.detail).toContain("B (5 of 10)");
+        expect(analyzeInvoice(follow("INV-4", [line("B", 8)]), twoSkuPo, [a, b]).status).toBe("MATCHED");
+      });
+
+      it("flags billing more than the remainder across invoices", () => {
+        const first = prior("inv_a", "INV-1", [line("A", 10), line("B", 4)]);
+        const r = analyzeInvoice(follow("INV-2", [line("B", 10)]), twoSkuPo, [first]);
+        expect(r.status).toBe("DISCREPANCY");
+        const failed = r.checks.filter((c) => !c.passed);
+        expect(failed.map((c) => c.check)).toEqual(["TOTAL_WITHIN_APPROVED", "QUANTITIES_WITHIN_ORDER"]);
+        expect(failed[1]!.detail).toBe("Over-billed quantities (with 1 earlier partial invoice(s)): B (14 of 10).");
+      });
+
+      it("treats an identical repeat of a partial invoice as a discrepancy to verify, not a duplicate", () => {
+        const half = [line("A", 5), line("B", 5)];
+        const first = prior("inv_a", "INV-1", half);
+        const r = analyzeInvoice(follow("INV-2", half), twoSkuPo, [first]);
+        expect(r.status).toBe("DISCREPANCY");
+        expect(r.duplicate_of).toEqual([]);
+        expect(r.checks.find((c) => c.check === "DUPLICATE_CONTENT")).toMatchObject({ passed: false, severity: "MEDIUM" });
+        // Identical content implies identical lines, so this works without the caller's lines.
+        const withoutLines = analyzeInvoice(follow("INV-2", half), twoSkuPo, [{ ...first, lines: undefined }]);
+        expect(withoutLines.status).toBe("DISCREPANCY");
+        expect(withoutLines.checks.find((c) => c.check === "ORDER_FULLY_INVOICED")?.passed).toBe(true);
+        // A third identical copy would exceed the order: that one is a duplicate.
+        const second = prior("inv_b", "INV-2", half);
+        const third = analyzeInvoice(follow("INV-3", half), twoSkuPo, [first, second]);
+        expect(third.status).toBe("DUPLICATE");
+        expect(third.duplicate_of).toEqual(["inv_a", "inv_b"]);
+      });
+
+      it("does not count prior invoices without lines, settled or duplicate ones, or disputed full invoices", () => {
+        const remainder = follow("INV-2", [line("B", 6)]);
+        // Without lines the API has not passed history: the remainder alone is still partial.
+        const noLines = prior("inv_a", "INV-1", [line("A", 10), line("B", 4)], { lines: undefined });
+        expect(analyzeInvoice(remainder, twoSkuPo, [noLines]).status).toBe("DISCREPANCY");
+        const dup = prior("inv_a", "INV-1", [line("A", 10), line("B", 4)], { status: "DUPLICATE" });
+        expect(analyzeInvoice(remainder, twoSkuPo, [dup]).status).toBe("DISCREPANCY");
+        // A full invoice that was disputed is replaced by its correction, not completed by it.
+        const disputedFull = prior("inv_a", "INV-1", [line("A", 10), line("B", 10)]);
+        const corrected = follow("INV-2", [line("A", 4), line("A", 6), line("B", 10)]);
+        expect(analyzeInvoice(corrected, twoSkuPo, [disputedFull]).status).toBe("MATCHED");
+        // Another order's partial invoice never counts.
+        const otherOrder = prior("inv_a", "INV-1", [line("A", 10), line("B", 4)], { purchase_order_id: "po_2" });
+        expect(analyzeInvoice(remainder, twoSkuPo, [otherOrder]).status).toBe("DISCREPANCY");
+      });
     });
 
     describe("a SKU ordered on two lines at different prices", () => {

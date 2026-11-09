@@ -146,3 +146,43 @@ describe("cart tampering and fee smuggling", () => {
     ]);
   });
 });
+
+describe("required charges left off the cart", () => {
+  it("blocks a cart without its tax line from an 8.25% supplier", () => {
+    const c = buildCart(SUPPLIER, "USD", [product(), shipping(0)]);
+    const v = blockedBy(c, "CART_ARITHMETIC_INVALID", /no tax line/);
+    expect(v.evidence).toEqual({ reason: "missing_tax_line", tax_rate_bps: 825, expected_minor: 1_320 });
+    expect(evaluatePolicy({ ...baseInput(), cart: c }).checks.find((x) => x.code === "REQUIRED_CHARGES_PRESENT")?.passed).toBe(false);
+  });
+
+  it("allows a missing tax line when no tax is due (zero rate, or rounds to zero)", () => {
+    const zeroRate = baseInput({}, [product(), shipping(0)]);
+    zeroRate.supplier = { ...zeroRate.supplier!, tax_rate_bps: 0 };
+    expect(codes(zeroRate.cart)).toContain("CART_ARITHMETIC_INVALID"); // with the 8.25% default terms
+    expect(evaluatePolicy(zeroRate).violations.map((x) => x.code)).not.toContain("CART_ARITHMETIC_INVALID");
+    expect(evaluatePolicy(zeroRate).checks.find((x) => x.code === "REQUIRED_CHARGES_PRESENT")?.passed).toBe(true);
+  });
+
+  it("blocks a cart that omits non-waived published shipping", () => {
+    // $80 subtotal is under the $150 free-shipping threshold, so $8.99 is due.
+    const small = product({ quantity: 1, line_total_minor: 8_000 });
+    const v = blockedBy(buildCart(SUPPLIER, "USD", [small, tax(660)]), "CART_ARITHMETIC_INVALID", /missing from the cart/);
+    expect(v.evidence).toEqual({ reason: "missing_required_charge", code: "SHIP_STD", kind: "SHIPPING", expected_minor: 899 });
+  });
+
+  it("accepts omitting a charge the terms waive", () => {
+    // $160 subtotal qualifies for free shipping: leaving the $0 line off changes nothing.
+    expect(codes(buildCart(SUPPLIER, "USD", [product(), tax(1_320)]))).not.toContain("CART_ARITHMETIC_INVALID");
+  });
+
+  it("does not report missing charges against another supplier's or malformed terms", () => {
+    const foreign = baseInput({}, [product()]);
+    foreign.supplier = { ...foreign.supplier!, id: "someone-else" };
+    const r = evaluatePolicy(foreign);
+    expect(r.decision).toBe("BLOCK");
+    expect(r.violations.filter((x) => x.code === "CART_ARITHMETIC_INVALID")).toEqual([]);
+    const badRate = baseInput({}, [product()]);
+    badRate.supplier = { ...badRate.supplier!, tax_rate_bps: 8.25 };
+    expect(evaluatePolicy(badRate).violations.filter((x) => x.code === "CART_ARITHMETIC_INVALID")).toEqual([]);
+  });
+});

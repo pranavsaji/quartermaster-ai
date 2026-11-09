@@ -60,11 +60,38 @@ export function decimalStringToMinor(value: string, currency: string): number {
   return sign && minor !== 0 ? -minor : minor;
 }
 
-/** Converts a floating price from an external source (e.g. Channel3 `19.99`) to minor units. */
+/**
+ * Converts a floating price from an external source (e.g. Channel3 `19.99`) to minor units,
+ * rounding half away from zero at the currency's precision.
+ *
+ * `Math.round(value * 100)` is wrong at decimal midpoints because the binary product drifts:
+ * `1.005 * 100` is `100.49999999999999` (→ 100) and `10.075 * 100` is `1007.4999999999999`
+ * (→ 1007). Instead the float is first rendered with 15 significant digits — the precision a
+ * double is guaranteed to round-trip, which removes the binary noise ("1.00500000000000") — and
+ * that decimal string is rounded exactly with BigInt arithmetic. Throws for non-finite input or
+ * a result that is not a safe integer.
+ */
 export function floatToMinor(value: number, currency: string): number {
-  if (!Number.isFinite(value)) throw new Error(`Invalid price ${value}`);
+  if (typeof value !== "number" || !Number.isFinite(value)) throw new Error(`Invalid price ${value}`);
   const exp = currencyExponent(currency);
-  return Math.round(value * 10 ** exp);
+  // toPrecision(15) yields "d.ddd…", "ddd.ddd…" or "d.ddd…e±n".
+  const m = /^(-)?(\d+)(?:\.(\d+))?(?:e([+-]\d+))?$/.exec(value.toPrecision(15));
+  if (!m) throw new Error(`Invalid price ${value}`);
+  const [, sign, whole, frac = "", e = "0"] = m;
+  const digits = BigInt(whole! + frac);
+  // value = digits × 10^(e − frac.length), so minor = digits × 10^(e − frac.length + exp).
+  const shift = Number(e) - frac.length + exp;
+  let minorBig: bigint;
+  if (shift >= 0) {
+    minorBig = digits * 10n ** BigInt(shift);
+  } else {
+    const d = 10n ** BigInt(-shift);
+    minorBig = digits / d;
+    if (2n * (digits % d) >= d) minorBig += 1n;
+  }
+  const minor = Number(minorBig);
+  assertMinor(minor, "converted price");
+  return sign && minor !== 0 ? -minor : minor;
 }
 
 export function formatMoney(minor: number, currency: string, locale = "en-US"): string {

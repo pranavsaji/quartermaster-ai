@@ -37,9 +37,35 @@ describe("money", () => {
     expect(() => minorToDecimalString(1, "XXX")).toThrow();
   });
 
-  it("converts floats from external sources without binary drift", () => {
+  it("converts floats from external sources, absorbing binary representation error", () => {
     expect(floatToMinor(19.99, "USD")).toBe(1999);
     expect(floatToMinor(0.1 + 0.2, "USD")).toBe(30);
+    expect(floatToMinor(0, "USD")).toBe(0);
+    expect(Object.is(floatToMinor(-0, "USD"), 0)).toBe(true);
+  });
+
+  it.each([
+    // value, USD, JPY — decimal midpoints whose binary value sits just below the half
+    [1.005, 101, 1],
+    [10.075, 1008, 10],
+    [2.675, 268, 3],
+    [1.255, 126, 1],
+    [0.005, 1, 0],
+    [0.0049999, 0, 0],
+    [123_456_789.125, 12_345_678_913, 123_456_789],
+    [-1.005, -101, -1], // half away from zero
+    [1e-7, 0, 0],
+  ])("rounds %s half away from zero at the currency precision", (value, usd, jpy) => {
+    expect(floatToMinor(value, "USD")).toBe(usd);
+    expect(floatToMinor(value, "JPY")).toBe(jpy);
+  });
+
+  it("rejects non-finite input and results outside the safe-integer range", () => {
+    for (const v of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, "1" as never]) {
+      expect(() => floatToMinor(v, "USD")).toThrow(/Invalid price/);
+    }
+    expect(() => floatToMinor(1e21, "USD")).toThrow(/safe integer/);
+    expect(() => floatToMinor(1, "XXX")).toThrow(/Unsupported currency/);
   });
 
   it("computes basis points with half-up rounding", () => {
