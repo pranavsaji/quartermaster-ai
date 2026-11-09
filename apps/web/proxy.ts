@@ -8,7 +8,8 @@ import { loginRedirectFor, SESSION_COOKIE_NAMES } from "./lib/session-gate";
  *    asks the API whether the session is valid and what the role allows).
  * 2. Sets a per-request nonce-based Content-Security-Policy. Next.js reads the
  *    nonce from the request's CSP header and attaches it to its own scripts,
- *    which is why pages render dynamically (see app/layout.tsx).
+ *    which is why pages render dynamically (see app/layout.tsx). Nothing of ours
+ *    reads the nonce, so it isn't passed on separately (e.g. as x-nonce).
  */
 export function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
@@ -21,7 +22,6 @@ export function proxy(request: NextRequest) {
   const csp = buildCsp({ nonce, dev: process.env.NODE_ENV === "development", https });
 
   const requestHeaders = new Headers(request.headers);
-  requestHeaders.set("x-nonce", nonce);
   requestHeaders.set("Content-Security-Policy", csp);
 
   const response = NextResponse.next({ request: { headers: requestHeaders } });
