@@ -55,8 +55,13 @@ export interface InvoiceAnalysis {
   injection: InjectionVerdict | null;
 }
 
+/**
+ * Canonical alphanumeric core of an invoice number, so "INV-0042", "Invoice #42" and "inv42"
+ * compare equal. NFKC folds full-width and compatibility characters before stripping.
+ */
 export function normalizeInvoiceNumber(n: string): string {
-  return n.trim().toUpperCase().replace(/[\s_-]+/g, "").replace(/^(INV|INVOICE)#?/, "").replace(/^0+(?=\d)/, "");
+  const core = n.normalize("NFKC").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  return core.replace(/^(INVOICE|INV)(?=[A-Z0-9])/, "").replace(/^0+(?=\d)/, "");
 }
 
 /** Content fingerprint independent of the invoice number, to catch re-numbered resubmissions. */
