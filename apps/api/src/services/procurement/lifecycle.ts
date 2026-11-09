@@ -60,20 +60,33 @@ export async function createRequest(ctx: AppContext, actor: Actor, input: Create
   });
   const items = await ctx.db.select().from(inventoryItems).where(eq(inventoryItems.organizationId, actor.organizationId));
   const refs = items.map((i) => ({ id: i.id, sku: i.sku, name: i.name, category: i.category, keywords: i.keywords }));
-  const interpreted = await run.tool(
-    "intent.interpret",
-    { length: input.instruction.length },
-    () =>
-      interpretInstruction(ctx.openai, run, {
-        instruction: input.instruction,
-        inventory: refs,
-        today: localDate(now, org!.timezone).date,
-        now,
-        timeZone: org!.timezone,
-      }),
-    (r) =>
-      `${r.mode === "LLM" ? "Model" : "Deterministic"} interpretation: ${r.intent.inventory_item_ids.length} item(s), ${r.intent.demand_multiplier}× demand${r.note ? ` (${r.note})` : ""}.`,
-  );
+  let interpreted: Awaited<ReturnType<typeof interpretInstruction>>;
+  try {
+    interpreted = await run.tool(
+      "intent.interpret",
+      { length: input.instruction.length },
+      () =>
+        interpretInstruction(ctx.openai, run, {
+          instruction: input.instruction,
+          inventory: refs,
+          today: localDate(now, org!.timezone).date,
+          now,
+          timeZone: org!.timezone,
+        }),
+      (r) =>
+        `${r.mode === "LLM" ? "Model" : "Deterministic"} interpretation: ${r.intent.inventory_item_ids.length} item(s), ${r.intent.demand_multiplier}× demand${r.note ? ` (${r.note})` : ""}.`,
+    );
+  } catch (err) {
+    // Interpretation already falls back to deterministic rules, so this is an infrastructure
+    // failure. Remove the half-created request (its agent run cascades) so the client's retry,
+    // which may reuse the released idempotency key, starts cleanly instead of leaving a DRAFT
+    // with a RUNNING agent behind.
+    await ctx.db
+      .delete(purchaseRequests)
+      .where(eq(purchaseRequests.id, req!.id))
+      .catch((cleanup: unknown) => ctx.log.error({ err: cleanup, request_id: req!.id }, "could not remove a half-created request"));
+    throw err;
+  }
   run.aiMode = interpreted.mode;
   await run.finish("SUCCEEDED");
 
