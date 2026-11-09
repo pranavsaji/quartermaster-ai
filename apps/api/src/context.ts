@@ -47,6 +47,7 @@ export function buildContext(config: AppConfig, log: Logger, database: DatabaseH
     model: config.openai.model,
     baseUrl: config.openai.baseUrl,
     fetch: overrides.openaiFetch ?? overrides.fetch,
+    log: (event, data) => log.warn({ ...data, event }, "openai"),
   });
   const notifier = new Notifier({
     webhookUrl: config.zapierWebhookUrl,
