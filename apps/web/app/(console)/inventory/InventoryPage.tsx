@@ -73,7 +73,7 @@ export function InventoryPage() {
             description={!can("adjustInventory") ? "Read-only: managers and owners can adjust stock." : undefined}
             actions={
               items ? (
-                <div className="flex flex-wrap gap-1.5" aria-label="Stock status counts">
+                <div className="flex flex-wrap gap-1.5" role="group" aria-label="Stock status counts">
                   <Badge tone="block" dot>
                     {counts.OUT + counts.CRITICAL} critical / out
                   </Badge>

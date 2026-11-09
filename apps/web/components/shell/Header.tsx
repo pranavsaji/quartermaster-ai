@@ -37,7 +37,7 @@ export function Header({ onOpenMenu }: { onOpenMenu: () => void }) {
           </p>
         </div>
 
-        <div className="hidden items-center gap-1.5 xl:flex" aria-label="Environment status">
+        <div className="hidden items-center gap-1.5 xl:flex" role="group" aria-label="Environment status">
           {!config.paypal.enabled ? (
             <Badge tone="neutral" title="PayPal is not configured on this server; payments are unavailable">
               PayPal off
