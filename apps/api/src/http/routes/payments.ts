@@ -3,7 +3,7 @@ import { CapturePaymentRequest, RefundRequest } from "@qm/contracts";
 import type { WebhookHeaders } from "@qm/payments";
 import type { AppContext } from "../../context";
 import { verificationDto } from "../../services/certificates";
-import { capturePayment, createPayPalOrder, getPayment, refundPayment } from "../../services/payments";
+import { capturePayment, createPayPalOrder, getPayment, refundPayment, syncPayment } from "../../services/payments";
 import { handlePayPalWebhook } from "../../services/webhooks";
 import { actorOf, requireRole } from "../middleware/auth";
 import { asyncHandler, param, parse } from "../middleware/errors";
@@ -35,6 +35,15 @@ export function intentAndPaymentRoutes(ctx: AppContext): Router {
     idempotent(ctx, "payments.capture", async (req) => {
       const input = parse(CapturePaymentRequest, req.body);
       return { status: 200, body: await capturePayment(ctx, actorOf(req), param(req, "id"), input.paypal_order_id) };
+    }),
+  );
+
+  // Ask PayPal for the order's real state, e.g. when the browser lost the checkout result.
+  r.post(
+    "/payments/:id/sync",
+    requireRole("OWNER"),
+    asyncHandler(async (req, res) => {
+      res.json(await syncPayment(ctx, req.user!.organizationId, param(req, "id")));
     }),
   );
 

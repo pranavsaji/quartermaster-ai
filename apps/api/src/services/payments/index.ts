@@ -7,5 +7,5 @@ export { createPayPalOrder } from "./create";
 export { capturePayment } from "./capture";
 export { applyTerminalFailure, finalizeFromOrder, reconcilePayment, voidAbandonedCapture } from "./settle";
 export { reconcileRefunds, recordReportedRefund, refundPayment, toRefundStatus } from "./refunds";
-export { getPayment } from "./read";
+export { getPayment, syncPayment } from "./read";
 export { transitionPayment, type PaymentRow } from "./shared";

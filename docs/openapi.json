@@ -1201,6 +1201,48 @@
         }
       }
     },
+    "/payments/{id}/sync": {
+      "post": {
+        "summary": "Re-read the PayPal order and apply its state (never captures)",
+        "tags": [
+          "Payments"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-required-role": "OWNER",
+        "responses": {
+          "200": {
+            "description": "PaymentDto"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          }
+        }
+      }
+    },
     "/payments/{id}/refund": {
       "post": {
         "summary": "Owner-authorized refund",

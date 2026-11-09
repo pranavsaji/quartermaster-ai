@@ -205,6 +205,14 @@ export const ROUTES: RouteSpec[] = [
   { method: "GET", path: "/payments/{id}", summary: "Verified payment state", tag: "Payments", response: "PaymentDto" },
   {
     method: "POST",
+    path: "/payments/{id}/sync",
+    summary: "Re-read the PayPal order and apply its state (never captures)",
+    tag: "Payments",
+    role: "OWNER",
+    response: "PaymentDto",
+  },
+  {
+    method: "POST",
     path: "/payments/{id}/refund",
     summary: "Owner-authorized refund",
     tag: "Payments",

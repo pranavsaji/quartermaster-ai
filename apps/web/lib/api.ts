@@ -147,6 +147,8 @@ export const api = {
 
   payments: {
     get: async (paymentId: string, o?: Signal) => ensureShape(await get<unknown>(`/payments/${id(paymentId)}`, o), isPayment, "a payment"),
+    /** Asks the API to re-read the PayPal order (never captures). */
+    sync: async (paymentId: string) => ensureShape(await post<unknown>(`/payments/${id(paymentId)}/sync`), isPayment, "a payment"),
     capture: (paymentId: string, body: { paypal_order_id: string }) =>
       idempotent("POST", `/payments/${id(paymentId)}/capture`, body, { guard: isCaptureResponse, what: "a capture result" }),
     refund: (paymentId: string, body: RefundRequest) =>

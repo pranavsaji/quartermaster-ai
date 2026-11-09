@@ -61,10 +61,13 @@ export function PayPalCheckout({
   amountMinor,
   currency,
   disabledReason,
+  payment,
   onPayment,
   onCaptured,
 }: {
   intentId: string;
+  /** The current payment for this intent, if one exists (e.g. after a reload). */
+  payment?: PaymentDto | null;
   amountMinor: number;
   currency: string;
   /** When set, the button is not offered and this reason is shown instead. */
@@ -117,14 +120,40 @@ export function PayPalCheckout({
     void capture(paymentId, orderId);
   });
 
+  /**
+   * PayPal's SDK reports a cancel whenever its window closes without a result, including when the
+   * buyer finished in a relaunched window. Ask the server what PayPal really recorded: if the buyer
+   * approved, complete the payment exactly as onApprove would. Also behind "Check with PayPal".
+   */
+  async function recover(paymentId: string | null) {
+    if (!paymentId) {
+      setPhase("idle");
+      setMessage("Checkout was cancelled. Nothing was charged.");
+      return;
+    }
+    setPhase("approving");
+    try {
+      const synced = await api.payments.sync(paymentId);
+      onPayment(synced);
+      if (synced.status === "PAYER_APPROVED" && synced.paypal_order_id) {
+        setMessage("PayPal shows the order as approved. Completing the payment…");
+        await capture(paymentId, synced.paypal_order_id);
+        return;
+      }
+      setMessage("Checkout was cancelled. Nothing was charged.");
+    } catch {
+      setMessage("The PayPal window closed. If you approved the payment, use “Check with PayPal” below.");
+    }
+    setPhase("idle");
+  }
+
+  const onCancel = useEffectEvent(() => void recover(paymentIdRef.current));
+
   useEffect(() => {
     if (!sdk) return;
     const session = sdk.createPayPalOneTimePaymentSession({
       onApprove: ({ orderId }) => onApprove(orderId),
-      onCancel: () => {
-        setPhase("idle");
-        setMessage("Checkout was cancelled. Nothing was charged.");
-      },
+      onCancel: () => onCancel(),
       onError: (err) => {
         setPhase("idle");
         setError(err instanceof Error ? err : new Error("PayPal reported an error during checkout."));
@@ -245,6 +274,25 @@ export function PayPalCheckout({
         <Notice tone="neutral" live>
           {message}
         </Notice>
+      ) : null}
+      {!busy && payment?.status === "PAYER_APPROVED" && payment.paypal_order_id ? (
+        <Notice
+          tone="review"
+          title="Approved in PayPal, not yet paid"
+          action={
+            <Button size="sm" onClick={() => void capture(payment.id, payment.paypal_order_id!)}>
+              Complete payment
+            </Button>
+          }
+        >
+          The buyer approved this order in PayPal, but the payment hasn&apos;t been captured yet. Completing it captures exactly{" "}
+          {money(amountMinor, currency)}.
+        </Notice>
+      ) : null}
+      {!busy && payment && payment.paypal_order_id && (payment.status === "ORDER_CREATED" || payment.status === "PAYER_APPROVED") ? (
+        <Button size="sm" variant="secondary" onClick={() => void recover(payment.id)}>
+          Check with PayPal
+        </Button>
       ) : null}
       {uncertain ? (
         <Notice

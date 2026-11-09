@@ -208,6 +208,7 @@ export function ProposalCard({
                     ? `The certificate is ${cert.status.toLowerCase()}, so this cart can't be paid. Re-run TrustRail evaluation and approve again.`
                     : "The certificate has expired. Re-run TrustRail evaluation and approve again to pay."
               }
+              payment={po.payment}
               onPayment={handlePayment}
               onCaptured={handleCaptured}
             />
