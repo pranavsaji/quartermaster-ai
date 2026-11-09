@@ -91,3 +91,21 @@ test("unauthenticated visitors are sent to sign in", async ({ page }) => {
   await page.goto("/orders");
   await expect(page).toHaveURL(/\/login/);
 });
+
+test("a stale session cookie is sent to sign in by the server, back to the page asked for", async ({ page, context, baseURL }) => {
+  // The proxy only sees that a cookie exists; the console layout asks the API and finds it invalid.
+  await context.addCookies([{ name: "qm_session", value: "not-a-real-session", url: baseURL ?? "http://localhost:3000" }]);
+  const response = await page.goto("/orders?tab=invoices");
+  await expect(page).toHaveURL(`/login?next=${encodeURIComponent("/orders?tab=invoices")}`);
+  expect(response?.ok()).toBe(true);
+  await expect(page.getByRole("heading", { name: "Sign in to your kitchen" })).toBeVisible();
+});
+
+test("the console renders with the signed-in user from the first response", async ({ page }) => {
+  await signIn(page, "manager");
+  // The session is loaded on the server, so the HTML is the console itself, not the loading skeleton.
+  const html = await (await page.request.get("/inventory")).text();
+  expect(html).not.toContain('aria-label="Loading Quartermaster"');
+  await page.goto("/inventory");
+  await expect(page.getByRole("heading", { name: "Inventory" })).toBeVisible();
+});

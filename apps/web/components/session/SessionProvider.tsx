@@ -19,6 +19,12 @@ export interface Session {
 
 const SessionContext = createContext<Session | null>(null);
 
+/** What the server layout loaded for the console (lib/server-session). */
+export interface InitialSession {
+  user: SessionUser;
+  config: PublicConfig;
+}
+
 export interface SessionLoadState {
   session: Session | null;
   loading: boolean;
@@ -27,14 +33,20 @@ export interface SessionLoadState {
 }
 
 /**
- * Loads the public config and the signed-in user once for the console. A 401
- * from `/auth/me` is handled by the HTTP layer (redirect to /login).
+ * The public config and the signed-in user for the console. The console layout normally loads
+ * them on the server (`initial`), so nothing is fetched here; when it couldn't, they are loaded
+ * from the client, and `retry` always re-reads them. A 401 from `/auth/me` is handled by the HTTP
+ * layer (redirect to /login).
  */
-export function useLoadSession(): SessionLoadState {
-  const resource = useResource(async (signal) => {
-    const [config, me] = await Promise.all([api.config.public({ signal }), api.auth.me({ signal })]);
-    return { config, user: me.user };
-  }, []);
+export function useLoadSession(initial?: InitialSession | null): SessionLoadState {
+  const resource = useResource(
+    async (signal) => {
+      const [config, me] = await Promise.all([api.config.public({ signal }), api.auth.me({ signal })]);
+      return { config, user: me.user };
+    },
+    [],
+    { initialData: initial ?? undefined },
+  );
   const [signingOut, setSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState<unknown>(undefined);
 
