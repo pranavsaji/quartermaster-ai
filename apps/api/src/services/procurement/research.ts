@@ -126,9 +126,20 @@ export async function researchRequest(ctx: AppContext, user: { id: string; organ
       createdProposalIds,
     });
   } catch (err) {
-    await failResearch(ctx, requestId, run, createdProposalIds, err);
+    // Clean-up must never replace the error that caused it.
+    await failResearch(ctx, requestId, run, createdProposalIds, err).catch((cleanup: unknown) =>
+      ctx.log.error({ err: cleanup, request_id: requestId }, "could not record a failed research run"),
+    );
     throw err;
   }
+}
+
+/**
+ * Finishing writes are conditional on the request still RESEARCHING: if the sweeper already
+ * failed it as abandoned, this run must not resurrect it (its proposals are withdrawn instead).
+ */
+function assertStillResearching(rows: { id: string }[]): void {
+  if (rows.length === 0) throw conflict("RESEARCH_INTERRUPTED", "Research ran too long and was stopped. Run it again.");
 }
 
 /**
@@ -259,7 +270,9 @@ async function finishNothingToBuy(rc: ResearchContext, demand: Demand) {
       researchCompletedAt: ctx.now(),
       updatedAt: ctx.now(),
     })
-    .where(eq(purchaseRequests.id, rc.requestId));
+    .where(and(eq(purchaseRequests.id, rc.requestId), eq(purchaseRequests.status, "RESEARCHING")))
+    .returning({ id: purchaseRequests.id })
+    .then(assertStillResearching);
   await run.finish("SUCCEEDED");
   return getRequestDto(ctx.db, rc.orgId, rc.requestId);
 }
@@ -702,7 +715,9 @@ async function finishResearch(rc: ResearchContext, demand: Demand, market: Marke
       researchCompletedAt: ctx.now(),
       updatedAt: ctx.now(),
     })
-    .where(eq(purchaseRequests.id, rc.requestId));
+    .where(and(eq(purchaseRequests.id, rc.requestId), eq(purchaseRequests.status, "RESEARCHING")))
+    .returning({ id: purchaseRequests.id })
+    .then(assertStillResearching);
   await refreshRequestStatus(ctx.db, rc.requestId, ctx.now());
   await run.finish("SUCCEEDED");
 
