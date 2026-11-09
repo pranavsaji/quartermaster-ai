@@ -135,19 +135,21 @@ export function analyzeInvoice(inv: InvoiceInput, po: PurchaseOrderView | null, 
     add("PAYMENT_VERIFIED", po.payment_completed, "MEDIUM", po.payment_completed ? "A verified PayPal capture exists for this order." : "No verified payment for this order yet.");
     add("TOTAL_WITHIN_APPROVED", inv.total_minor <= po.total_minor, "HIGH", inv.total_minor <= po.total_minor ? "Invoice total is within the approved amount." : `Invoice exceeds approved order total by ${inv.total_minor - po.total_minor}.`);
 
-    // Ordered quantity and unit prices per SKU. Quantities are summed on both sides so splitting
-    // one SKU across several invoice lines cannot bill more than was ordered.
-    const ordered = new Map<string, { kind: string; quantity: number; prices: Set<number> }>();
+    // Ordered quantity per SKU and per (SKU, unit price). Quantities are summed on both sides so
+    // splitting one SKU across several invoice lines cannot bill more than was ordered, and
+    // prices are matched together with quantities: a SKU ordered as 5 @ $10 + 5 @ $12 may not
+    // be billed as 10 @ $12.
+    const ordered = new Map<string, { kind: string; quantity: number; byPrice: Map<number, number> }>();
     for (const i of po.items) {
       if (!i.sku) continue;
-      const o = ordered.get(i.sku) ?? { kind: i.kind, quantity: 0, prices: new Set<number>() };
+      const o = ordered.get(i.sku) ?? { kind: i.kind, quantity: 0, byPrice: new Map<number, number>() };
       o.quantity += i.quantity;
-      o.prices.add(i.unit_price_minor);
+      o.byPrice.set(i.unit_price_minor, (o.byPrice.get(i.unit_price_minor) ?? 0) + i.quantity);
       ordered.set(i.sku, o);
     }
     const invoiced = new Map<string, number>();
+    const invoicedByPrice = new Map<string, Map<number, number>>();
     const unknown: string[] = [];
-    const priceDiff = new Set<string>();
     // Charges without a SKU (tax, shipping) may match a non-product order line of the same
     // amount; each order line can be matched at most once.
     const chargeLines = po.items.filter((i) => i.kind !== "PRODUCT").map((i) => ({ ...i, used: false }));
@@ -163,15 +165,30 @@ export function analyzeInvoice(inv: InvoiceInput, po: PurchaseOrderView | null, 
         continue;
       }
       invoiced.set(l.sku!, (invoiced.get(l.sku!) ?? 0) + l.quantity);
-      if (!match.prices.has(l.unit_price_minor)) priceDiff.add(l.sku!);
+      const byPrice = invoicedByPrice.get(l.sku!) ?? new Map<number, number>();
+      byPrice.set(l.unit_price_minor, (byPrice.get(l.unit_price_minor) ?? 0) + l.quantity);
+      invoicedByPrice.set(l.sku!, byPrice);
     }
-    const overQty = [...invoiced].filter(([sku, qty]) => qty > ordered.get(sku)!.quantity).map(([sku, qty]) => `${sku} (${qty} of ${ordered.get(sku)!.quantity})`);
+    const overSkus = new Set([...invoiced].filter(([sku, qty]) => qty > ordered.get(sku)!.quantity).map(([sku]) => sku));
+    const overQty = [...overSkus].map((sku) => `${sku} (${invoiced.get(sku)} of ${ordered.get(sku)!.quantity})`);
+    // A price discrepancy is any unit billed at a price it was not ordered at: a price that is
+    // not on the order at all, or more units at price P than were ordered at P. (For an
+    // over-billed SKU the excess units are already a quantity discrepancy, so only unknown
+    // prices are reported there.)
+    const priceDiff = [...invoicedByPrice]
+      .filter(([sku, byPrice]) =>
+        [...byPrice].some(([price, qty]) => {
+          const orderedAtPrice = ordered.get(sku)!.byPrice.get(price) ?? 0;
+          return orderedAtPrice === 0 || (!overSkus.has(sku) && qty > orderedAtPrice);
+        }),
+      )
+      .map(([sku]) => sku);
     const uninvoiced = [...ordered]
       .filter(([sku, o]) => o.kind === "PRODUCT" && (invoiced.get(sku) ?? 0) < o.quantity)
       .map(([sku, o]) => `${sku} (${invoiced.get(sku) ?? 0} of ${o.quantity})`);
     add("LINES_ON_ORDER", unknown.length === 0, "HIGH", unknown.length === 0 ? "Every invoice line is on the order." : `Lines not on the approved order: ${unknown.join("; ")}.`);
     add("QUANTITIES_WITHIN_ORDER", overQty.length === 0, "MEDIUM", overQty.length === 0 ? "Quantities within ordered amounts." : `Over-billed quantities: ${overQty.join(", ")}.`);
-    add("PRICES_MATCH_ORDER", priceDiff.size === 0, "MEDIUM", priceDiff.size === 0 ? "Unit prices match the order." : `Price differences: ${[...priceDiff].join(", ")}.`);
+    add("PRICES_MATCH_ORDER", priceDiff.length === 0, "MEDIUM", priceDiff.length === 0 ? "Unit prices match the order." : `Price differences: ${priceDiff.join(", ")}.`);
     add(
       "ORDER_FULLY_INVOICED",
       uninvoiced.length === 0,

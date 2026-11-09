@@ -115,6 +115,36 @@ describe("invoice reconciliation", () => {
       expect(r.settlement_allowed).toBe(true);
     });
 
+    describe("a SKU ordered on two lines at different prices", () => {
+      const splitPo: PurchaseOrderView = {
+        ...po,
+        total_minor: 11_000,
+        items: [
+          { kind: "PRODUCT", sku: "A", quantity: 5, unit_price_minor: 1_000, line_total_minor: 5_000 },
+          { kind: "PRODUCT", sku: "A", quantity: 5, unit_price_minor: 1_200, line_total_minor: 6_000 },
+        ],
+      };
+      const at = (quantity: number, unit: number) => ({ sku: "A", description: "A", quantity, unit_price_minor: unit, line_total_minor: quantity * unit });
+      const priceCheck = (lines: ReturnType<typeof at>[]) =>
+        analyzeInvoice(invoice({ lines, total_minor: lines.reduce((a, l) => a + l.line_total_minor, 0) }), { ...splitPo, total_minor: 20_000 }, []).checks.find((c) => c.check === "PRICES_MATCH_ORDER")!;
+
+      it("refuses billing the whole quantity at the higher price", () => {
+        expect(priceCheck([at(10, 1_200)])).toMatchObject({ passed: false, detail: "Price differences: A." });
+        expect(priceCheck([at(4, 1_000), at(6, 1_200)]).passed).toBe(false);
+      });
+
+      it("accepts each price billed for no more than its ordered quantity", () => {
+        expect(priceCheck([at(5, 1_000), at(5, 1_200)]).passed).toBe(true);
+        expect(priceCheck([at(2, 1_000), at(3, 1_000), at(5, 1_200)]).passed).toBe(true);
+        expect(priceCheck([at(5, 1_200)]).passed).toBe(true);
+      });
+
+      it("matches the exact split as MATCHED", () => {
+        const r = analyzeInvoice(invoice({ lines: [at(5, 1_200), at(5, 1_000)], total_minor: 11_000 }), splitPo, []);
+        expect(r.status).toBe("MATCHED");
+      });
+    });
+
     it("compares unit prices against every ordered line of the SKU", () => {
       const r = analyzeInvoice(invoice({ lines: [line("A", 10), { ...line("B", 10), unit_price_minor: 1_100, line_total_minor: 11_000 }], total_minor: 21_000 }), { ...twoSkuPo, total_minor: 30_000 }, []);
       expect(r.checks.find((c) => c.check === "PRICES_MATCH_ORDER")).toMatchObject({ passed: false, detail: "Price differences: B." });
