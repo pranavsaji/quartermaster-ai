@@ -41,6 +41,7 @@ export function buildContext(config: AppConfig, log: Logger, database: DatabaseH
     apiKey: config.channel3.apiKey,
     baseUrl: config.channel3.baseUrl,
     fetch: overrides.channel3Fetch ?? overrides.fetch,
+    log: (event, data) => log.warn({ ...data, event }, "channel3"),
   });
   const openai = new OpenAIClient({
     apiKey: config.openai.apiKey,

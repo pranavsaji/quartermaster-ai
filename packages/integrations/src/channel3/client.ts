@@ -1,6 +1,10 @@
+import { z } from "zod";
+
 /**
  * Channel3 product search client (https://channel3.ai/docs). Used for market price evidence only:
- * Quartermaster never checks out with a Channel3 merchant. Results are untrusted third-party data.
+ * Quartermaster never checks out with a Channel3 merchant. Results are untrusted third-party data:
+ * every product and offer is validated here and malformed ones are dropped (and counted in a
+ * log), so one bad listing never fails the whole search.
  */
 
 export interface Channel3Config {
@@ -8,6 +12,8 @@ export interface Channel3Config {
   baseUrl?: string;
   timeoutMs?: number;
   fetch?: typeof fetch;
+  /** Structured logger. Receives counts only, never listing content. */
+  log?: (event: string, data: Record<string, unknown>) => void;
 }
 
 export interface Channel3Price {
@@ -44,6 +50,8 @@ export interface Channel3SearchParams {
   maxPrice?: number;
   minPrice?: number;
   inStockOnly?: boolean;
+  /** Aborts the search early (e.g. the agent run's deadline), on top of the client timeout. */
+  signal?: AbortSignal;
 }
 
 export class Channel3Error extends Error {
@@ -73,39 +81,122 @@ export class Channel3Client {
 
   async search(params: Channel3SearchParams): Promise<Channel3SearchResponse> {
     if (!this.config.apiKey) throw new Channel3Error("Channel3 is not configured (CHANNEL3_API_KEY).", null);
+    if (params.signal?.aborted) throw new Channel3Error("Channel3 request aborted", null);
     const filters: Record<string, unknown> = {};
     if (params.inStockOnly !== false) filters.availability = ["InStock"];
     if (params.minPrice !== undefined || params.maxPrice !== undefined) {
       filters.price = { ...(params.minPrice !== undefined ? { min_price: params.minPrice } : {}), ...(params.maxPrice !== undefined ? { max_price: params.maxPrice } : {}) };
     }
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    const timeout = AbortSignal.timeout(this.timeoutMs);
     try {
       const res = await this.fetchImpl(`${this.baseUrl}/v1/search`, {
         method: "POST",
         headers: { "x-api-key": this.config.apiKey, "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({ query: params.query.slice(0, 200), limit: Math.min(Math.max(params.limit ?? 10, 1), 30), filters }),
-        signal: controller.signal,
+        signal: params.signal ? AbortSignal.any([timeout, params.signal]) : timeout,
       });
       if (!res.ok) {
         const text = await res.text().catch(() => "");
         throw new Channel3Error(`Channel3 search failed (${res.status}): ${text.slice(0, 200)}`, res.status);
       }
-      const json = (await res.json()) as Partial<Channel3SearchResponse>;
-      return { products: Array.isArray(json.products) ? json.products.filter(isProduct) : [], next_page_token: json.next_page_token ?? null };
+      const envelope = SearchEnvelope.safeParse(await res.json().catch(() => null));
+      if (!envelope.success) throw new Channel3Error("Channel3 returned an unexpected response", res.status);
+      const { products, droppedProducts, droppedOffers } = parseProducts(envelope.data.products ?? []);
+      if (droppedProducts || droppedOffers) {
+        this.config.log?.("channel3.items_dropped", { dropped_products: droppedProducts, dropped_offers: droppedOffers, kept_products: products.length });
+      }
+      return { products, next_page_token: envelope.data.next_page_token ?? null };
     } catch (err) {
       if (err instanceof Channel3Error) throw err;
+      if (params.signal?.aborted) throw new Channel3Error("Channel3 request aborted", null);
       throw new Channel3Error(`Channel3 request failed: ${err instanceof Error ? err.message : String(err)}`, null);
-    } finally {
-      clearTimeout(timer);
     }
   }
 }
 
-function isProduct(p: unknown): p is Channel3Product {
-  if (!p || typeof p !== "object") return false;
-  const x = p as Record<string, unknown>;
-  return typeof x.id === "string" && typeof x.title === "string" && Array.isArray(x.offers);
+/* ---------------------------------------------------------------- Validation */
+
+/** Absolute http(s) URL only: `javascript:`, `data:`, relative, credentialed and malformed URLs are rejected. */
+export function isHttpUrl(value: string): boolean {
+  try {
+    const u = new URL(value);
+    return (u.protocol === "https:" || u.protocol === "http:") && !!u.hostname && !u.username && !u.password;
+  } catch {
+    return false;
+  }
+}
+
+const HOSTNAME = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,62}$/;
+
+/** A bare DNS name (no scheme, port, path or credentials), lower-cased; null if it is not one. */
+export function normaliseDomain(value: string): string | null {
+  const d = value.trim().toLowerCase().replace(/\.$/, "");
+  return HOSTNAME.test(d) ? d : null;
+}
+
+const clipped = (max: number) => z.string().transform((v) => v.slice(0, max));
+const HttpUrl = z.string().max(2000).refine(isHttpUrl, "not an http(s) URL");
+const Domain = z.string().transform((v, c) => {
+  const d = normaliseDomain(v);
+  if (d === null) c.addIssue({ code: "custom", message: "not a domain name" });
+  return d ?? "";
+});
+
+const OfferSchema = z.object({
+  url: HttpUrl,
+  domain: Domain,
+  price: z.object({
+    price: z.number().finite().positive(),
+    compare_at_price: z.number().finite().nullish(),
+    currency: z.string().regex(/^[A-Za-z]{3}$/),
+  }),
+  availability: clipped(40),
+  condition: z.enum(["new", "used"]).nullish().catch(null),
+});
+
+const ImageSchema = z.object({ url: HttpUrl, is_main_image: z.boolean().optional() });
+
+const ProductSchema = z.object({
+  id: z.string().min(1).max(200),
+  title: clipped(500).pipe(z.string().min(1)),
+  description: clipped(5000).nullish(),
+  brands: z.array(z.object({ id: z.string(), name: clipped(200) })).optional().catch(undefined),
+  // Images are optional decoration: keep the valid http(s) ones, drop the rest.
+  images: z
+    .array(z.unknown())
+    .optional()
+    .catch(undefined)
+    .transform((images) => images?.flatMap((i) => {
+      const r = ImageSchema.safeParse(i);
+      return r.success ? [r.data] : [];
+    })),
+  offers: z.array(z.unknown()).max(200),
+});
+
+const SearchEnvelope = z.object({
+  products: z.array(z.unknown()).max(500).nullish(),
+  next_page_token: z.string().max(2000).nullish(),
+});
+
+function parseProducts(raw: unknown[]): { products: Channel3Product[]; droppedProducts: number; droppedOffers: number } {
+  let droppedProducts = 0;
+  let droppedOffers = 0;
+  const products: Channel3Product[] = [];
+  for (const item of raw) {
+    const p = ProductSchema.safeParse(item);
+    if (!p.success) {
+      droppedProducts++;
+      continue;
+    }
+    const offers: Channel3Offer[] = [];
+    for (const o of p.data.offers) {
+      const offer = OfferSchema.safeParse(o);
+      if (offer.success) offers.push(offer.data);
+      else droppedOffers++;
+    }
+    products.push({ ...p.data, offers });
+  }
+  return { products, droppedProducts, droppedOffers };
 }
 
 /** Flattens products into one row per offer with a valid numeric price. */
