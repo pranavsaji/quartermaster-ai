@@ -90,6 +90,36 @@ describe("Intent Certificates", () => {
     expect(verifyCertificate(c, ctx(c, { now: new Date("2026-11-10T18:15:00Z") })).status).toBe("EXPIRED");
   });
 
+  describe("signature encoding and algorithm", () => {
+    it("accepts only the canonical base64url encoding of the signature", () => {
+      const c = issue();
+      expect(c.signature).toMatch(/^[A-Za-z0-9_-]{86}$/);
+      const variants = [
+        `${c.signature}=`, // padding
+        `${c.signature}==`,
+        `${c.signature.slice(0, 40)}!${c.signature.slice(40)}`, // junk char Node would skip
+        `${c.signature.slice(0, 40)} ${c.signature.slice(40)}`,
+        c.signature.replace(/-/g, "+").replace(/_/g, "/"), // standard alphabet (skipped below if identical)
+        c.signature.slice(0, -1), // truncated
+        `${c.signature.slice(0, -1)}${{ A: "B", Q: "R", g: "h", w: "x" }[c.signature.at(-1)!]}`, // same bytes, non-canonical tail bits
+      ];
+      for (const signature of variants.filter((v) => v !== c.signature)) {
+        const r = verifyCertificate({ ...c, signature }, ctx(c));
+        expect([signature, r.status]).toEqual([signature, "SIGNATURE_INVALID"]);
+      }
+    });
+
+    it("rejects a non-Ed25519 algorithm label even with a valid signature", () => {
+      const c = issue();
+      expect(verifyCertificate({ ...c, algorithm: "RS256" as never }, ctx(c)).status).toBe("SIGNATURE_INVALID");
+    });
+
+    it("rejects a non-string signature without throwing", () => {
+      const c = issue();
+      expect(verifyCertificate({ ...c, signature: 42 as never }, ctx(c)).status).toBe("SIGNATURE_INVALID");
+    });
+  });
+
   describe("validity window", () => {
     /** Re-signs a modified payload with the real key, as a compromised issuer bug might. */
     const resign = (payload: SignedCertificate["payload"]): SignedCertificate => ({

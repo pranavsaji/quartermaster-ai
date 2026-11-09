@@ -5,6 +5,12 @@ import type { SigningKey } from "./keys";
 
 export const CERTIFICATE_DOMAIN = "trustrail.intent-certificate.v1";
 export const MAX_CERTIFICATE_TTL_MINUTES = 60;
+/**
+ * A 64-byte Ed25519 signature in unpadded base64url is exactly 86 characters, and the last one
+ * carries only 2 significant bits, so it must be one of A, Q, g or w; anything else would be a
+ * second spelling of the same bytes.
+ */
+const ED25519_SIGNATURE_RE = /^[A-Za-z0-9_-]{85}[AQgw]$/;
 /** Clock skew tolerated before `approved_at` (the certificate's not-before time). */
 export const CERTIFICATE_CLOCK_SKEW_MS = 60_000;
 
@@ -111,12 +117,23 @@ export function verifyCertificate(cert: SignedCertificate, ctx: VerificationCont
   } else {
     checks.push({ code: "KEY_KNOWN", passed: true, detail: `Signed by ${cert.key_id}.` });
     let sigOk = false;
+    // Node's base64url decoder silently skips invalid characters, so several distinct strings
+    // decode to the same bytes. Only the one canonical unpadded encoding of 64 bytes is accepted.
+    const encodingOk = typeof cert.signature === "string" && ED25519_SIGNATURE_RE.test(cert.signature);
     try {
-      sigOk = cert.algorithm === "Ed25519" && verify(null, signingInput(cert.payload), key, Buffer.from(cert.signature, "base64url"));
+      sigOk =
+        encodingOk &&
+        cert.algorithm === "Ed25519" &&
+        key.asymmetricKeyType === "ed25519" &&
+        verify(null, signingInput(cert.payload), key, Buffer.from(cert.signature, "base64url"));
     } catch {
       sigOk = false;
     }
-    checks.push({ code: "SIGNATURE", passed: sigOk, detail: sigOk ? "Ed25519 signature is valid." : "Signature does not verify." });
+    checks.push({
+      code: "SIGNATURE",
+      passed: sigOk,
+      detail: sigOk ? "Ed25519 signature is valid." : !encodingOk ? "Signature is not a canonical base64url Ed25519 signature." : "Signature does not verify.",
+    });
     if (!sigOk) fail("SIGNATURE_INVALID");
   }
 
