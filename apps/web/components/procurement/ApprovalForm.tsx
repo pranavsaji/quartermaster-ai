@@ -93,8 +93,8 @@ export function ApprovalForm({
       ) : null}
 
       <Field label="Approval note (optional)" className="mt-3">
-        {({ id }) => (
-          <Textarea id={id} value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} className="min-h-14 bg-surface" />
+        {(control) => (
+          <Textarea {...control} value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} className="min-h-14 bg-surface" />
         )}
       </Field>
 
@@ -133,8 +133,8 @@ export function ApprovalForm({
         }
       >
         <Field label="Reason" required>
-          {({ id }) => (
-            <Textarea id={id} value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} autoFocus />
+          {(control) => (
+            <Textarea {...control} value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} autoFocus />
           )}
         </Field>
         <ErrorNotice error={reject.error} className="mt-3" />

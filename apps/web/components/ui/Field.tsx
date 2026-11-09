@@ -13,9 +13,17 @@ const control =
   "transition-colors focus:border-accent focus:outline-none focus:ring-3 focus:ring-accent/15 " +
   "disabled:cursor-not-allowed disabled:bg-canvas disabled:text-ink-3 aria-[invalid=true]:border-block";
 
+/** Props a Field hands its control: spread them onto the input (`<Input {...control} />`). */
+export interface FieldControlProps {
+  id: string;
+  "aria-describedby": string | undefined;
+  "aria-invalid": true | undefined;
+  "aria-required": true | undefined;
+}
+
 /**
- * Label + control + hint/error wrapper. The render prop receives the ids so the
- * control can wire up `aria-describedby` and `aria-invalid` correctly.
+ * Label + control + hint/error wrapper. The render prop receives the control's
+ * id and ARIA wiring, which only ever references text that is on screen.
  */
 export function Field({
   label,
@@ -30,12 +38,17 @@ export function Field({
   error?: string | null;
   required?: boolean;
   className?: string;
-  children: (ids: { id: string; describedBy: string | undefined; invalid: boolean }) => ReactNode;
+  children: (control: FieldControlProps) => ReactNode;
 }) {
   const id = useId();
   const hintId = `${id}-hint`;
   const errorId = `${id}-error`;
-  const describedBy = [hint ? hintId : null, error ? errorId : null].filter(Boolean).join(" ") || undefined;
+  const control: FieldControlProps = {
+    id,
+    "aria-describedby": [error ? errorId : null, hint ? hintId : null].filter(Boolean).join(" ") || undefined,
+    "aria-invalid": error ? true : undefined,
+    "aria-required": required ? true : undefined,
+  };
   return (
     <div className={cn("flex flex-col gap-1.5", className)}>
       <label htmlFor={id} className="text-[13px] font-medium text-ink-2">
@@ -46,8 +59,8 @@ export function Field({
           </span>
         ) : null}
       </label>
-      {children({ id, describedBy, invalid: Boolean(error) })}
-      {hint && !error ? (
+      {children(control)}
+      {hint ? (
         <p id={hintId} className="text-[12px] text-ink-3">
           {hint}
         </p>

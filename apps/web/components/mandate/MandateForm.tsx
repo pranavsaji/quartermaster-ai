@@ -150,18 +150,18 @@ export function MandateForm({
             <Section title="Budget" description={`Amounts in ${cur}. Converted to integer cents before they reach the API.`}>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <Field label="Weekly budget" required error={errors.weekly_budget_minor}>
-                  {({ id, describedBy, invalid }) => (
-                    <MoneyInput id={id} value={form.weekly} onChange={(e) => set("weekly", e.target.value)} aria-describedby={describedBy} aria-invalid={invalid} />
+                  {(control) => (
+                    <MoneyInput {...control} value={form.weekly} onChange={(e) => set("weekly", e.target.value)} />
                   )}
                 </Field>
                 <Field label="Per-order limit" required error={errors.per_order_limit_minor} hint="≤ weekly budget">
-                  {({ id, describedBy, invalid }) => (
-                    <MoneyInput id={id} value={form.perOrder} onChange={(e) => set("perOrder", e.target.value)} aria-describedby={describedBy} aria-invalid={invalid} />
+                  {(control) => (
+                    <MoneyInput {...control} value={form.perOrder} onChange={(e) => set("perOrder", e.target.value)} />
                   )}
                 </Field>
                 <Field label="Auto-approval limit" required error={errors.auto_approval_limit_minor} hint="≤ per-order limit">
-                  {({ id, describedBy, invalid }) => (
-                    <MoneyInput id={id} value={form.autoApproval} onChange={(e) => set("autoApproval", e.target.value)} aria-describedby={describedBy} aria-invalid={invalid} />
+                  {(control) => (
+                    <MoneyInput {...control} value={form.autoApproval} onChange={(e) => set("autoApproval", e.target.value)} />
                   )}
                 </Field>
               </div>
@@ -225,13 +225,13 @@ export function MandateForm({
             <Section title="Market price guard" description="Compares delivered unit cost with Channel3 reference prices.">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Field label="Max premium over market (%)" error={errors.max_market_price_premium_pct} hint="0–500">
-                  {({ id, describedBy, invalid }) => (
-                    <Input id={id} type="number" min={0} max={500} step={1} value={form.premiumPct} onChange={(e) => set("premiumPct", e.target.value)} aria-describedby={describedBy} aria-invalid={invalid} className="tnum" />
+                  {(control) => (
+                    <Input {...control} type="number" min={0} max={500} step={1} value={form.premiumPct} onChange={(e) => set("premiumPct", e.target.value)} className="tnum" />
                   )}
                 </Field>
                 <Field label="When exceeded">
-                  {({ id }) => (
-                    <Select id={id} value={form.marketAction} onChange={(e) => set("marketAction", e.target.value as "REVIEW" | "BLOCK")}>
+                  {(control) => (
+                    <Select {...control} value={form.marketAction} onChange={(e) => set("marketAction", e.target.value as "REVIEW" | "BLOCK")}>
                       <option value="REVIEW">Require review</option>
                       <option value="BLOCK">Block</option>
                     </Select>
@@ -243,21 +243,21 @@ export function MandateForm({
             <Section title="Duplicates & quantities" description="Stops repeat orders and over-buying.">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <Field label="Duplicate window (hours)" error={errors.duplicate_window_hours} hint="0–720">
-                  {({ id, describedBy, invalid }) => (
-                    <Input id={id} type="number" min={0} max={720} step={1} value={form.dupHours} onChange={(e) => set("dupHours", e.target.value)} aria-describedby={describedBy} aria-invalid={invalid} className="tnum" />
+                  {(control) => (
+                    <Input {...control} type="number" min={0} max={720} step={1} value={form.dupHours} onChange={(e) => set("dupHours", e.target.value)} className="tnum" />
                   )}
                 </Field>
                 <Field label="On duplicate">
-                  {({ id }) => (
-                    <Select id={id} value={form.dupAction} onChange={(e) => set("dupAction", e.target.value as "REVIEW" | "BLOCK")}>
+                  {(control) => (
+                    <Select {...control} value={form.dupAction} onChange={(e) => set("dupAction", e.target.value as "REVIEW" | "BLOCK")}>
                       <option value="REVIEW">Require review</option>
                       <option value="BLOCK">Block</option>
                     </Select>
                   )}
                 </Field>
                 <Field label="Max quantity × need" error={errors.max_quantity_multiple_of_need} hint="1–10, e.g. 1.5">
-                  {({ id, describedBy, invalid }) => (
-                    <Input id={id} type="number" min={1} max={10} step={0.1} value={form.qtyMultiple} onChange={(e) => set("qtyMultiple", e.target.value)} aria-describedby={describedBy} aria-invalid={invalid} className="tnum" />
+                  {(control) => (
+                    <Input {...control} type="number" min={1} max={10} step={0.1} value={form.qtyMultiple} onChange={(e) => set("qtyMultiple", e.target.value)} className="tnum" />
                   )}
                 </Field>
               </div>
@@ -271,8 +271,8 @@ export function MandateForm({
 
             <Section title="Intent certificates" description="How long a signed approval stays payable.">
               <Field label="Certificate lifetime (minutes)" error={errors.certificate_ttl_minutes} hint="5–60" className="max-w-56">
-                {({ id, describedBy, invalid }) => (
-                  <Input id={id} type="number" min={5} max={60} step={1} value={form.ttl} onChange={(e) => set("ttl", e.target.value)} aria-describedby={describedBy} aria-invalid={invalid} className="tnum" />
+                {(control) => (
+                  <Input {...control} type="number" min={5} max={60} step={1} value={form.ttl} onChange={(e) => set("ttl", e.target.value)} className="tnum" />
                 )}
               </Field>
             </Section>

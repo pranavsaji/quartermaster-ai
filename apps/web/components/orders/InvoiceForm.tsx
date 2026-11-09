@@ -159,8 +159,8 @@ export const InvoiceForm = forwardRef<
         <CardBody className="space-y-4">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <Field label="Supplier" required>
-              {({ id }) => (
-                <Select id={id} value={supplierId} onChange={(e) => { setSupplierId(e.target.value); setPoId(""); }}>
+              {(control) => (
+                <Select {...control} value={supplierId} onChange={(e) => { setSupplierId(e.target.value); setPoId(""); }}>
                   <option value="">Select supplier…</option>
                   {suppliers.map((s) => (
                     <option key={s.id} value={s.id}>
@@ -171,11 +171,10 @@ export const InvoiceForm = forwardRef<
               )}
             </Field>
             <Field label="Purchase order" hint="Choosing one prefills the lines from the PO.">
-              {({ id, describedBy }) => (
+              {(control) => (
                 <Select
-                  id={id}
+                  {...control}
                   value={poId}
-                  aria-describedby={describedBy}
                   onChange={(e) => {
                     const po = orders.find((o) => o.id === e.target.value);
                     if (po) prefillFrom(po);
@@ -192,10 +191,10 @@ export const InvoiceForm = forwardRef<
               )}
             </Field>
             <Field label="Invoice number" required>
-              {({ id }) => <Input id={id} value={number} onChange={(e) => setNumber(e.target.value)} maxLength={64} className="font-mono" />}
+              {(control) => <Input {...control} value={number} onChange={(e) => setNumber(e.target.value)} maxLength={64} className="font-mono" />}
             </Field>
             <Field label="Invoice date" required>
-              {({ id }) => <Input id={id} type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} className="tnum" />}
+              {(control) => <Input {...control} type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} className="tnum" />}
             </Field>
           </div>
 
@@ -247,13 +246,13 @@ export const InvoiceForm = forwardRef<
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <Field label="Invoice total" hint={`Sum of lines: ${computedTotal !== null ? money(computedTotal, currency) : "—"}. Override to test a mismatched total.`}>
-              {({ id, describedBy }) => (
-                <MoneyInput id={id} value={totalOverride} onChange={(e) => setTotalOverride(e.target.value)} aria-describedby={describedBy} placeholder={computedTotal !== null ? minorToInput(computedTotal, currency) : ""} />
+              {(control) => (
+                <MoneyInput {...control} value={totalOverride} onChange={(e) => setTotalOverride(e.target.value)} placeholder={computedTotal !== null ? minorToInput(computedTotal, currency) : ""} />
               )}
             </Field>
             <Field label="Supplier notes" hint="Free text from the document. Treated as untrusted and scanned for injected instructions.">
-              {({ id, describedBy }) => (
-                <Textarea id={id} value={notes} onChange={(e) => setNotes(e.target.value)} aria-describedby={describedBy} maxLength={5000} className="min-h-[38px]" rows={2} />
+              {(control) => (
+                <Textarea {...control} value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={5000} className="min-h-[38px]" rows={2} />
               )}
             </Field>
           </div>

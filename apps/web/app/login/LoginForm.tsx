@@ -48,30 +48,26 @@ export function LoginForm() {
   return (
     <form onSubmit={onSubmit} noValidate className="space-y-4">
       <Field label="Email" error={fieldErrors.email} required>
-        {({ id, describedBy, invalid }) => (
+        {(control) => (
           <Input
-            id={id}
+            {...control}
             type="email"
             autoComplete="username"
             autoFocus
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            aria-describedby={describedBy}
-            aria-invalid={invalid}
             placeholder="owner@demo.quartermaster.dev"
           />
         )}
       </Field>
       <Field label="Password" error={fieldErrors.password} required>
-        {({ id, describedBy, invalid }) => (
+        {(control) => (
           <Input
-            id={id}
+            {...control}
             type="password"
             autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            aria-describedby={describedBy}
-            aria-invalid={invalid}
           />
         )}
       </Field>

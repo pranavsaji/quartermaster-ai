@@ -68,13 +68,11 @@ export function RequestComposer({ currency, onCancel }: { currency: string; onCa
         />
         <CardBody className="space-y-5">
           <Field label="Instruction" required error={errors.instruction} hint="Mention items, timing and any spending cap.">
-            {({ id, describedBy, invalid }) => (
+            {(control) => (
               <Textarea
-                id={id}
+                {...control}
                 value={instruction}
                 onChange={(e) => setInstruction(e.target.value)}
-                aria-describedby={describedBy}
-                aria-invalid={invalid}
                 maxLength={2000}
                 rows={3}
                 className="text-[14px]"
@@ -84,27 +82,23 @@ export function RequestComposer({ currency, onCancel }: { currency: string; onCa
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Budget cap (optional)" error={errors.budget} hint="TrustRail blocks any cart above this.">
-              {({ id, describedBy, invalid }) => (
+              {(control) => (
                 <MoneyInput
-                  id={id}
+                  {...control}
                   value={budget}
                   onChange={(e) => setBudget(e.target.value)}
-                  aria-describedby={describedBy}
-                  aria-invalid={invalid}
                   placeholder="300.00"
                 />
               )}
             </Field>
             <Field label="Required by (optional)" error={errors.requiredBy}>
-              {({ id, describedBy, invalid }) => (
+              {(control) => (
                 <Input
-                  id={id}
+                  {...control}
                   type="date"
                   min={todayIso()}
                   value={requiredBy}
                   onChange={(e) => setRequiredBy(e.target.value)}
-                  aria-describedby={describedBy}
-                  aria-invalid={invalid}
                   className="tnum"
                 />
               )}

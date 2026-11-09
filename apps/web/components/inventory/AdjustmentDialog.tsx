@@ -91,8 +91,8 @@ export function AdjustmentDialog({
     >
       <form id="adjust-form" onSubmit={submit} className="space-y-4" noValidate>
         <Field label="Reason" required>
-          {({ id }) => (
-            <Select id={id} value={reason} onChange={(e) => setReason(e.target.value as InventoryAdjustmentRequest["reason"])}>
+          {(control) => (
+            <Select {...control} value={reason} onChange={(e) => setReason(e.target.value as InventoryAdjustmentRequest["reason"])}>
               {REASONS.map((r) => (
                 <option key={r.value} value={r.value}>
                   {r.label}
@@ -107,27 +107,24 @@ export function AdjustmentDialog({
           error={fieldError}
           hint={preview !== null ? `On hand after adjustment: ${num(preview)} ${item?.unit ?? ""}` : "Use a negative number to remove stock."}
         >
-          {({ id, describedBy, invalid }) => (
+          {(control) => (
             <Input
-              id={id}
+              {...control}
               inputMode="numeric"
               value={delta}
               onChange={(e) => setDelta(e.target.value)}
-              aria-describedby={describedBy}
-              aria-invalid={invalid}
               placeholder={sign < 0 ? "-12" : "24"}
               className="tnum"
             />
           )}
         </Field>
         <Field label="Note" hint="Optional, up to 500 characters.">
-          {({ id, describedBy }) => (
+          {(control) => (
             <Textarea
-              id={id}
+              {...control}
               value={note}
               maxLength={500}
               onChange={(e) => setNote(e.target.value)}
-              aria-describedby={describedBy}
               className="min-h-16"
             />
           )}

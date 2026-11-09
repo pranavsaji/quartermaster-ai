@@ -188,12 +188,12 @@ function RefundAction({
       >
         <div className="space-y-4">
           <Field label="Amount" error={fieldError}>
-            {({ id, describedBy, invalid }) => (
-              <MoneyInput id={id} value={amount} onChange={(e) => setAmount(e.target.value)} aria-describedby={describedBy} aria-invalid={invalid} />
+            {(control) => (
+              <MoneyInput {...control} value={amount} onChange={(e) => setAmount(e.target.value)} />
             )}
           </Field>
           <Field label="Reason" required>
-            {({ id }) => <Textarea id={id} value={reason} onChange={(e) => setReason(e.target.value)} maxLength={255} className="min-h-16" />}
+            {(control) => <Textarea {...control} value={reason} onChange={(e) => setReason(e.target.value)} maxLength={255} className="min-h-16" />}
           </Field>
           <ErrorNotice error={refund.error} />
         </div>

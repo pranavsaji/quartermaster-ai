@@ -120,7 +120,7 @@ export function ReceiveDialog({
       </table>
       {fieldError ? <p className="mt-2 text-[12px] font-medium text-block">{fieldError}</p> : null}
       <Field label="Note" className="mt-4">
-        {({ id }) => <Textarea id={id} value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} className="min-h-14" />}
+        {(control) => <Textarea {...control} value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} className="min-h-14" />}
       </Field>
       <ErrorNotice error={receive.error} className="mt-3" />
     </Dialog>
@@ -185,12 +185,12 @@ export function DelayDialog({
       <div className="space-y-4">
         <SourceLabel source="SYNTHETIC">Synthetic fulfillment data</SourceLabel>
         <Field label="New expected date" required error={fieldError}>
-          {({ id, describedBy, invalid }) => (
-            <Input id={id} type="date" min={todayIso()} value={newDate} onChange={(e) => setNewDate(e.target.value)} aria-describedby={describedBy} aria-invalid={invalid} className="tnum" />
+          {(control) => (
+            <Input {...control} type="date" min={todayIso()} value={newDate} onChange={(e) => setNewDate(e.target.value)} className="tnum" />
           )}
         </Field>
         <Field label="Reason" required>
-          {({ id }) => <Textarea id={id} value={reason} onChange={(e) => setReason(e.target.value)} maxLength={255} className="min-h-16" />}
+          {(control) => <Textarea {...control} value={reason} onChange={(e) => setReason(e.target.value)} maxLength={255} className="min-h-16" />}
         </Field>
         <ErrorNotice error={delay.error} />
       </div>
