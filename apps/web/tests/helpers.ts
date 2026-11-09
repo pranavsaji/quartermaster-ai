@@ -1,5 +1,19 @@
-import type { PaymentDto, PublicConfig } from "@qm/contracts";
+import type {
+  DeliveryDto,
+  InventoryItemDto,
+  PaymentDto,
+  PolicyDecisionDto,
+  PublicConfig,
+  PurchaseOrderDto,
+  Role,
+  SessionUser,
+  ViolationDto,
+} from "@qm/contracts";
+import { render, type RenderOptions } from "@testing-library/react";
+import { createElement, type ReactElement, type ReactNode } from "react";
 import { vi } from "vitest";
+import { SessionProvider, type Session } from "@/components/session/SessionProvider";
+import { userCan } from "@/lib/roles";
 
 export function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -58,6 +72,139 @@ export function payment(overrides: Partial<PaymentDto> = {}): PaymentDto {
     created_at: "2026-11-09T10:00:00.000Z",
     updated_at: "2026-11-09T10:00:00.000Z",
     completed_at: null,
+    ...overrides,
+  };
+}
+
+export function sessionUser(role: Role = "OWNER", overrides: Partial<SessionUser> = {}): SessionUser {
+  return {
+    id: "u-1",
+    email: `${role.toLowerCase()}@demo.quartermaster.dev`,
+    name: "Dana Owner",
+    role,
+    organization: { id: "org-1", name: "Demo Bistro", timezone: "America/New_York", currency: "USD" },
+    ...overrides,
+  };
+}
+
+export function testSession(role: Role = "OWNER"): Session {
+  const user = sessionUser(role);
+  return {
+    user,
+    config: PUBLIC_CONFIG,
+    can: (c) => userCan(user, c),
+    signOut: async () => undefined,
+    signingOut: false,
+    signOutError: undefined,
+  };
+}
+
+/** Renders inside a real SessionProvider (default: the owner) and re-renders inside it too. */
+export function renderWithSession(ui: ReactElement, options: { role?: Role } & Omit<RenderOptions, "wrapper"> = {}) {
+  const { role = "OWNER", ...rest } = options;
+  const session = testSession(role);
+  const wrapper = ({ children }: { children: ReactNode }) => createElement(SessionProvider, { session, children });
+  return render(ui, { wrapper, ...rest });
+}
+
+export function violation(overrides: Partial<ViolationDto> = {}): ViolationDto {
+  return {
+    code: "MARKET_PRICE_PREMIUM_EXCEEDED",
+    severity: "REVIEW",
+    message: "Unit price is 12% above the market reference.",
+    ...overrides,
+  };
+}
+
+export function policyDecision(overrides: Partial<PolicyDecisionDto> = {}): PolicyDecisionDto {
+  return {
+    id: "dec-1",
+    purchase_order_id: "po-1",
+    decision: "REVIEW_REQUIRED",
+    violations: [violation()],
+    checks: [{ code: "SUPPLIER_APPROVED", passed: true, detail: "Harbor Foodservice is approved." }],
+    human_approval_required: true,
+    mandate_version: 3,
+    policy_version: "trustrail-1",
+    input_digest: "sha256:abc",
+    evaluated_at: "2026-11-09T10:00:00.000Z",
+    ...overrides,
+  };
+}
+
+export function purchaseOrder(overrides: Partial<PurchaseOrderDto> = {}): PurchaseOrderDto {
+  return {
+    id: "po-1",
+    number: "PO-1001",
+    request_id: "req-1",
+    supplier_id: "sup-1",
+    supplier_name: "Harbor Foodservice",
+    status: "PROPOSED",
+    currency: "USD",
+    subtotal_minor: 10000,
+    shipping_minor: 0,
+    tax_minor: 0,
+    fees_minor: 0,
+    total_minor: 10000,
+    cart_hash: "sha256:cart-1",
+    items: [
+      {
+        id: "line-1",
+        kind: "PRODUCT",
+        sku: "HF-TK32",
+        description: "Takeaway containers 32oz",
+        category: "food_packaging",
+        quantity: 4,
+        unit_price_minor: 2500,
+        line_total_minor: 10000,
+        inventory_item_id: "inv-1",
+        pack_quantity: null,
+      },
+    ],
+    policy_decision: policyDecision(),
+    certificate: null,
+    payment: null,
+    delivery: null,
+    created_at: "2026-11-09T10:00:00.000Z",
+    ...overrides,
+  };
+}
+
+export function delivery(overrides: Partial<DeliveryDto> = {}): DeliveryDto {
+  return {
+    id: "del-1",
+    purchase_order_id: "po-1",
+    supplier_id: "sup-1",
+    status: "SCHEDULED",
+    expected_date: "2026-11-12",
+    original_expected_date: "2026-11-12",
+    delivered_at: null,
+    delay_reason: null,
+    data_source: "SYNTHETIC",
+    ...overrides,
+  };
+}
+
+export function inventoryItem(overrides: Partial<InventoryItemDto> = {}): InventoryItemDto {
+  return {
+    id: "inv-1",
+    sku: "HF-TK32",
+    name: "Takeaway containers 32oz",
+    category: "food_packaging",
+    unit: "cases",
+    on_hand: 10,
+    inbound_confirmed: 0,
+    committed: 0,
+    available: 10,
+    avg_daily_usage: 2,
+    lead_time_days: 2,
+    safety_stock: 4,
+    coverage_days: 7,
+    reorder_point: 8,
+    days_of_cover: 5,
+    status: "OK",
+    preferred_supplier_id: null,
+    data_source: "SYNTHETIC",
     ...overrides,
   };
 }
