@@ -158,7 +158,30 @@ export async function createPayPalOrder(
   const updated = await ctx.db.transaction(async (tx) => {
     const now = ctx.now();
     const attempt = await loadPayment(tx, actor.organizationId, prepared.attempt.id, true);
-    await transitionPayment(tx, attempt, "ORDER_CREATED", { paypalOrderId: order.id, failureCode: null, failureMessage: null }, now);
+    if (attempt.paypalOrderId === order.id) return attempt; // a concurrent creator already recorded it
+    const moved = await transitionPayment(
+      tx,
+      attempt,
+      "ORDER_CREATED",
+      { paypalOrderId: order.id, failureCode: null, failureMessage: null },
+      now,
+    );
+    if (!moved) {
+      // The attempt changed while PayPal was creating the order (for example a mandate change
+      // voided it). Never send the buyer to approve an order that can no longer be paid.
+      await recordFinding(tx, {
+        organizationId: actor.organizationId,
+        type: "POLICY_VIOLATION",
+        severity: "LOW",
+        title: "PayPal order created for a payment that was no longer payable",
+        description: `PayPal order ${order.id} was created while the payment moved to ${attempt.status}; it will not be presented for approval.`,
+        sourceKind: "payment_attempt",
+        sourceId: attempt.id,
+        evidence: { paypal_order_id: order.id, status: attempt.status },
+        relatedPurchaseOrderId: po.id,
+      });
+      return null;
+    }
     await setOrderStatus(tx, po.id, ["APPROVED"], "PAYMENT_PENDING", now);
     await appendAudit(tx, {
       organizationId: actor.organizationId,
@@ -171,5 +194,6 @@ export async function createPayPalOrder(
     });
     return loadPayment(tx, actor.organizationId, prepared.attempt.id);
   });
+  if (!updated) throw conflict("PAYMENT_NOT_CREATABLE", "The payment changed while PayPal was creating the order. Refresh and review it.");
   return { payment: toPaymentDto(updated), paypal_order_id: updated.paypalOrderId ?? order.id };
 }
