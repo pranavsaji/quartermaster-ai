@@ -6,7 +6,6 @@ import {
   organizations,
   paymentAttempts,
   purchaseOrders,
-  purchaseRequests,
   spendMandates,
   suppliers,
   type DbOrTx,
@@ -15,6 +14,8 @@ import { mandateTightened, type SpendMandate } from "@qm/trustrail";
 import { badRequest, conflict, notFound } from "../errors";
 import { appendAudit } from "./audit";
 import { budgetPeriod, releaseReservation } from "./budget";
+import { transitionPayment } from "./payments/shared";
+import { refreshRequestStatus } from "./procurement/status";
 
 export type MandateRow = typeof spendMandates.$inferSelect;
 
@@ -124,14 +125,6 @@ export async function updateMandate(
     })
     .returning();
 
-  // Keep the current week's budget account in step with the new weekly limit.
-  const [org] = await tx.select().from(organizations).where(eq(organizations.id, args.organizationId));
-  const period = budgetPeriod(args.now, org!.timezone);
-  await tx
-    .update(budgetAccounts)
-    .set({ limitMinor: next!.weeklyBudgetMinor, updatedAt: args.now })
-    .where(and(eq(budgetAccounts.organizationId, args.organizationId), eq(budgetAccounts.periodStart, period.start)));
-
   let revoked = 0;
   const tightened = mandateTightened(rowToMandate(current), rowToMandate(next!));
   const revokedIds: string[] = [];
@@ -155,22 +148,27 @@ export async function updateMandate(
         .returning({ id: intentCertificates.id });
       if (changed.length === 0) continue;
       await releaseReservation(tx, c.id, "MANDATE_CHANGED", args.now);
-      if (payment) {
-        await tx
-          .update(paymentAttempts)
-          .set({ status: "VOIDED", failureCode: "MANDATE_CHANGED", updatedAt: args.now })
-          .where(and(eq(paymentAttempts.id, payment.id), inArray(paymentAttempts.status, [...PRE_CAPTURE_PAYMENT_STATUSES])));
-      }
+      if (payment) await transitionPayment(tx, payment, "VOIDED", { failureCode: "MANDATE_CHANGED", failureMessage: "The spend mandate changed before payment." }, args.now);
       await tx
         .update(purchaseOrders)
         .set({ status: "PROPOSED", updatedAt: args.now })
         .where(and(eq(purchaseOrders.id, c.purchaseOrderId), inArray(purchaseOrders.status, [...PAYABLE_PO_STATUSES])));
       const [po] = await tx.select({ requestId: purchaseOrders.requestId }).from(purchaseOrders).where(eq(purchaseOrders.id, c.purchaseOrderId));
-      if (po?.requestId) await tx.update(purchaseRequests).set({ status: "READY_FOR_REVIEW", updatedAt: args.now }).where(eq(purchaseRequests.id, po.requestId));
+      if (po?.requestId) await refreshRequestStatus(tx, po.requestId, args.now);
       revokedIds.push(c.id);
       revoked++;
     }
   }
+
+  // Keep the current week's budget account in step with the new weekly limit. This runs after
+  // the payment locks above, matching capture finalisation (payment → budget account), so the
+  // two can never deadlock.
+  const [org] = await tx.select().from(organizations).where(eq(organizations.id, args.organizationId));
+  const period = budgetPeriod(args.now, org!.timezone);
+  await tx
+    .update(budgetAccounts)
+    .set({ limitMinor: next!.weeklyBudgetMinor, updatedAt: args.now })
+    .where(and(eq(budgetAccounts.organizationId, args.organizationId), eq(budgetAccounts.periodStart, period.start)));
 
   // Audit last: the per-organization audit lock is taken only after every row lock is held.
   for (const id of revokedIds) {
