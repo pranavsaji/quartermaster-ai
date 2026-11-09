@@ -8,6 +8,7 @@ import { handlePayPalWebhook } from "../../services/webhooks";
 import { actorOf, requireRole } from "../middleware/auth";
 import { asyncHandler, param, parse } from "../middleware/errors";
 import { idempotent } from "../middleware/idempotency";
+import { WEBHOOK_MAX_BYTES } from "../middleware/webhooks";
 
 export function intentAndPaymentRoutes(ctx: AppContext): Router {
   const r = Router();
@@ -66,7 +67,8 @@ export function webhookRoutes(ctx: AppContext): Router {
   const r = Router();
   r.post(
     "/webhooks/paypal",
-    raw({ type: "*/*", limit: "256kb" }),
+    // The same cap the guard applies to Content-Length, so chunked bodies cannot exceed it.
+    raw({ type: "*/*", limit: WEBHOOK_MAX_BYTES }),
     asyncHandler(async (req, res) => {
       const h = (name: string) => req.get(name) ?? undefined;
       const headers: WebhookHeaders = {
