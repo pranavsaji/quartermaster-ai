@@ -6,7 +6,7 @@ import { conflict, notFound, unprocessable } from "../errors";
 import { appendAudit } from "./audit";
 import { toDeliveryDto } from "./orders";
 import { refreshRequestStatus } from "./procurement/status";
-import type { Actor } from "./common";
+import { AfterCommit, type Actor } from "./common";
 
 export async function listDeliveries(db: DbOrTx, organizationId: string): Promise<DeliveryDto[]> {
   const rows = await db.select().from(deliveries).where(eq(deliveries.organizationId, organizationId)).orderBy(desc(deliveries.createdAt)).limit(200);
@@ -69,16 +69,19 @@ export async function receiveDelivery(ctx: AppContext, actor: Actor, deliveryId:
 
 /** Records a supplier delay. Projected availability moves; no inventory is invented. */
 export async function delayDelivery(ctx: AppContext, actor: Actor, deliveryId: string, input: DelayDeliveryRequest): Promise<DeliveryDto> {
-  return ctx.db.transaction(async (tx) => {
+  const after = new AfterCommit();
+  const result = await ctx.db.transaction(async (tx) => {
     const [d] = await tx.select().from(deliveries).where(and(eq(deliveries.id, deliveryId), eq(deliveries.organizationId, actor.organizationId))).for("update");
     if (!d) throw notFound("Delivery");
     if (!["SCHEDULED", "IN_TRANSIT", "DELAYED"].includes(d.status)) throw conflict("DELIVERY_CLOSED", `Delivery is ${d.status}.`);
     if (input.new_expected_date <= d.expectedDate) throw unprocessable("DELAY_DATE_INVALID", "A delay must move the expected date later.");
     await tx.update(deliveries).set({ status: "DELAYED", expectedDate: input.new_expected_date, delayReason: input.reason, updatedAt: ctx.now() }).where(eq(deliveries.id, d.id));
     await appendAudit(tx, { organizationId: actor.organizationId, action: "fulfillment.delayed", actorType: "USER", actorId: actor.id, entityType: "delivery", entityId: d.id, data: { from: d.expectedDate, to: input.new_expected_date, reason: input.reason } });
-    void ctx.notifier.send({ kind: "DELIVERY_DELAYED", organization_id: actor.organizationId, title: "Delivery delayed", summary: `Now expected ${input.new_expected_date}: ${input.reason}`, link_path: "/orders" });
+    after.add(() => ctx.notifier.send({ kind: "DELIVERY_DELAYED", organization_id: actor.organizationId, title: "Delivery delayed", summary: `Now expected ${input.new_expected_date}: ${input.reason}`, link_path: "/orders" }));
     const [updated] = await tx.select().from(deliveries).where(eq(deliveries.id, d.id));
     return toDeliveryDto(updated!);
   });
+  after.flush(ctx);
+  return result;
 }
 
