@@ -56,7 +56,8 @@ export function decimalStringToMinor(value: string, currency: string): number {
   const fracPadded = frac.slice(0, exp).padEnd(exp, "0");
   const minor = Number(`${whole}${fracPadded}`);
   assertMinor(minor);
-  return sign ? -minor : minor;
+  // "-0" / "-0.00" is zero, never IEEE negative zero (which survives === but not Object.is).
+  return sign && minor !== 0 ? -minor : minor;
 }
 
 /** Converts a floating price from an external source (e.g. Channel3 `19.99`) to minor units. */

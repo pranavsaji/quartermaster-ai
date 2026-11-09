@@ -23,6 +23,14 @@ describe("money", () => {
     expect(decimalStringToMinor("10.500", "USD")).toBe(1050);
   });
 
+  it("never returns negative zero", () => {
+    for (const s of ["-0", "-0.00", "-0.0", "0", "-00"]) {
+      expect(Object.is(decimalStringToMinor(s, "USD"), 0)).toBe(true);
+    }
+    expect(Object.is(decimalStringToMinor("-0", "JPY"), 0)).toBe(true);
+    expect(decimalStringToMinor("-0.01", "USD")).toBe(-1);
+  });
+
   it("rejects malformed and unsafe amounts", () => {
     expect(() => decimalStringToMinor("1e3", "USD")).toThrow();
     expect(() => minorToDecimalString(1.5, "USD")).toThrow();
