@@ -168,6 +168,11 @@ export async function recordReportedRefund(
       throw conflict("REFUND_BEFORE_CAPTURE", "Capture not yet recorded; retry later.");
     }
     let [row] = await tx.select().from(refunds).where(eq(refunds.paypalRefundId, report.paypalRefundId));
+    if (row && row.paymentAttemptId !== payment.id) {
+      // PayPal refund ids are unique; one recorded against another payment means the event does
+      // not describe this capture. Refuse rather than move money between payments.
+      throw conflict("REFUND_PAYMENT_MISMATCH", "This refund is already recorded against a different payment.");
+    }
     if (!row) {
       [row] = await tx
         .insert(refunds)
