@@ -69,6 +69,8 @@ const WEAK_OVERRIDE_VERBS =
 const OVERRIDE_NOUNS_BASE =
   "instructions?|rules?|prompts?|polic(?:y|ies)|guidelines?|guidance|directions?|directives?|commands?|constraints?|mandates?|limits?|restrictions?|tasks?|programming|training|context|guardrails?|safeguards?|preferences|wishes";
 const OVERRIDE_NOUNS = `${OVERRIDE_NOUNS_BASE}|orders?`;
+/** Every noun an override rule can match, for the product-context check. */
+const OVERRIDE_NOUN_RE = new RegExp(String.raw`\b(?:${OVERRIDE_NOUNS}|steps?)\b`, "gi");
 /** Qualifiers that mark an override even after a weak verb or once punctuation is softened. */
 const STRONG_QUALIFIERS = "previous|prior|above|earlier|all|any|your|system|original|initial|existing|whatever|preceding|foregoing|owner's";
 const ALL_QUALIFIERS = `${STRONG_QUALIFIERS}|the|these|those|my|our|old|current|its|their`;
@@ -82,27 +84,34 @@ const overridePattern = (qualifiers: string) =>
 /**
  * Instructions about the physical product — delivery, care, assembly, cooking — are ordinary
  * copy, not an attempt to override the reader's instructions: "Ignore any prior delivery
- * instructions printed on the box." Such a match is only *deferred*, never dropped, and only
- * when every instruction noun in it is directly qualified by the product context: the word
- * right before it ("delivery instructions", "wash instructions") or the words right after it
- * ("instructions printed on the box", "… for the old model"). A product word elsewhere in the
- * text does not count. A deferred match is scored after all, at full weight, as soon as the
- * text carries any other signal (an approval claim, a purchase directive, AI addressing …), so
- * appending "Wash instructions: cold." to an attack cannot hide it.
+ * instructions printed on the box." Such a match is *deferred*, never dropped, and only when:
+ *
+ *  - every override noun in the match is a kind of instruction a product has (instructions,
+ *    directions, guidelines, guidance, rules, steps); a match naming prompts, policies,
+ *    guardrails, limits, tasks, context … is never deferred; and
+ *  - each of those nouns, in the match and in the rest of its clause, is immediately preceded on
+ *    the same line by a product-context word ("delivery instructions", "wash-instructions"). Text before the match
+ *    never counts, so "…delivery. Ignore all previous instructions" is not deferred, and a rule
+ *    whose match starts at the noun can only defer by matching the context word itself.
+ *
+ * A deferred match is scored after all, at full weight, as soon as the text carries any other
+ * signal (an approval claim, a purchase directive, AI addressing …), so wrapping an attack in
+ * product words cannot hide it.
  */
-const PRODUCT_CONTEXT_WORD =
-  /^(?:delivery|shipping|packing|packaging|care|assembly|assembling|wash(?:ing)?|cleaning|cooking|baking|heating|reheating|installation|installing|mounting|setup|set-up|return|returns|storage|usage|use|operating|warranty|recipe|prep|preparation|serving|dosage|mixing|brewing|thawing|feeding|loading|maintenance|label|box|manufacturer'?s?|handling|disposal|filling|refill(?:ing)?|seasoning|sanitizing|descaling)$/i;
-const PHYSICAL_TRAIL =
-  /^[\s,]{0,3}(?:(?:printed|written|shown|included|found|listed|attached|enclosed|stamped)\s+(?:on|in|with|inside)\b|(?:on|in|inside)\s+(?:the|this|each|every|your)\s+(?:box|label|package|packaging|case|bag|lid|carton|bottle|jar|can|sleeve|wrapper|manual|insert|leaflet|pdf|pack)\b|for\s+(?:the\s+)?(?:old|older|previous|new|original|earlier)\s+(?:model|version|pack|packaging|design|item|product|formula|size))/i;
-const INSTRUCTION_NOUN = /\b(?:instructions?|directions?|guidance|guidelines?|rules?|directives?|steps)\b/gi;
+const PRODUCT_CONTEXT_WORDS =
+  "delivery|shipping|packing|packaging|care|assembly|assembling|wash(?:ing)?|cleaning|cooking|baking|heating|reheating|installation|installing|mounting|setup|return|returns|storage|usage|use|operating|warranty|recipe|prep|preparation|serving|dosage|mixing|brewing|thawing|feeding|loading|maintenance|label|box|manufacturer'?s?|handling|disposal|filling|refill(?:ing)?|seasoning|sanitizing|descaling";
+/** The override nouns a physical product can have instructions about. */
+const PRODUCT_NOUN = /^(?:instructions?|directions?|guidelines?|guidance|rules?|steps?)$/i;
+const PRODUCT_QUALIFIED = new RegExp(String.raw`(?:^|[^\p{L}'-])(?:${PRODUCT_CONTEXT_WORDS})[ \t-]+$`, "iu");
 function directlyAboutTheProduct(text: string, index: number, match: string): boolean {
+  // The object of the override runs on to the end of its clause ("… delivery instructions and
+  // system prompts"): those nouns must qualify too. Looking forward only ever prevents deferral.
+  const clause = match + (/^[^.!?;\n]{0,120}/.exec(text.slice(index + match.length))?.[0] ?? "");
   let nouns = 0;
-  for (const n of match.matchAll(INSTRUCTION_NOUN)) {
+  for (const n of clause.matchAll(OVERRIDE_NOUN_RE)) {
     nouns++;
-    const at = index + n.index;
-    const previousWord = /([\p{L}'-]+)[\s-]*$/u.exec(text.slice(Math.max(0, at - 40), at))?.[1] ?? "";
-    const trail = text.slice(at + n[0].length, at + n[0].length + 80);
-    if (!PRODUCT_CONTEXT_WORD.test(previousWord) && !PHYSICAL_TRAIL.test(trail)) return false;
+    if (!PRODUCT_NOUN.test(n[0])) return false;
+    if (!PRODUCT_QUALIFIED.test(clause.slice(0, n.index))) return false;
   }
   return nouns > 0;
 }
@@ -119,7 +128,7 @@ const BUDGET_OBJECTS = `budgets?|${QUALIFIED_BUDGET_OBJECTS}|mandates?`;
 const PRINCIPALS = String.raw`(?:the\s+|your\s+|our\s+)?(?:store\s+|business\s+|restaurant\s+)?(?:owner|management|manager|admin(?:istrator)?|head\s+office|boss|human|user|finance(?:\s+team)?|accounting|principal|operator)`;
 
 /** A reference to the reader's earlier instructions ("your previous rules", "the instructions you received"). */
-const PRIOR_INSTRUCTIONS = String.raw`(?:(?:your|the|any|all|my)\s+)?(?:previous|prior|earlier|original|initial|old|existing|above|preceding|current)\s+(?:instructions?|rules|guidance|directions|directives|prompts?|tasks?|constraints|restrictions|guidelines|programming|orders)|\b(?:instructions?|rules|guidance|directions|directives)\s+(?:(?:that\s+)?you\s+(?:were\s+given|received|got|have\s+been\s+given|had|were\s+told)|given\s+(?:to\s+you\s+)?(?:earlier|before|previously)|(?:from|issued)\s+(?:earlier|before))`;
+const PRIOR_INSTRUCTIONS = String.raw`(?:(?:your|the|any|all|my)\s+)?(?:previous|prior|earlier|original|initial|old|existing|above|preceding|current)\s+(?:instructions?|rules|guidance|directions|directives|prompts?|tasks?|constraints|restrictions|guidelines|programming|orders)|(?:\b(?:${PRODUCT_CONTEXT_WORDS})[ \t-]+)?\b(?:instructions?|rules|guidance|directions|directives)\s+(?:(?:that\s+)?you\s+(?:were\s+given|received|got|have\s+been\s+given|had|were\s+told)|given\s+(?:to\s+you\s+)?(?:earlier|before|previously)|(?:from|issued)\s+(?:earlier|before))`;
 
 const RULES: Rule[] = [
   {
@@ -177,7 +186,7 @@ const RULES: Rule[] = [
     id: "override_back_reference",
     weight: 6,
     pattern: new RegExp(
-      String.raw`\b(?:instructions?|rules|guidance|directions|directives|prompts?|limits|restrictions)\b[^.!?\n]{0,60}?(?:[.!?]+\s{0,3}|[,;]\s{0,3}(?:so\s+|and\s+|then\s+)?|\s(?:so|and|then)\s+)(?:just\s+|now\s+|please\s+|simply\s+)?(?:${STRONG_OVERRIDE_VERBS}|discard|drop|scrap|skip|undo|(?:do\s+not|don't|dont|never|stop)\s+(?:apply(?:ing)?|follow(?:ing)?|obey(?:ing)?|us(?:e|ing)))\s+(?:them|those|these|it|that|this)\b`,
+      String.raw`(?:\b(?:${PRODUCT_CONTEXT_WORDS})[ \t-]+)?\b(?:instructions?|rules|guidance|directions|directives|prompts?|limits|restrictions)\b[^.!?\n]{0,60}?(?:[.!?]+\s{0,3}|[,;]\s{0,3}(?:so\s+|and\s+|then\s+)?|\s(?:so|and|then)\s+)(?:just\s+|now\s+|please\s+|simply\s+)?(?:${STRONG_OVERRIDE_VERBS}|discard|drop|scrap|skip|undo|(?:do\s+not|don't|dont|never|stop)\s+(?:apply(?:ing)?|follow(?:ing)?|obey(?:ing)?|us(?:e|ing)))\s+(?:them|those|these|it|that|this)\b`,
       "i",
     ),
     defer: directlyAboutTheProduct,
