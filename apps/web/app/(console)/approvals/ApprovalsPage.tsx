@@ -1,7 +1,7 @@
 "use client";
 
 import { SETTLED_PAYMENT_STATUSES, type PurchaseOrderDto } from "@qm/contracts";
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import { useSession } from "@/components/session/SessionProvider";
 import { DecisionBadge } from "@/components/trustrail/DecisionBadge";
 import { Badge, StatusBadge } from "@/components/ui/Badge";
@@ -78,24 +78,60 @@ function ApprovalRow({ po, now }: { po: PurchaseOrderDto; now: number }) {
   );
 }
 
+const STAGES = [
+  ["review", "Awaiting approval", "TrustRail has evaluated these carts. Review violations, acknowledge review items and sign."],
+  ["pay", "Approved — awaiting payment", "Signed Intent Certificates ready for PayPal sandbox checkout."],
+] as const;
+
+function StageCard({
+  stage,
+  title,
+  description,
+  count,
+  children,
+}: {
+  stage: Stage;
+  title: string;
+  description: string;
+  count?: number;
+  children: ReactNode;
+}) {
+  return (
+    <Card aria-labelledby={`stage-${stage}`}>
+      <CardHeader
+        id={`stage-${stage}`}
+        title={title}
+        description={description}
+        actions={count !== undefined ? <Badge tone={count > 0 ? "accent" : "neutral"}>{count}</Badge> : null}
+      />
+      {children}
+    </Card>
+  );
+}
+
 export function ApprovalsPage() {
   const { can } = useSession();
-  const now = useNow(5000);
   const orders = usePagedResource(
     (cursor, signal) => api.purchaseOrders.list({ limit: 100, cursor, statuses: AWAITING_STATUSES }, { signal }),
     [],
   );
 
+  // Newest first, the order the API pages in, so "Load more" appends older proposals below.
   const awaiting = useMemo(
     () =>
       (orders.items ?? [])
         .filter((po) => AWAITING.has(po.status))
         .filter((po) => !(po.payment && SETTLED.has(po.payment.status)))
-        .sort((a, b) => a.created_at.localeCompare(b.created_at)),
+        .sort((a, b) => b.created_at.localeCompare(a.created_at)),
     [orders.items],
   );
   const groups: Record<Stage, PurchaseOrderDto[]> = { review: [], pay: [] };
   for (const po of awaiting) groups[stageOf(po)].push(po);
+  // The mm:ss certificate countdowns tick every second, and only while one is on screen.
+  const now = useNow(
+    1000,
+    awaiting.some((po) => po.certificate !== null),
+  );
 
   return (
     <>
@@ -115,43 +151,45 @@ export function ApprovalsPage() {
         </Notice>
       ) : null}
 
-      <ResourceView resource={orders} hasData={Boolean(orders.items)} className="mb-6" />
-
-      <div className="space-y-6">
-        {(
-          [
-            ["review", "Awaiting approval", "TrustRail has evaluated these carts. Review violations, acknowledge review items and sign."],
-            ["pay", "Approved — awaiting payment", "Signed Intent Certificates ready for PayPal sandbox checkout."],
-          ] as const
-        ).map(([stage, title, description]) => (
-          <Card key={stage} aria-labelledby={`stage-${stage}`}>
-            <CardHeader
-              id={`stage-${stage}`}
-              title={title}
-              description={description}
-              actions={orders.items ? <Badge tone={groups[stage].length > 0 ? "accent" : "neutral"}>{groups[stage].length}</Badge> : null}
-            />
-            {!orders.items && !orders.error ? (
-              <div className="p-5">
-                <SkeletonRows rows={2} />
-              </div>
-            ) : groups[stage].length === 0 ? (
-              <EmptyState
-                compact
-                title="Nothing waiting"
-                description={stage === "review" ? "No proposals need approval." : "No approved carts awaiting payment."}
-              />
-            ) : (
-              <ul className="divide-y divide-line">
-                {groups[stage].map((po) => (
-                  <ApprovalRow key={po.id} po={po} now={now} />
-                ))}
-              </ul>
-            )}
-          </Card>
-        ))}
-        <LoadMore state={orders} noun="proposals awaiting you (newest first)" />
-      </div>
+      {/* Only real data can say "nothing waiting": on a failed load the cards would claim an empty queue. */}
+      <ResourceView
+        resource={orders}
+        hasData={Boolean(orders.items)}
+        className="mb-6"
+        errorTitle="Couldn't load proposals awaiting you"
+        loading={
+          <div className="space-y-6">
+            {STAGES.map(([stage, title, description]) => (
+              <StageCard key={stage} stage={stage} title={title} description={description}>
+                <div className="p-5">
+                  <SkeletonRows rows={2} />
+                </div>
+              </StageCard>
+            ))}
+          </div>
+        }
+      >
+        <div className="space-y-6">
+          {STAGES.map(([stage, title, description]) => (
+            <StageCard key={stage} stage={stage} title={title} description={description} count={groups[stage].length}>
+              {groups[stage].length === 0 ? (
+                <EmptyState
+                  compact
+                  title="Nothing waiting"
+                  description={stage === "review" ? "No proposals need approval." : "No approved carts awaiting payment."}
+                />
+              ) : (
+                <ul className="divide-y divide-line">
+                  {groups[stage].map((po) => (
+                    <ApprovalRow key={po.id} po={po} now={now} />
+                  ))}
+                </ul>
+              )}
+            </StageCard>
+          ))}
+          <LoadMore state={orders} noun="proposals awaiting you, newest first" />
+        </div>
+      </ResourceView>
     </>
   );
 }

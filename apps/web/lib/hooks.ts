@@ -166,13 +166,17 @@ export function useAction<A extends unknown[], R>(action: (...args: A) => Promis
   return { run, pending, error, reset };
 }
 
-/** Current time, re-rendered every `intervalMs`. For countdowns and "x minutes ago". */
-export function useNow(intervalMs = 1000): number {
+/**
+ * Current time, re-rendered every `intervalMs` while `active`. For countdowns and "x minutes ago".
+ * Pass `active: false` when nothing time-dependent is on screen, so the component stops re-rendering.
+ */
+export function useNow(intervalMs = 1000, active = true): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
+    if (!active) return;
     const id = window.setInterval(() => setNow(Date.now()), intervalMs);
     return () => window.clearInterval(id);
-  }, [intervalMs]);
+  }, [intervalMs, active]);
   return now;
 }
 
