@@ -245,36 +245,36 @@ export async function researchRequest(ctx: AppContext, user: { id: string; organ
     );
 
     /* 5–6. Plan, evaluate with TrustRail, re-plan around blocks ---------------------- */
+    // Each attempt re-plans ALL items with blocked suppliers excluded, so the owner's cap is
+    // always spent on the most urgent items rather than on whichever cart was accepted first.
     const excludedSuppliers = new Set<string>();
     const blocked: ExplanationFacts["blocked"] = [];
-    const accepted: { planned: PlannedCart; poId: string; decision: string; violations: string[] }[] = [];
-    let remainingItems = new Map(candidatesByItem);
-    let unfilled: string[] = [];
+    let accepted: { planned: PlannedCart; poId: string; decision: string; violations: string[] }[] = [];
     const cap = claimed.budgetLimitMinor ?? intent.budget_limit_minor ?? null;
     const priority = new Map(needed.map((l) => [l.inventory_item_id, l.available / Math.max(0.01, l.forecast_daily_usage)]));
+    const maxAttempts = claimed.allowAlternatives ? MAX_PLAN_ATTEMPTS : 1;
 
-    for (let attempt = 1; attempt <= MAX_PLAN_ATTEMPTS && remainingItems.size > 0; attempt++) {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       const plan = await run.tool(
         "planner.plan",
         { attempt, excluded_suppliers: [...excludedSuppliers] },
         async () => {
           const storefront = new Map<string, StorefrontQuoteLine[]>(supplierRows.map((s) => [s.id, storefrontLines(s)]));
           const p = planCarts({
-            candidates_by_item: remainingItems,
+            candidates_by_item: candidatesByItem,
             currency: claimed.currency,
             storefront_lines_by_supplier: storefront,
             excluded_supplier_ids: excludedSuppliers,
             excluded_candidate_ids: new Set(),
           });
-          const spentSoFar = accepted.reduce((a, x) => a + x.planned.cart.total_minor, 0);
-          return { ...p, carts: cap === null ? p.carts : fitCartsToCap(p.carts, cap - spentSoFar, priority, storefront) };
+          return { ...p, carts: cap === null ? p.carts : fitCartsToCap(p.carts, cap, priority, storefront) };
         },
         (p) => `Attempt ${attempt}: ${p.carts.length} cart(s) planned${p.unfilled_item_ids.length ? `, ${p.unfilled_item_ids.length} item(s) without an eligible supplier` : ""}.`,
       );
-      unfilled = plan.unfilled_item_ids;
       if (plan.carts.length === 0) break;
 
-      const nextRemaining = new Map<string, (CandidateEvaluation & { id: string })[]>();
+      const attemptAccepted: typeof accepted = [];
+      let attemptBlocked = false;
       for (const planned of plan.carts) {
         const supplier = supplierById.get(planned.supplier.id) as SupplierRow;
         const evaluation = await run.tool(
@@ -334,15 +334,26 @@ export async function researchRequest(ctx: AppContext, user: { id: string; organ
 
         const codes = evaluation.ev.result.violations.map((v) => v.code);
         if (evaluation.ev.result.decision === "BLOCK") {
+          attemptBlocked = true;
           blocked.push({ supplier: supplier.name, reasons: evaluation.ev.result.violations.filter((v) => v.severity === "BLOCK").map((v) => v.message) });
           excludedSuppliers.add(supplier.id);
-          if (claimed.allowAlternatives) for (const l of planned.lines) nextRemaining.set(l.inventory_item_id, remainingItems.get(l.inventory_item_id) ?? []);
         } else {
-          accepted.push({ planned, poId: evaluation.po.id, decision: evaluation.ev.result.decision, violations: codes });
+          attemptAccepted.push({ planned, poId: evaluation.po.id, decision: evaluation.ev.result.decision, violations: codes });
         }
       }
-      remainingItems = nextRemaining;
+      accepted = attemptAccepted;
+      if (!attemptBlocked || attempt === maxAttempts) break;
+      // A block changes the global plan: this attempt's compliant carts become superseded
+      // evidence and the next attempt re-plans every item without the blocked supplier(s).
+      if (attemptAccepted.length) {
+        await ctx.db
+          .update(purchaseOrders)
+          .set({ status: "SUPERSEDED", updatedAt: ctx.now() })
+          .where(inArray(purchaseOrders.id, attemptAccepted.map((a) => a.poId)));
+      }
     }
+    const covered = new Set(accepted.flatMap((a) => a.planned.lines.map((l) => l.inventory_item_id)));
+    const unfilled = needed.map((l) => l.inventory_item_id).filter((id) => !covered.has(id));
 
     /* 7. Explanation --------------------------------------------------------------- */
     const facts: ExplanationFacts = {
@@ -356,7 +367,7 @@ export async function researchRequest(ctx: AppContext, user: { id: string; organ
         lines: a.planned.lines.map((l) => `${l.packs} × ${l.offer.title} (${l.units} units)`),
       })),
       blocked,
-      unfilled_items: [...unfilled, ...remainingItems.keys()].map((id) => itemRows.get(id)?.name ?? id),
+      unfilled_items: unfilled.map((id) => itemRows.get(id)?.name ?? id),
       market_status: market.map((m) => `${itemRows.get(m.inventory_item_id)?.name}: market reference ${m.status.toLowerCase()}${m.reference_unit_price_minor !== null ? ` at ${m.reference_unit_price_minor.toFixed(2)}¢/unit` : ""}.`),
     };
     const explanation = await run.tool("recommendation.explain", { proposals: accepted.length }, () => explainRecommendation(ctx.openai, run, facts), (e) => `Explanation (${e.mode === "LLM" ? "model" : "deterministic"}).`);
