@@ -11,7 +11,7 @@ import {
 } from "@qm/quartermaster";
 import { detectPromptInjection, mergeVerdicts } from "@qm/trustrail";
 import type { AppContext } from "../../context";
-import { conflict, notFound } from "../../errors";
+import { AppError, conflict, notFound } from "../../errors";
 import { appendAudit } from "../audit";
 import { recordFinding } from "../findings";
 import { runForecast, type InventoryRow } from "../inventory";
@@ -38,42 +38,72 @@ export async function researchRequest(ctx: AppContext, user: { id: string; organ
   const now = ctx.now();
   const orgId = user.organizationId;
 
-  // Atomically claim the request for research so concurrent calls cannot interleave.
-  const [claimed] = await ctx.db
-    .update(purchaseRequests)
-    .set({ status: "RESEARCHING", researchStartedAt: now, error: null, updatedAt: now })
-    .where(and(eq(purchaseRequests.id, requestId), eq(purchaseRequests.organizationId, orgId), inArray(purchaseRequests.status, RESEARCHABLE)))
-    .returning();
-  if (!claimed) {
-    const [existing] = await ctx.db.select().from(purchaseRequests).where(and(eq(purchaseRequests.id, requestId), eq(purchaseRequests.organizationId, orgId)));
-    if (!existing) throw notFound("Procurement request");
-    throw conflict("REQUEST_NOT_RESEARCHABLE", `Request is ${existing.status}; research can only run before approval.`);
-  }
-  const committed = await ctx.db
-    .select({ id: purchaseOrders.id })
-    .from(purchaseOrders)
-    .where(and(eq(purchaseOrders.requestId, requestId), inArray(purchaseOrders.status, [...COMMITTED_PO_STATUSES])));
-  if (committed.length > 0) {
-    await refreshRequestStatus(ctx.db, requestId, now);
-    throw conflict("REQUEST_HAS_APPROVED_ORDERS", "Research cannot be re-run after an order has been approved.");
-  }
+  // Claim the request under its row lock. Approval takes the same lock and refuses while a
+  // request is RESEARCHING, so research and approval can never interleave: either research
+  // sees the approved order (and refuses), or approval waits for research to finish.
+  const claimed = await ctx.db.transaction(async (tx) => {
+    const [row] = await tx
+      .select()
+      .from(purchaseRequests)
+      .where(and(eq(purchaseRequests.id, requestId), eq(purchaseRequests.organizationId, orgId)))
+      .for("update");
+    if (!row) throw notFound("Procurement request");
+    if (!RESEARCHABLE.includes(row.status)) {
+      throw conflict("REQUEST_NOT_RESEARCHABLE", `Request is ${row.status}; research can only run before approval.`);
+    }
+    const committed = await tx
+      .select({ id: purchaseOrders.id })
+      .from(purchaseOrders)
+      .where(and(eq(purchaseOrders.requestId, requestId), inArray(purchaseOrders.status, [...COMMITTED_PO_STATUSES])));
+    if (committed.length > 0) throw conflict("REQUEST_HAS_APPROVED_ORDERS", "Research cannot be re-run after an order has been approved.");
 
-  // Previous proposals become superseded evidence; candidates are recomputed.
-  await ctx.db
-    .update(purchaseOrders)
-    .set({ status: "SUPERSEDED", updatedAt: now })
-    .where(and(eq(purchaseOrders.requestId, requestId), inArray(purchaseOrders.status, ["PROPOSED", "BLOCKED"])));
-  await ctx.db.delete(purchaseCandidates).where(eq(purchaseCandidates.requestId, requestId));
-
-  const run = await AgentRun.start(ctx.db, {
-    organizationId: orgId,
-    requestId,
-    kind: "RESEARCH",
-    limits: { maxToolCalls: 60, maxResearchCalls: ctx.config.agent.maxResearchCalls, deadlineMs: ctx.config.agent.deadlineMs, tokenBudget: ctx.config.agent.tokenBudget },
+    // Previous proposals become superseded evidence; candidates are recomputed.
+    await tx
+      .update(purchaseOrders)
+      .set({ status: "SUPERSEDED", updatedAt: now })
+      .where(and(eq(purchaseOrders.requestId, requestId), inArray(purchaseOrders.status, ["PROPOSED", "BLOCKED"])));
+    await tx.delete(purchaseCandidates).where(eq(purchaseCandidates.requestId, requestId));
+    const [updated] = await tx
+      .update(purchaseRequests)
+      .set({ status: "RESEARCHING", researchStartedAt: now, error: null, updatedAt: now })
+      .where(eq(purchaseRequests.id, requestId))
+      .returning();
+    return updated!;
   });
-  run.aiMode = ctx.openai.enabled ? "LLM" : "DETERMINISTIC_FALLBACK";
 
+  let run: AgentRun | null = null;
   try {
+    run = await AgentRun.start(ctx.db, {
+      organizationId: orgId,
+      requestId,
+      kind: "RESEARCH",
+      limits: { maxToolCalls: 60, maxResearchCalls: ctx.config.agent.maxResearchCalls, deadlineMs: ctx.config.agent.deadlineMs, tokenBudget: ctx.config.agent.tokenBudget },
+    });
+    run.aiMode = ctx.openai.enabled ? "LLM" : "DETERMINISTIC_FALLBACK";
+    return await runResearch(ctx, user, requestId, claimed, run, now);
+  } catch (err) {
+    ctx.log.error({ err, request_id: requestId }, "research failed");
+    // Client-safe text only: internal error messages stay in the logs.
+    const message = err instanceof AppError ? err.message : "Research failed unexpectedly. Try again.";
+    await ctx.db
+      .update(purchaseRequests)
+      .set({ status: "FAILED", error: message.slice(0, 500), updatedAt: ctx.now() })
+      .where(and(eq(purchaseRequests.id, requestId), eq(purchaseRequests.status, "RESEARCHING")));
+    await run?.finish("FAILED", message).catch((e: unknown) => ctx.log.warn({ err: e, request_id: requestId }, "could not close the agent run"));
+    throw err;
+  }
+}
+
+async function runResearch(
+  ctx: AppContext,
+  user: { id: string; organizationId: string },
+  requestId: string,
+  claimed: typeof purchaseRequests.$inferSelect,
+  run: AgentRun,
+  now: Date,
+) {
+  const orgId = user.organizationId;
+  {
     const intent = (claimed.intent ?? {}) as { inventory_item_ids?: string[]; demand_multiplier?: number; notes?: string; budget_limit_minor?: number | null; required_by?: string | null };
     const multiplier = claimed.demandMultiplier ?? intent.demand_multiplier ?? 1;
     const requestedIds = intent.inventory_item_ids ?? [];
@@ -389,12 +419,6 @@ export async function researchRequest(ctx: AppContext, user: { id: string; organ
       : ctx.notifier.send({ kind: "PURCHASE_BLOCKED", organization_id: orgId, title: "No compliant purchase found", summary: explanation.summary, link_path: `/procurement/${requestId}` }));
 
     return getRequestDto(ctx.db, orgId, requestId);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    ctx.log.error({ err, requestId }, "research failed");
-    await run.finish("FAILED", message);
-    await ctx.db.update(purchaseRequests).set({ status: "FAILED", error: message.slice(0, 500), updatedAt: ctx.now() }).where(eq(purchaseRequests.id, requestId));
-    throw err;
   }
 }
 
