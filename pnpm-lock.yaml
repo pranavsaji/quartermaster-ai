@@ -11,9 +11,39 @@ importers:
       '@playwright/test':
         specifier: ^1.65.0
         version: 1.65.0
+      '@qm/api':
+        specifier: workspace:*
+        version: link:apps/api
+      '@qm/contracts':
+        specifier: workspace:*
+        version: link:packages/contracts
+      '@qm/database':
+        specifier: workspace:*
+        version: link:packages/database
+      '@qm/integrations':
+        specifier: workspace:*
+        version: link:packages/integrations
+      '@qm/payments':
+        specifier: workspace:*
+        version: link:packages/payments
+      '@qm/quartermaster':
+        specifier: workspace:*
+        version: link:packages/quartermaster
+      '@qm/trustrail':
+        specifier: workspace:*
+        version: link:packages/trustrail
       '@types/node':
         specifier: ^24.0.0
         version: 24.19.2
+      '@types/supertest':
+        specifier: ^7.2.1
+        version: 7.2.1
+      drizzle-orm:
+        specifier: ^0.45.4
+        version: 0.45.4(@electric-sql/pglite@0.5.15)(@types/pg@8.23.1)(pg@8.23.1)
+      supertest:
+        specifier: ^7.3.2
+        version: 7.3.2
       tsx:
         specifier: ^4.23.15
         version: 4.23.15

@@ -2,11 +2,13 @@
   "name": "quartermaster-ai",
   "private": true,
   "version": "1.0.0",
-  "description": "Quartermaster AI — autonomous purchasing for small businesses, secured by TrustRail.",
+  "description": "Quartermaster AI \u2014 autonomous purchasing for small businesses, secured by TrustRail.",
   "license": "Apache-2.0",
   "type": "module",
   "packageManager": "pnpm@10.33.2",
-  "engines": { "node": ">=22.12" },
+  "engines": {
+    "node": ">=22.12"
+  },
   "scripts": {
     "dev": "pnpm --parallel --filter @qm/api --filter @qm/web dev",
     "build": "pnpm --filter @qm/api build && pnpm --filter @qm/web build",
@@ -24,7 +26,17 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.65.0",
+    "@qm/api": "workspace:*",
+    "@qm/contracts": "workspace:*",
+    "@qm/database": "workspace:*",
+    "@qm/integrations": "workspace:*",
+    "@qm/payments": "workspace:*",
+    "@qm/quartermaster": "workspace:*",
+    "@qm/trustrail": "workspace:*",
     "@types/node": "^24.0.0",
+    "@types/supertest": "^7.2.1",
+    "drizzle-orm": "^0.45.4",
+    "supertest": "^7.3.2",
     "tsx": "^4.23.15",
     "typescript": "~5.9.3",
     "vitest": "^5.1.0"
