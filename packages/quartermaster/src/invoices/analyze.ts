@@ -120,9 +120,17 @@ export function analyzeInvoice(inv: InvoiceInput, po: PurchaseOrderView | null, 
     const unknown: string[] = [];
     const overQty: string[] = [];
     const priceDiff: string[] = [];
+    // Charges without a SKU (tax, shipping) may match a non-product order line of the same
+    // amount; each order line can be matched at most once.
+    const chargeLines = po.items.filter((i) => i.kind !== "PRODUCT").map((i) => ({ ...i, used: false }));
     for (const l of inv.lines) {
       const match = l.sku ? poBySku.get(l.sku) : undefined;
       if (!match) {
+        const charge = !l.sku ? chargeLines.find((c) => !c.used && c.line_total_minor === l.line_total_minor && l.quantity === 1) : undefined;
+        if (charge) {
+          charge.used = true;
+          continue;
+        }
         unknown.push(l.description);
         continue;
       }
