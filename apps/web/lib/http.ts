@@ -55,7 +55,7 @@ export class ApiRequestError extends Error {
    * synthetic actions) carry their own explanation and are not role problems.
    */
   get isRoleDenied(): boolean {
-    return this.status === 403 && this.code === "FORBIDDEN" && /\brequires the (OWNER|MANAGER|VIEWER) role\b/i.test(this.message);
+    return this.status === 403 && this.code === "ROLE_REQUIRED";
   }
 
   /** Network failure, gateway problem or 5xx: the outcome on the server is unknown. */

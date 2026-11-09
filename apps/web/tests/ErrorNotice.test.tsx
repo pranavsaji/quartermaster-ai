@@ -7,7 +7,7 @@ const err = (status: number, code: string, message: string) => new ApiRequestErr
 
 describe("ErrorNotice", () => {
   it("explains a role denial and points to the owner", () => {
-    render(<ErrorNotice error={err(403, "FORBIDDEN", "This action requires the OWNER role.")} onRetry={vi.fn()} />);
+    render(<ErrorNotice error={err(403, "ROLE_REQUIRED", "This action requires the OWNER role.")} onRetry={vi.fn()} />);
     expect(screen.getByText("You don't have permission")).toBeInTheDocument();
     expect(screen.getByText(/This action requires the OWNER role\. Ask the restaurant owner/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
