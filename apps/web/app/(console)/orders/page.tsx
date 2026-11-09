@@ -149,8 +149,8 @@ export default function OrdersPage() {
         </Card>
       </div>
 
-      <ReceiveDialog target={receiving} onClose={() => setReceiving(null)} onDone={onDeliveryUpdated} />
-      <DelayDialog target={delaying} onClose={() => setDelaying(null)} onDone={onDeliveryUpdated} />
+      {receiving ? <ReceiveDialog target={receiving} onClose={() => setReceiving(null)} onDone={onDeliveryUpdated} /> : null}
+      {delaying ? <DelayDialog target={delaying} onClose={() => setDelaying(null)} onDone={onDeliveryUpdated} /> : null}
     </>
   );
 }
