@@ -157,16 +157,6 @@ export function useNow(intervalMs = 1000): number {
   return now;
 }
 
-/** @deprecated Use `usePoller`, which never overlaps or aborts a slow tick. */
-export function useInterval(tick: () => void, intervalMs: number, active: boolean): void {
-  const onTick = useEffectEvent(tick);
-  useEffect(() => {
-    if (!active) return;
-    const id = window.setInterval(() => onTick(), intervalMs);
-    return () => window.clearInterval(id);
-  }, [intervalMs, active]);
-}
-
 export interface PollerOptions {
   /** Poll only while true. */
   active: boolean;

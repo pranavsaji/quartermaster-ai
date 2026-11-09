@@ -14,15 +14,24 @@ import { SourceLabel } from "@/components/ui/SourceLabel";
 import { Spinner } from "@/components/ui/Spinner";
 import { api } from "@/lib/api";
 import { date, dateTime, inputToMinor, minorToInput, money } from "@/lib/format";
-import { useAction, useInterval } from "@/lib/hooks";
+import { useAction, usePoller } from "@/lib/hooks";
 import { DELIVERY_STATUS_TONES, PAYMENT_STATUS_TONES } from "@/lib/labels";
 
 const POLLING = new Set<PaymentDto["status"]>(["CAPTURE_PENDING", "PAYER_APPROVED"]);
 const REFUNDABLE = new Set<PaymentDto["status"]>(["COMPLETED", "PARTIALLY_REFUNDED"]);
 
+/** Polls start at 2.5 s and slow down to 20 s; after ~3 minutes the owner refreshes manually. */
+const POLL = { intervalMs: 2500, growth: 1.5, maxIntervalMs: 20_000, maxAttempts: 15 } as const;
+
+/** True if `next` is not older than `current`, so a late response can't regress the status. */
+export function isSameOrNewer(next: PaymentDto, current: PaymentDto): boolean {
+  return Date.parse(next.updated_at) >= Date.parse(current.updated_at);
+}
+
 /**
  * Server-reported payment state. Never infers "paid" locally: while PayPal is
- * still settling (CAPTURE_PENDING) it polls `GET /payments/:id`.
+ * still settling (CAPTURE_PENDING) it polls `GET /payments/:id`, one request at
+ * a time with backoff, and hands over to a manual refresh if it never settles.
  */
 export function PaymentStatusPanel({
   payment,
@@ -34,21 +43,13 @@ export function PaymentStatusPanel({
   onPayment: (payment: PaymentDto) => void;
 }) {
   const { can } = useSession();
-  const [pollError, setPollError] = useState<unknown>(null);
   const polling = POLLING.has(payment.status);
-
-  useInterval(
-    () => {
-      api.payments
-        .get(payment.id)
-        .then((p) => {
-          setPollError(null);
-          onPayment(p);
-        })
-        .catch(setPollError);
+  const poll = usePoller(
+    async (signal) => {
+      const latest = await api.payments.get(payment.id, { signal });
+      if (isSameOrNewer(latest, payment)) onPayment(latest);
     },
-    2500,
-    polling,
+    { active: polling, ...POLL },
   );
 
   const refundable = REFUNDABLE.has(payment.status) && can("refund");
@@ -60,7 +61,7 @@ export function PaymentStatusPanel({
       <div className="flex flex-wrap items-center gap-2">
         <p className="text-[13.5px] font-semibold text-ink">Payment</p>
         <StatusBadge status={payment.status} tones={PAYMENT_STATUS_TONES} kind="Payment" />
-        {polling ? (
+        {polling && !poll.exhausted ? (
           <span className="flex items-center gap-1.5 text-[12px] text-ink-3" role="status">
             <Spinner className="size-3" /> Checking with PayPal…
           </span>
@@ -120,7 +121,24 @@ export function PaymentStatusPanel({
         </div>
       ) : null}
 
-      <ErrorNotice error={pollError} title="Couldn't refresh payment status" className="mt-3" />
+      {poll.exhausted ? (
+        <Notice
+          tone="review"
+          live
+          title="PayPal is still settling this payment"
+          className="mt-3"
+          action={
+            <Button size="sm" variant="secondary" onClick={poll.restart}>
+              Refresh status
+            </Button>
+          }
+        >
+          We stopped checking automatically. Nothing is charged twice by refreshing; it only asks the server for the
+          latest status.
+        </Notice>
+      ) : polling ? (
+        <ErrorNotice error={poll.error} title="Couldn't refresh payment status — retrying" className="mt-3" />
+      ) : null}
 
       {refundable && remainingRefundable > 0 ? (
         <RefundAction payment={payment} maxMinor={remainingRefundable} onPayment={onPayment} />
