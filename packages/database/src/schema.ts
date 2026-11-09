@@ -2,6 +2,7 @@ import { sql, type SQL } from "drizzle-orm";
 import { DELIVERY_STATUSES, INVOICE_STATUSES, PAYMENT_STATUSES, PO_STATUSES, REFUND_STATUSES, REQUEST_STATUSES } from "@qm/contracts";
 import {
   bigint,
+  bigserial,
   boolean,
   check,
   date,
@@ -428,6 +429,8 @@ export const policyDecisions = pgTable(
   "policy_decisions",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    /** Insertion order; breaks ties between decisions recorded at the same instant. */
+    seq: bigserial("seq", { mode: "number" }).notNull(),
     organizationId: orgId(),
     purchaseOrderId: uuid("purchase_order_id")
       .notNull()

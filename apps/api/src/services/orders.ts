@@ -205,7 +205,11 @@ export async function orderDtos(db: DbOrTx, organizationId: string, pos: Purchas
   const ids = pos.map((p) => p.id);
   const [items, decisions, certs, payments, dels, sups] = await Promise.all([
     db.select().from(purchaseOrderItems).where(inArray(purchaseOrderItems.purchaseOrderId, ids)).orderBy(purchaseOrderItems.position),
-    db.select().from(policyDecisions).where(inArray(policyDecisions.purchaseOrderId, ids)).orderBy(desc(policyDecisions.createdAt)),
+    db
+      .select()
+      .from(policyDecisions)
+      .where(inArray(policyDecisions.purchaseOrderId, ids))
+      .orderBy(desc(policyDecisions.createdAt), desc(policyDecisions.seq)),
     db.select().from(intentCertificates).where(inArray(intentCertificates.purchaseOrderId, ids)).orderBy(desc(intentCertificates.issuedAt)),
     db.select().from(paymentAttempts).where(inArray(paymentAttempts.purchaseOrderId, ids)).orderBy(desc(paymentAttempts.createdAt)),
     db.select().from(deliveries).where(inArray(deliveries.purchaseOrderId, ids)),

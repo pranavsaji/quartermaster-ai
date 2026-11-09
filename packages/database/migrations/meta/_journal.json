@@ -43,6 +43,13 @@
       "when": 1794244836981,
       "tag": "0005_drop_active_proposal_id",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794249727423,
+      "tag": "0006_policy_decision_sequence",
+      "breakpoints": true
     }
   ]
 }
