@@ -1,0 +1,1 @@
+ALTER TABLE "purchase_requests" DROP COLUMN "active_proposal_id";

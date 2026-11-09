@@ -267,7 +267,6 @@ export const purchaseRequests = pgTable(
     recommendation: jsonb("recommendation").$type<Record<string, unknown>>(),
     market: jsonb("market").$type<unknown[]>().notNull().default([]),
     forecastRunId: uuid("forecast_run_id"),
-    activeProposalId: uuid("active_proposal_id"),
     error: text("error"),
     researchStartedAt: ts("research_started_at"),
     researchCompletedAt: ts("research_completed_at"),
