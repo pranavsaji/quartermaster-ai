@@ -34,7 +34,7 @@ export function Header({ onOpenMenu }: { onOpenMenu: () => void }) {
           </p>
         </div>
 
-        <div className="hidden items-center gap-1.5 md:flex" aria-label="Environment status">
+        <div className="hidden items-center gap-1.5 xl:flex" aria-label="Environment status">
           {sandbox ? (
             <Badge tone="accent" title="PayPal sandbox: no real money moves">
               PayPal sandbox
@@ -57,11 +57,11 @@ export function Header({ onOpenMenu }: { onOpenMenu: () => void }) {
         <div className="flex items-center gap-2.5 border-l border-line pl-3">
           <span
             aria-hidden
-            className="hidden size-8 place-items-center rounded-full bg-accent-soft text-[12px] font-semibold text-accent-strong ring-1 ring-accent-line sm:grid"
+            className="hidden size-8 place-items-center rounded-full bg-accent-soft text-[12px] font-semibold text-accent-strong ring-1 ring-accent-line lg:grid"
           >
             {initials(user.name)}
           </span>
-          <div className="hidden leading-tight sm:block">
+          <div className="hidden leading-tight lg:block">
             <p className="max-w-40 truncate text-[13px] font-medium text-ink">{user.name}</p>
             <p className="max-w-40 truncate text-[11.5px] text-ink-3">{user.email}</p>
           </div>
