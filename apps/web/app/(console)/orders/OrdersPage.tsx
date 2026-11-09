@@ -1,7 +1,7 @@
 "use client";
 
 import type { DeliveryDto, InvoiceDto, PurchaseOrderDto } from "@qm/contracts";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { DelayDialog, ReceiveDialog, type DeliveryTarget } from "@/components/orders/DeliveryDialogs";
 import { InvoiceForm, type InvoicePrefill } from "@/components/orders/InvoiceForm";
 import { InvoicesGrid } from "@/components/orders/InvoicesGrid";
@@ -32,7 +32,6 @@ export function OrdersPage() {
   const [delaying, setDelaying] = useState<DeliveryTarget | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [invoicePrefill, setInvoicePrefill] = useState<InvoicePrefill | null>(null);
-  const invoiceSection = useRef<HTMLDivElement>(null);
 
   const placedOrders = useMemo(() => orders.data?.filter((po) => !NOT_ORDERS.has(po.status)), [orders.data]);
   const rows = useMemo<OrderRow[] | undefined>(() => {
@@ -44,10 +43,8 @@ export function OrdersPage() {
   const targetOf = (row: OrderRow): DeliveryTarget | null => (row.delivery_view ? { po: row, delivery: row.delivery_view } : null);
   const onReceive = useCallback((row: OrderRow) => setReceiving(targetOf(row)), []);
   const onDelay = useCallback((row: OrderRow) => setDelaying(targetOf(row)), []);
-  const onInvoice = useCallback((row: OrderRow) => {
-    setInvoicePrefill((prev) => ({ po: row, seq: (prev?.seq ?? 0) + 1 }));
-    invoiceSection.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, []);
+  // InvoiceForm scrolls itself into view (respecting reduced motion) and takes focus.
+  const onInvoice = useCallback((row: OrderRow) => setInvoicePrefill((prev) => ({ po: row, seq: (prev?.seq ?? 0) + 1 })), []);
 
   const setDeliveries = deliveries.setData;
   const reloadOrders = orders.reload;
@@ -143,7 +140,7 @@ export function OrdersPage() {
           </div>
         </Card>
 
-        <div ref={invoiceSection} className="scroll-mt-20">
+        <div>
           {can("analyzeInvoices") ? (
             suppliers.data && placedOrders ? (
               <InvoiceForm

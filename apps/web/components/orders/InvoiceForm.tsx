@@ -1,7 +1,7 @@
 "use client";
 
 import { AnalyzeInvoiceRequest, type InvoiceDto, type PurchaseOrderDto, type SupplierDto } from "@qm/contracts";
-import { useId, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardFooter, CardHeader } from "@/components/ui/Card";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
@@ -210,6 +210,17 @@ export function InvoiceForm({
     prefillFrom(prefill.po);
   }
 
+  // A prefill comes from the orders grid's "Invoice" action: bring the form into view and move
+  // focus to it, so keyboard and screen-reader users land where the work continues.
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    const heading = headingRef.current;
+    if (appliedPrefill === null || !heading) return;
+    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+    heading.scrollIntoView?.({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+    heading.focus({ preventScroll: true });
+  }, [appliedPrefill]);
+
   const computedTotal = lines.reduce<number | null>((sum, l) => {
     const t = lineTotal(l, currency);
     return sum === null || t === null ? null : sum + t;
@@ -239,10 +250,11 @@ export function InvoiceForm({
   const supplierOrders = supplierId ? orders.filter((o) => o.supplier_id === supplierId) : orders;
 
   return (
-    <Card aria-labelledby="invoice-form-title">
+    <Card aria-labelledby="invoice-form-title" className="scroll-mt-20">
       <form ref={containerRef} onSubmit={submit} noValidate>
         <CardHeader
           id="invoice-form-title"
+          headingRef={headingRef}
           title="Analyze a supplier invoice"
           description="Matches the invoice against the purchase order and previous invoices before anything is settled."
         />

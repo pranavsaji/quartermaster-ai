@@ -101,6 +101,21 @@ describe("InvoiceForm", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("moves focus to the form when the orders grid asks to invoice a PO", async () => {
+    mockFetch({});
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query.includes("reduce"), media: query }));
+    const { rerender } = render(<InvoiceForm suppliers={suppliers} orders={[po]} currency="USD" prefill={null} onAnalyzed={vi.fn()} />);
+    expect(scrollIntoView).not.toHaveBeenCalled();
+
+    rerender(<InvoiceForm suppliers={suppliers} orders={[po]} currency="USD" prefill={{ po, seq: 1 }} onAnalyzed={vi.fn()} />);
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Analyze a supplier invoice" })).toHaveFocus());
+    // Reduced motion: jump, don't animate.
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "auto", block: "start" });
+    expect(screen.getByRole("textbox", { name: /Invoice number/ })).toHaveValue("INV-1001");
+  });
+
   it("prefills from a PO and submits the parsed body", async () => {
     const invoice = { id: "inv-1", invoice_number: "INV-1001", matches: [], settlement_allowed: true } as unknown as InvoiceDto;
     const { calls } = mockFetch({ "POST /api/v1/invoices/analyze": [jsonResponse({ ...invoice, status: "MATCHED", currency: "USD" })] });
