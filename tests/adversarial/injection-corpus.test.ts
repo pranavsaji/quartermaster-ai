@@ -172,6 +172,19 @@ describe("invisible characters", () => {
     expect(/[\p{Cf}]/u.test(body)).toBe(false);
   });
 
+  it("fences legitimate text as written: no homoglyph folding or letter-spacing collapse", () => {
+    const body = (text: string) => fenceUntrusted("supplier:x", text).split("\n")[1]!;
+    expect(body("A B C Foods \u2014 \u041c\u043e\u0441\u043a\u0432\u0430")).toBe("A B C Foods \u2014 \u041c\u043e\u0441\u043a\u0432\u0430");
+    expect(body("\u0391\u03b8\u03ae\u03bd\u03b1 olive oil, S M L sizes")).toBe("\u0391\u03b8\u03ae\u03bd\u03b1 olive oil, S M L sizes");
+    // Decoded as a browser shows it, then re-escaped: nothing can open or close a tag.
+    expect(body("Fish &amp; chips &lt;b&gt;")).toBe("Fish &amp; chips &lt;b&gt;");
+    expect(body("&#105;gnore")).toBe("ignore");
+    // An entity cannot smuggle an invisible character past the fence.
+    expect(body("pay&#8203;ment&#xE0041;")).toBe("payment");
+    // Matching still folds them: the detector sees through the same text.
+    expect(normalizeUntrustedText("A B C Foods")).toBe("ABC Foods");
+  });
+
   it("keeps word boundaries when collapsing letter-spaced text", () => {
     expect(normalizeUntrustedText(`${between("ignore", " ")}  ${between("all", " ")}  ${between("previous", " ")}`)).toBe(
       "ignore all previous",

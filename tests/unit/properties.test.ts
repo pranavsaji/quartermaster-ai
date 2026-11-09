@@ -6,6 +6,7 @@ import {
   buildCart,
   canonicalize,
   checkCartArithmetic,
+  cleanUntrustedText,
   detectPromptInjection,
   evaluatePolicy,
   fenceUntrusted,
@@ -303,6 +304,22 @@ describe("property: untrusted text", () => {
         const once = normalizeUntrustedText(text);
         expect(/\p{Cf}/u.test(once)).toBe(false);
         expect(normalizeUntrustedText(once)).toBe(once);
+      }),
+      RUNS,
+    );
+  });
+
+  it("cleanUntrustedText is idempotent on entity-free text, keeps letters and strips format characters", () => {
+    fc.assert(
+      fc.property(unicode, (text) => {
+        const clean = cleanUntrustedText(text);
+        expect(/\p{Cf}/u.test(clean)).toBe(false);
+        if (!clean.includes("&")) expect(cleanUntrustedText(clean)).toBe(clean);
+        // Only NFKC, whitespace and invisible characters change: no homoglyph folding.
+        // Hangul fillers are letters that render as nothing; they are stripped as invisible.
+        const letters = (s: string) =>
+          [...s.normalize("NFKD")].filter((c) => /\p{L}/u.test(c) && !/[\u115F\u1160\u3164\uFFA0]/.test(c)).join("");
+        if (!text.includes("&")) expect(letters(clean)).toBe(letters(text));
       }),
       RUNS,
     );

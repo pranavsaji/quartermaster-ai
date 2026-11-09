@@ -663,6 +663,7 @@ function decodePercentEscapes(text: string): string {
  * The text as a human reader sees it: HTML entities decoded once, Unicode NFKC, invisible and
  * format characters removed, whitespace collapsed. Letters are otherwise left alone — no
  * homoglyph folding or letter-spacing collapse — so "A B C Foods — Москва" stays as written.
+ * This is what `fenceUntrusted` shows the model.
  */
 export function cleanUntrustedText(text: string): string {
   return decodeHtmlEntities(String(text ?? ""))
@@ -917,14 +918,16 @@ export function mergeVerdicts(
 
 /**
  * Wraps untrusted text for inclusion in a model prompt. The content is delimited, labelled as
- * data and stripped of anything that could close the delimiter. Invisible and format
- * characters (zero-width, bidi controls, tag characters, variation selectors) are removed by
- * the normalisation, so nothing the model sees is hidden from a human reviewer.
+ * data and stripped of anything that could close the delimiter. It is the text a human reader
+ * sees (`cleanUntrustedText`: entities decoded, NFKC, invisible and format characters such as
+ * zero-width, bidi controls, tag characters and variation selectors removed), so nothing the
+ * model sees is hidden from a human reviewer — and legitimate text is not rewritten: homoglyph
+ * folding and letter-spacing collapse are for matching only.
  */
 export function fenceUntrusted(label: string, text: string, maxLength = 1500): string {
   // Angle brackets are escaped so the content cannot open or close any tag, and the boundary
   // carries a random nonce the content cannot predict.
-  const clean = [...normalizeUntrustedText(text)]
+  const clean = [...cleanUntrustedText(text)]
     .slice(0, maxLength)
     .join("")
     .replace(INVISIBLE, "")
