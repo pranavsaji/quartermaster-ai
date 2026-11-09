@@ -90,7 +90,14 @@ export function idempotent(ctx: AppContext, route: string, handler: (req: Reques
       try {
         result = await handler(req);
       } catch (err) {
-        await ctx.db.delete(idempotencyKeys).where(owned);
+        // Free the key so the client can retry; a cleanup failure must not hide the real error
+        // (the stale lease is taken over after STALE_MS anyway).
+        await ctx.db
+          .delete(idempotencyKeys)
+          .where(owned)
+          .catch((cleanup: unknown) =>
+            ctx.log.error({ err: cleanup, route, key }, "could not release idempotency key after a failed request"),
+          );
         throw err;
       }
       const stored = await ctx.db
