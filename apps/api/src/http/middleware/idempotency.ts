@@ -78,10 +78,17 @@ export function idempotent(ctx: AppContext, route: string, handler: (req: Reques
         await ctx.db.delete(idempotencyKeys).where(owned);
         throw err;
       }
-      await ctx.db
+      const stored = await ctx.db
         .update(idempotencyKeys)
         .set({ status: "COMPLETED", responseStatus: result.status, responseBody: result.body as never })
-        .where(owned);
+        .where(owned)
+        .returning({ id: idempotencyKeys.id });
+      if (stored.length === 0) {
+        // Another execution took the key over as stale while this one ran, so both may have
+        // performed the operation and this response is not replayable. The response still goes
+        // out (the work is done), but this needs investigation.
+        ctx.log.error({ idempotency_key: key, route, status: result.status }, "idempotency lease lost before completion; response not stored");
+      }
       res.status(result.status).json(result.body);
     } catch (err) {
       next(err);
