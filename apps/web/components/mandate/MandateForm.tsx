@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardFooter, CardHeader } from "@/components/ui/Card";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Checkbox, Field, Input, MoneyInput, Select } from "@/components/ui/Field";
+import { ErrorSummary, useErrorFocus } from "@/components/ui/FormErrors";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import { api } from "@/lib/api";
 import { ApiRequestError } from "@/lib/http";
@@ -170,6 +171,7 @@ export function MandateForm({
 }) {
   const [form, setForm] = useState<FormState>(() => fromMandate(mandate));
   const [errors, setErrors] = useState<Errors>({});
+  const { containerRef, focusFirstError, attempt } = useErrorFocus<HTMLFormElement>();
   const cur = mandate.currency;
 
   const save = useAction(async (body: SpendMandateInput) => {
@@ -191,6 +193,7 @@ export function MandateForm({
     const result = validateMandateForm(form, mandate);
     setErrors(result.errors ?? {});
     if (result.body) void save.run(result.body);
+    else focusFirstError();
   }
 
   function reset() {
@@ -203,7 +206,7 @@ export function MandateForm({
 
   return (
     <Card aria-labelledby="mandate-form-title">
-      <form onSubmit={submit} noValidate>
+      <form ref={containerRef} onSubmit={submit} noValidate>
         <CardHeader
           id="mandate-form-title"
           title="Spend mandate"
@@ -380,6 +383,7 @@ export function MandateForm({
             </Section>
           </fieldset>
 
+          <ErrorSummary key={attempt} messages={Object.values(errors)} className="mb-3" />
           {conflict ? (
             <ErrorNotice error={save.error} title="The mandate changed since you opened it" />
           ) : (

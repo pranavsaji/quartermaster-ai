@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardFooter, CardHeader } from "@/components/ui/Card";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Field, Input, MoneyInput, Select, Textarea } from "@/components/ui/Field";
+import { ErrorSummary, useErrorFocus } from "@/components/ui/FormErrors";
 import { Notice } from "@/components/ui/Notice";
 import { api } from "@/lib/api";
 import { inputToMinor, minorToInput, money, todayIso } from "@/lib/format";
@@ -66,6 +67,7 @@ export function InvoiceForm({
   const [notes, setNotes] = useState("");
   const [totalOverride, setTotalOverride] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
+  const { containerRef, focusFirstError, attempt } = useErrorFocus<HTMLFormElement>();
   const [result, setResult] = useState<InvoiceDto | null>(null);
   const [lastSubmitted, setLastSubmitted] = useState<AnalyzeInvoiceRequest | null>(null);
   const [lastWasDuplicateSim, setLastWasDuplicateSim] = useState(false);
@@ -150,6 +152,7 @@ export function InvoiceForm({
                 ? "Enter a valid invoice total."
                 : (first?.message ?? "Check the form."),
       );
+      focusFirstError();
       return;
     }
     setFormError(null);
@@ -166,7 +169,7 @@ export function InvoiceForm({
 
   return (
     <Card aria-labelledby="invoice-form-title">
-      <form onSubmit={submit} noValidate>
+      <form ref={containerRef} onSubmit={submit} noValidate>
         <CardHeader
           id="invoice-form-title"
           title="Analyze a supplier invoice"
@@ -340,11 +343,7 @@ export function InvoiceForm({
             </Field>
           </div>
 
-          {formError ? (
-            <p className="text-[12.5px] font-medium text-block" role="alert">
-              {formError}
-            </p>
-          ) : null}
+          <ErrorSummary key={attempt} messages={[formError]} />
           <ErrorNotice error={analyze.error} title="Invoice analysis failed" />
           {result ? (
             <div className="space-y-2">

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardFooter, CardHeader } from "@/components/ui/Card";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Checkbox, Field, Input, MoneyInput, Textarea } from "@/components/ui/Field";
+import { ErrorSummary, useErrorFocus } from "@/components/ui/FormErrors";
 import { api } from "@/lib/api";
 import { inputToMinor, todayIso } from "@/lib/format";
 import { useAction } from "@/lib/hooks";
@@ -34,6 +35,7 @@ export function RequestComposer({
   const [multiplier, setMultiplier] = useState(1.25);
   const [allowAlternatives, setAllowAlternatives] = useState(true);
   const [errors, setErrors] = useState<{ instruction?: string; budget?: string; requiredBy?: string }>({});
+  const { containerRef, focusFirstError, attempt } = useErrorFocus<HTMLFormElement>();
 
   const create = useAction(async (body: CreateProcurementRequest) => {
     const created = await api.procurement.create(body);
@@ -64,13 +66,16 @@ export function RequestComposer({
       }
     }
     setErrors(next);
-    if (Object.keys(next).length > 0 || !parsed.success) return;
+    if (Object.keys(next).length > 0 || !parsed.success) {
+      focusFirstError();
+      return;
+    }
     void create.run(parsed.data);
   }
 
   return (
     <Card aria-labelledby="composer-title">
-      <form onSubmit={submit} noValidate>
+      <form ref={containerRef} onSubmit={submit} noValidate>
         <CardHeader
           id="composer-title"
           title="New procurement request"
@@ -138,6 +143,7 @@ export function RequestComposer({
             onChange={(e) => setAllowAlternatives(e.target.checked)}
           />
 
+          <ErrorSummary key={attempt} messages={[errors.instruction, errors.budget, errors.requiredBy]} />
           <ErrorNotice error={create.error} />
         </CardBody>
         <CardFooter className="justify-end">

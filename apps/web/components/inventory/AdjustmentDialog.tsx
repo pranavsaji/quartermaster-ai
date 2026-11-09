@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
+import { ErrorSummary, useErrorFocus } from "@/components/ui/FormErrors";
 import { api } from "@/lib/api";
 import { num } from "@/lib/format";
 import { useAction } from "@/lib/hooks";
@@ -33,6 +34,7 @@ export function AdjustmentDialog({
   const [note, setNote] = useState("");
   const [fieldError, setFieldError] = useState<string | null>(null);
   const formId = useId();
+  const { containerRef, focusFirstError, attempt } = useErrorFocus<HTMLFormElement>();
 
   const save = useAction(async (itemId: string, body: InventoryAdjustmentRequest) => {
     const res = await api.inventory.adjust(itemId, body);
@@ -48,6 +50,7 @@ export function AdjustmentDialog({
     e.preventDefault();
     if (parsedDelta === null) {
       setFieldError(delta.trim() === "" ? "Enter how many units to add or remove." : "Use digits only, like 24 or -12.");
+      focusFirstError();
       return;
     }
     const parsed = InventoryAdjustmentRequest.safeParse({
@@ -57,12 +60,14 @@ export function AdjustmentDialog({
     });
     if (!parsed.success) {
       setFieldError("Enter a whole, non-zero number (negative to remove stock).");
+      focusFirstError();
       return;
     }
     if (sign !== 0 && Math.sign(parsedDelta) !== sign) {
       setFieldError(
         sign < 0 ? "Waste and consumption remove stock: use a negative number." : "A receipt adds stock: use a positive number.",
       );
+      focusFirstError();
       return;
     }
     setFieldError(null);
@@ -86,7 +91,7 @@ export function AdjustmentDialog({
         </>
       }
     >
-      <form id={formId} onSubmit={submit} className="space-y-4" noValidate>
+      <form ref={containerRef} id={formId} onSubmit={submit} className="space-y-4" noValidate>
         <Field label="Reason" required>
           {(control) => (
             <Select {...control} value={reason} onChange={(e) => setReason(e.target.value as InventoryAdjustmentRequest["reason"])}>
@@ -120,6 +125,7 @@ export function AdjustmentDialog({
             <Textarea {...control} value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} className="min-h-16" />
           )}
         </Field>
+        <ErrorSummary key={attempt} messages={[fieldError]} />
         <ErrorNotice error={save.error} />
       </form>
     </Dialog>

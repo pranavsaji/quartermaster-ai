@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Field, Input, Textarea } from "@/components/ui/Field";
+import { ErrorSummary, useErrorFocus } from "@/components/ui/FormErrors";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import { api } from "@/lib/api";
 import { date, num, todayIso } from "@/lib/format";
@@ -35,6 +36,7 @@ export function ReceiveDialog({
   const [qty, setQty] = useState<Record<string, string>>(() => Object.fromEntries(products.map((i) => [i.id, String(i.quantity)])));
   const [note, setNote] = useState("");
   const [lineErrors, setLineErrors] = useState<Record<string, string>>({});
+  const { containerRef, focusFirstError, attempt } = useErrorFocus();
 
   const receive = useAction(async (deliveryId: string, body: ReceiveDeliveryRequest) => {
     const res = await api.deliveries.receive(deliveryId, body);
@@ -50,10 +52,14 @@ export function ReceiveDialog({
       return { purchase_order_item_id: p.id, quantity_received: checked.ok ? checked.value : -1 };
     });
     setLineErrors(errors);
-    if (Object.keys(errors).length > 0) return;
+    if (Object.keys(errors).length > 0) {
+      focusFirstError();
+      return;
+    }
     const parsed = ReceiveDeliveryRequest.safeParse({ lines, note: note.trim() || undefined });
     if (!parsed.success) {
       setLineErrors({ form: "Some lines couldn't be read. Check each quantity and try again." });
+      focusFirstError();
       return;
     }
     void receive.run(target.delivery.id, parsed.data);
@@ -77,63 +83,71 @@ export function ReceiveDialog({
         </>
       }
     >
-      <div className="mb-3">
-        <SourceLabel source="SYNTHETIC">Synthetic fulfillment data</SourceLabel>
+      <div ref={containerRef}>
+        <div className="mb-3">
+          <SourceLabel source="SYNTHETIC">Synthetic fulfillment data</SourceLabel>
+        </div>
+        <table className="w-full text-left text-[13px]">
+          <thead className="text-[12px] text-ink-3">
+            <tr>
+              <th scope="col" className="py-2 font-medium">
+                Line
+              </th>
+              <th scope="col" className="py-2 text-right font-medium">
+                Ordered
+              </th>
+              <th scope="col" className="w-40 py-2 pl-3 text-right font-medium">
+                Received
+              </th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-line">
+            {products.map((line) => {
+              const received = parseNumberInput(qty[line.id] ?? "");
+              const short = received !== null && received < line.quantity;
+              const error = lineErrors[line.id];
+              const errorId = `${idBase}-${line.id}-error`;
+              return (
+                <tr key={line.id}>
+                  <td className="py-2 pr-2">
+                    <p className="text-ink">{line.description}</p>
+                    {line.sku ? <p className="font-mono text-[11.5px] text-ink-4">{line.sku}</p> : null}
+                  </td>
+                  <td className="tnum py-2 text-right text-ink-2">{num(line.quantity)}</td>
+                  <td className="py-2 pl-3">
+                    <Input
+                      aria-label={`Quantity received for ${line.description}`}
+                      aria-invalid={error ? true : undefined}
+                      aria-describedby={error ? errorId : undefined}
+                      aria-required
+                      inputMode="numeric"
+                      value={qty[line.id] ?? ""}
+                      onChange={(e) => setQty((q) => ({ ...q, [line.id]: e.target.value }))}
+                      className={short ? "tnum border-review text-right" : "tnum text-right"}
+                    />
+                    {error ? (
+                      <p id={errorId} className="mt-1 text-right text-[12px] font-medium text-block">
+                        {error}
+                      </p>
+                    ) : null}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        <Field label="Note" className="mt-4">
+          {(control) => (
+            <Textarea {...control} value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} className="min-h-14" />
+          )}
+        </Field>
+        <ErrorSummary
+          key={attempt}
+          messages={[...products.map((p) => (lineErrors[p.id] ? `${p.description}: ${lineErrors[p.id]}` : null)), lineErrors.form]}
+          className="mt-3"
+        />
+        <ErrorNotice error={receive.error} className="mt-3" />
       </div>
-      <table className="w-full text-left text-[13px]">
-        <thead className="text-[12px] text-ink-3">
-          <tr>
-            <th scope="col" className="py-2 font-medium">
-              Line
-            </th>
-            <th scope="col" className="py-2 text-right font-medium">
-              Ordered
-            </th>
-            <th scope="col" className="w-40 py-2 pl-3 text-right font-medium">
-              Received
-            </th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-line">
-          {products.map((line) => {
-            const received = parseNumberInput(qty[line.id] ?? "");
-            const short = received !== null && received < line.quantity;
-            const error = lineErrors[line.id];
-            const errorId = `${idBase}-${line.id}-error`;
-            return (
-              <tr key={line.id}>
-                <td className="py-2 pr-2">
-                  <p className="text-ink">{line.description}</p>
-                  {line.sku ? <p className="font-mono text-[11.5px] text-ink-4">{line.sku}</p> : null}
-                </td>
-                <td className="tnum py-2 text-right text-ink-2">{num(line.quantity)}</td>
-                <td className="py-2 pl-3">
-                  <Input
-                    aria-label={`Quantity received for ${line.description}`}
-                    aria-invalid={error ? true : undefined}
-                    aria-describedby={error ? errorId : undefined}
-                    aria-required
-                    inputMode="numeric"
-                    value={qty[line.id] ?? ""}
-                    onChange={(e) => setQty((q) => ({ ...q, [line.id]: e.target.value }))}
-                    className={short ? "tnum border-review text-right" : "tnum text-right"}
-                  />
-                  {error ? (
-                    <p id={errorId} className="mt-1 text-right text-[12px] font-medium text-block">
-                      {error}
-                    </p>
-                  ) : null}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-      {lineErrors.form ? <p className="mt-2 text-[12px] font-medium text-block">{lineErrors.form}</p> : null}
-      <Field label="Note" className="mt-4">
-        {(control) => <Textarea {...control} value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} className="min-h-14" />}
-      </Field>
-      <ErrorNotice error={receive.error} className="mt-3" />
     </Dialog>
   );
 }
@@ -155,6 +169,7 @@ export function DelayDialog({
   const [newDate, setNewDate] = useState("");
   const [reason, setReason] = useState("");
   const [errors, setErrors] = useState<{ date?: string; reason?: string }>({});
+  const { containerRef, focusFirstError, attempt } = useErrorFocus();
 
   const delay = useAction(async (deliveryId: string, body: DelayDeliveryRequest) => {
     const res = await api.deliveries.delay(deliveryId, body);
@@ -170,7 +185,10 @@ export function DelayDialog({
     const parsed = DelayDeliveryRequest.safeParse({ new_expected_date: newDate, reason: reason.trim() });
     if (!parsed.success && !next.date && !next.reason) next.date = "Use a valid date.";
     setErrors(next);
-    if (!parsed.success || Object.keys(next).length > 0) return;
+    if (!parsed.success || Object.keys(next).length > 0) {
+      focusFirstError();
+      return;
+    }
     void delay.run(target.delivery.id, parsed.data);
   }
 
@@ -192,7 +210,7 @@ export function DelayDialog({
         </>
       }
     >
-      <div className="space-y-4">
+      <div ref={containerRef} className="space-y-4">
         <SourceLabel source="SYNTHETIC">Synthetic fulfillment data</SourceLabel>
         <Field label="New expected date" required error={errors.date}>
           {(control) => (
@@ -204,6 +222,7 @@ export function DelayDialog({
             <Textarea {...control} value={reason} onChange={(e) => setReason(e.target.value)} maxLength={255} className="min-h-16" />
           )}
         </Field>
+        <ErrorSummary key={attempt} messages={[errors.date, errors.reason]} />
         <ErrorNotice error={delay.error} />
       </div>
     </Dialog>

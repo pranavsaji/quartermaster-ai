@@ -6,6 +6,7 @@ import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/Button";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Field, Input } from "@/components/ui/Field";
+import { ErrorSummary, useErrorFocus } from "@/components/ui/FormErrors";
 import { api } from "@/lib/api";
 import { useAction } from "@/lib/hooks";
 import { safeNext } from "@/lib/redirect";
@@ -28,6 +29,7 @@ export function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
+  const { containerRef, focusFirstError, attempt } = useErrorFocus<HTMLFormElement>();
 
   const login = useAction(async (body: LoginRequest) => {
     await api.auth.login(body);
@@ -45,6 +47,7 @@ export function LoginForm() {
         if (key === "password") errs.password = "Password must be at least 8 characters.";
       }
       setFieldErrors(errs);
+      focusFirstError();
       return;
     }
     setFieldErrors({});
@@ -52,7 +55,7 @@ export function LoginForm() {
   }
 
   return (
-    <form onSubmit={onSubmit} noValidate className="space-y-4">
+    <form ref={containerRef} onSubmit={onSubmit} noValidate className="space-y-4">
       <Field label="Email" error={fieldErrors.email} required>
         {(control) => (
           <Input
@@ -77,6 +80,7 @@ export function LoginForm() {
         )}
       </Field>
 
+      <ErrorSummary key={attempt} messages={[fieldErrors.email, fieldErrors.password]} />
       {login.error ? <ErrorNotice error={login.error} title="Sign-in failed" /> : null}
 
       <Button type="submit" variant="primary" size="lg" className="w-full" loading={login.pending}>
