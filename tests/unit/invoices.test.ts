@@ -57,6 +57,15 @@ describe("invoice reconciliation", () => {
     expect(r.status).toBe("DUPLICATE");
   });
 
+  it("normalises invoice numbers idempotently", () => {
+    for (const raw of ["INVINVOICE7", "INVINV5", "inv-inv-0042", "INVOICEINV12", "INV", "INVINV", "00INV5", "Inv #0007"]) {
+      const once = normalizeInvoiceNumber(raw);
+      expect([raw, normalizeInvoiceNumber(once)]).toEqual([raw, once]);
+    }
+    expect(normalizeInvoiceNumber("INVINVOICE7")).toBe("7");
+    expect(normalizeInvoiceNumber("INV")).toBe("INV");
+  });
+
   it("detects a resubmission under a new number by content", () => {
     const r = analyzeInvoice(invoice({ invoice_number: "INV-2002" }), po, [existingFrom(invoice())]);
     expect(r.status).toBe("DUPLICATE");

@@ -60,8 +60,14 @@ export interface InvoiceAnalysis {
  * compare equal. NFKC folds full-width and compatibility characters before stripping.
  */
 export function normalizeInvoiceNumber(n: string): string {
-  const core = n.normalize("NFKC").toUpperCase().replace(/[^A-Z0-9]/g, "");
-  return core.replace(/^(INVOICE|INV)(?=[A-Z0-9])/, "").replace(/^0+(?=\d)/, "");
+  let core = String(n ?? "").normalize("NFKC").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  // Strip to a fixed point so the function is idempotent: "INVINVOICE7" → "INVOICE7" → "7"
+  // in one call, never "7" only on a second call. Each pass shortens the string or stops.
+  for (;;) {
+    const next = core.replace(/^(INVOICE|INV)(?=[A-Z0-9])/, "").replace(/^0+(?=\d)/, "");
+    if (next === core) return core;
+    core = next;
+  }
 }
 
 type HashableInvoice = Pick<InvoiceInput, "supplier_id" | "currency" | "lines" | "total_minor" | "purchase_order_id">;
