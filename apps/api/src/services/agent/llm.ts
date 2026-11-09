@@ -26,9 +26,10 @@ Rules:
 export async function interpretInstruction(
   openai: OpenAIClient,
   run: AgentRun,
-  args: { instruction: string; inventory: InventoryRef[]; today: string; now: Date },
+  args: { instruction: string; inventory: InventoryRef[]; today: string; now: Date; timeZone: string },
 ): Promise<{ intent: InterpretedIntent; mode: "LLM" | "DETERMINISTIC_FALLBACK"; note?: string }> {
-  const fallback = () => interpretDeterministically(args.instruction, args.inventory, args.now);
+  // Weekdays ("by Friday") resolve in the restaurant's time zone, not UTC.
+  const fallback = () => interpretDeterministically(args.instruction, args.inventory, args.now, { timeZone: args.timeZone });
   if (!openai.enabled) return { intent: fallback(), mode: "DETERMINISTIC_FALLBACK", note: "No language model configured." };
   if (!run.canSpendTokens(1500)) return { intent: fallback(), mode: "DETERMINISTIC_FALLBACK", note: "Token budget exhausted." };
   try {

@@ -46,7 +46,7 @@ describe("agent run deadline", () => {
     const openai = new OpenAIClient({ apiKey: "k", model: "m", fetch: hangingFetch, timeoutMs: 20_000 });
     const run = await start(150);
     const started = Date.now();
-    const r = await interpretInstruction(openai, run, { instruction: "Restock gloves", inventory: [], today: "2026-01-01", now: new Date() });
+    const r = await interpretInstruction(openai, run, { instruction: "Restock gloves", inventory: [], today: "2026-01-01", now: new Date(), timeZone: "UTC" });
     expect(Date.now() - started).toBeLessThan(5_000);
     expect(r.mode).toBe("DETERMINISTIC_FALLBACK");
     expect(aborted).toBe(1);

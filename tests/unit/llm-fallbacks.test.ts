@@ -35,7 +35,7 @@ describe("model fallbacks are logged, without prompt content", () => {
 
   it("logs when interpretation output fails sanitisation, and never logs the instruction", async () => {
     const { openai, fallbacks, logs } = model(() => completion("not an object"));
-    const r = await interpretInstruction(openai, stubRun(), { instruction: SECRET, inventory: [], today: "2026-01-01", now: new Date() });
+    const r = await interpretInstruction(openai, stubRun(), { instruction: SECRET, inventory: [], today: "2026-01-01", now: new Date(), timeZone: "UTC" });
     expect(r.mode).toBe("DETERMINISTIC_FALLBACK");
     expect(fallbacks()).toEqual([{ name: "procurement_intent", reason: "output_failed_sanitisation" }]);
     expect(JSON.stringify(logs)).not.toContain("4242");
@@ -44,7 +44,7 @@ describe("model fallbacks are logged, without prompt content", () => {
   it("logs a network failure during interpretation", async () => {
     const logs: { event: string; data: Record<string, unknown> }[] = [];
     const openai = new OpenAIClient({ apiKey: "k", model: "m", fetch: async () => { throw new TypeError("fetch failed"); }, log: (event, data) => logs.push({ event, data }) });
-    await interpretInstruction(openai, stubRun(), { instruction: SECRET, inventory: [], today: "2026-01-01", now: new Date() });
+    await interpretInstruction(openai, stubRun(), { instruction: SECRET, inventory: [], today: "2026-01-01", now: new Date(), timeZone: "UTC" });
     expect(logs.find((l) => l.event === "openai.fallback")?.data).toEqual({ name: "procurement_intent", reason: "network" });
     expect(JSON.stringify(logs)).not.toContain("4242");
   });

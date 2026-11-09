@@ -47,7 +47,7 @@ export async function createRequest(ctx: AppContext, actor: Actor, input: Create
   const interpreted = await run.tool(
     "intent.interpret",
     { length: input.instruction.length },
-    () => interpretInstruction(ctx.openai, run, { instruction: input.instruction, inventory: refs, today: localDate(now, org!.timezone).date, now }),
+    () => interpretInstruction(ctx.openai, run, { instruction: input.instruction, inventory: refs, today: localDate(now, org!.timezone).date, now, timeZone: org!.timezone }),
     (r) => `${r.mode === "LLM" ? "Model" : "Deterministic"} interpretation: ${r.intent.inventory_item_ids.length} item(s), ${r.intent.demand_multiplier}× demand${r.note ? ` (${r.note})` : ""}.`,
   );
   run.aiMode = interpreted.mode;
