@@ -112,7 +112,9 @@ export async function getRequestDto(db: DbOrTx, organizationId: string, id: stri
     tool: t.tool,
     status: t.status,
     duration_ms: t.durationMs,
-    summary: t.error ? `${t.summary} — ${t.error}` : t.summary,
+    // Authored text only. `error` is an internal diagnostic (possibly provider text) and is
+    // deliberately never returned: every member of the organization, viewers included, sees steps.
+    summary: t.summary,
     started_at: t.startedAt.toISOString(),
   }));
 

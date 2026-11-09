@@ -48,6 +48,7 @@ export async function createRequest(ctx: AppContext, actor: Actor, input: Create
     organizationId: actor.organizationId,
     requestId: req!.id,
     kind: "INTERPRET",
+    log: ctx.log,
     limits: {
       maxToolCalls: 4,
       maxResearchCalls: 0,

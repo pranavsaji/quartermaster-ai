@@ -77,6 +77,7 @@ export async function researchRequest(ctx: AppContext, user: { id: string; organ
       organizationId: orgId,
       requestId,
       kind: "RESEARCH",
+      log: ctx.log,
       limits: {
         maxToolCalls: 60,
         maxResearchCalls: ctx.config.agent.maxResearchCalls,
