@@ -121,6 +121,27 @@ describe("invoice reconciliation", () => {
     });
   });
 
+  it("hashes content independently of line order, including lines that tie on SKU and total", () => {
+    // Same SKU and line total, different quantity/unit price: the old "sku:total" sort key tied.
+    const a = { sku: "A", description: "a", quantity: 2, unit_price_minor: 500, line_total_minor: 1_000 };
+    const b = { sku: "A", description: "a", quantity: 1, unit_price_minor: 1_000, line_total_minor: 1_000 };
+    const c = { sku: null, description: "tax", quantity: 1, unit_price_minor: 80, line_total_minor: 80 };
+    const base = invoice({ lines: [a, b, c], total_minor: 2_080 });
+    const h = invoiceContentHash(base);
+    for (const order of [[b, a, c], [c, b, a], [a, c, b], [c, a, b], [b, c, a]]) {
+      expect(invoiceContentHash({ ...base, lines: order })).toBe(h);
+    }
+    expect(invoiceContentHash({ ...base, lines: [a, a, c] })).not.toBe(h);
+  });
+
+  it("orders lines by code unit, not locale collation", () => {
+    const lower = { sku: "a", description: "x", quantity: 1, unit_price_minor: 1, line_total_minor: 1 };
+    const upper = { sku: "B", description: "x", quantity: 1, unit_price_minor: 1, line_total_minor: 1 };
+    const accented = { sku: "é", description: "x", quantity: 1, unit_price_minor: 1, line_total_minor: 1 };
+    const hashes = [[lower, upper, accented], [accented, upper, lower], [upper, accented, lower]].map((lines) => invoiceContentHash(invoice({ lines, total_minor: 3 })));
+    expect(new Set(hashes).size).toBe(1);
+  });
+
   it("flags arithmetic errors", () => {
     expect(analyzeInvoice(invoice({ total_minor: 17_000 }), po, []).checks.find((c) => c.check === "ARITHMETIC")?.passed).toBe(false);
   });

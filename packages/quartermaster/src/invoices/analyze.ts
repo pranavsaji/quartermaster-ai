@@ -1,5 +1,5 @@
 import type { InvoiceStatus, Severity } from "@qm/contracts";
-import { digest, detectPromptInjection, type InjectionVerdict } from "@qm/trustrail";
+import { canonicalize, digest, detectPromptInjection, type InjectionVerdict } from "@qm/trustrail";
 
 export interface InvoiceLine {
   sku?: string | null;
@@ -64,16 +64,25 @@ export function normalizeInvoiceNumber(n: string): string {
   return core.replace(/^(INVOICE|INV)(?=[A-Z0-9])/, "").replace(/^0+(?=\d)/, "");
 }
 
-/** Content fingerprint independent of the invoice number, to catch re-numbered resubmissions. */
+/**
+ * Content fingerprint independent of the invoice number, to catch re-numbered resubmissions.
+ *
+ * Lines are ordered by their full canonical encoding compared by UTF-16 code unit, so the hash
+ * is independent of line order (no sort-key ties) and of the runtime's locale/ICU data, which
+ * `localeCompare` is not.
+ */
 export function invoiceContentHash(inv: Pick<InvoiceInput, "supplier_id" | "currency" | "lines" | "total_minor" | "purchase_order_id">): string {
+  const lines = inv.lines
+    .map((l) => ({ sku: l.sku ?? null, quantity: l.quantity, unit_price_minor: l.unit_price_minor, line_total_minor: l.line_total_minor }))
+    .map((line) => ({ line, key: canonicalize(line) }))
+    .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
+    .map((x) => x.line);
   return digest({
     supplier_id: inv.supplier_id,
     purchase_order_id: inv.purchase_order_id,
     currency: inv.currency,
     total_minor: inv.total_minor,
-    lines: inv.lines
-      .map((l) => ({ sku: l.sku ?? null, quantity: l.quantity, unit_price_minor: l.unit_price_minor, line_total_minor: l.line_total_minor }))
-      .sort((a, b) => `${a.sku}:${a.line_total_minor}`.localeCompare(`${b.sku}:${b.line_total_minor}`)),
+    lines,
   });
 }
 
