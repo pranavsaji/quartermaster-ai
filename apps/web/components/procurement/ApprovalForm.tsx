@@ -8,6 +8,7 @@ import { Checkbox, Field, Textarea } from "@/components/ui/Field";
 import { api } from "@/lib/api";
 import { money } from "@/lib/format";
 import { useAction } from "@/lib/hooks";
+import { isConflictError } from "@/lib/http";
 
 /**
  * Owner approval for one proposal. Every REVIEW-severity violation must be
@@ -23,12 +24,18 @@ export function ApprovalForm({
   po,
   onApproved,
   onReject,
+  onConflict,
 }: {
   requestId: string;
   po: PurchaseOrderDto;
   onApproved: (result: ApprovalResponse) => void;
   /** Opens the reject dialog, which the card owns so it survives this form unmounting. */
   onReject: () => void;
+  /**
+   * A 409 (CART_CHANGED, MANDATE_CHANGED, PROPOSAL_NOT_APPROVABLE…): what the owner saw is out of
+   * date. The card shows why and reloads the request, which usually unmounts or re-keys this form.
+   */
+  onConflict: (error: unknown) => void;
 }) {
   const reviewCodes = useMemo(
     () => Array.from(new Set((po.policy_decision?.violations ?? []).filter((v) => v.severity === "REVIEW").map((v) => v.code))),
@@ -43,12 +50,19 @@ export function ApprovalForm({
   const messages = new Map((po.policy_decision?.violations ?? []).map((v) => [v.code, v.message]));
 
   const approve = useAction(async () => {
-    const result = await api.procurement.approve(requestId, {
-      purchase_order_id: po.id,
-      cart_hash: po.cart_hash,
-      acknowledged_review_codes: reviewCodes.filter((c) => acked.has(c)),
-      note: note.trim() || undefined,
-    });
+    let result: ApprovalResponse;
+    try {
+      result = await api.procurement.approve(requestId, {
+        purchase_order_id: po.id,
+        cart_hash: po.cart_hash,
+        acknowledged_review_codes: reviewCodes.filter((c) => acked.has(c)),
+        note: note.trim() || undefined,
+      });
+    } catch (err) {
+      if (!isConflictError(err)) throw err;
+      onConflict(err);
+      return;
+    }
     onApproved(result);
   });
 

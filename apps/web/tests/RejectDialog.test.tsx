@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ProposalCard } from "@/components/procurement/ProposalCard";
 import { jsonResponse, mockFetch, purchaseOrder, renderWithSession } from "./helpers";
 
-/** A request page in miniature: `onRejected` reloads, and the reload shows the proposal as rejected. */
+/** A request page in miniature: `onReload` reloads, and the reload shows the proposal as rejected. */
 function Harness({ onReload }: { onReload: () => void }) {
   const [po, setPo] = useState<PurchaseOrderDto>(purchaseOrder());
   return (
@@ -13,7 +13,7 @@ function Harness({ onReload }: { onReload: () => void }) {
       requestId="req-1"
       po={po}
       onChange={setPo}
-      onRejected={() => {
+      onReload={() => {
         onReload();
         setPo((p) => ({ ...p, status: "REJECTED" }));
       }}

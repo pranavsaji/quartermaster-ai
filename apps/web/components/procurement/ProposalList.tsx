@@ -17,12 +17,13 @@ export function ProposalList({
   requestId,
   proposals,
   onChange,
-  onRejected,
+  onReload,
 }: {
   requestId: string;
   proposals: PurchaseOrderDto[];
   onChange: (po: PurchaseOrderDto) => void;
-  onRejected: () => void;
+  /** Reload the request: the proposals changed on the server (a rejection, or a 409 conflict). */
+  onReload: () => void;
 }) {
   const { can } = useSession();
   const [rejectAllOpen, setRejectAllOpen] = useState(false);
@@ -59,7 +60,7 @@ export function ProposalList({
       </div>
       <div className="grid grid-cols-1 items-start gap-5 2xl:grid-cols-2">
         {ordered.map((po) => (
-          <ProposalCard key={po.id} requestId={requestId} po={po} onChange={onChange} onRejected={onRejected} />
+          <ProposalCard key={po.id} requestId={requestId} po={po} onChange={onChange} onReload={onReload} />
         ))}
       </div>
       {rejectAllOpen ? (
@@ -69,7 +70,7 @@ export function ProposalList({
           description="Every proposal still awaiting approval on this request is rejected. Approved or paid carts are not affected. The reason is recorded in the audit log."
           confirmLabel={`Reject ${open} proposals`}
           onClose={() => setRejectAllOpen(false)}
-          onRejected={onRejected}
+          onRejected={onReload}
         />
       ) : null}
     </div>

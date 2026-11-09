@@ -17,6 +17,7 @@ import { DecisionPanel } from "@/components/trustrail/DecisionPanel";
 import { StatusBadge } from "@/components/ui/Badge";
 import { cn } from "@/components/ui/cn";
 import { CopyValue } from "@/components/ui/CopyValue";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Notice } from "@/components/ui/Notice";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import { Icons } from "@/components/shell/icons";
@@ -28,7 +29,6 @@ import { ProposalLines } from "./ProposalLines";
 import { RejectDialog } from "./RejectDialog";
 
 const SETTLED_OR_SETTLING = new Set<PaymentDto["status"]>([...SETTLED_PAYMENT_STATUSES, "CAPTURE_PENDING"]);
-
 export function isEvidenceOnly(po: PurchaseOrderDto): boolean {
   return po.status === "BLOCKED" || po.status === "SUPERSEDED";
 }
@@ -41,12 +41,13 @@ export function ProposalCard({
   requestId,
   po,
   onChange,
-  onRejected,
+  onReload,
 }: {
   requestId: string;
   po: PurchaseOrderDto;
   onChange: (po: PurchaseOrderDto) => void;
-  onRejected: () => void;
+  /** Reload the request: the proposals changed on the server (a rejection, or a 409 conflict). */
+  onReload: () => void;
 }) {
   const { can } = useSession();
   const now = useNow(5000);
@@ -57,6 +58,7 @@ export function ProposalCard({
   const certUsable = cert !== null && cert.status === "ACTIVE" && countdown(cert.expires_at, now) !== null;
   const titleRef = useRef<HTMLHeadingElement>(null);
   const [rejectOpen, setRejectOpen] = useState(false);
+  const [conflict, setConflict] = useState<unknown>(null);
 
   // Approving or rejecting removes the approval form, and with it the focused button. Put focus
   // on this card's title instead of letting it fall back to the top of the page.
@@ -73,7 +75,14 @@ export function ProposalCard({
     !(po.payment && SETTLED_OR_SETTLING.has(po.payment.status));
 
   function handleApproved(result: ApprovalResponse) {
+    setConflict(null);
     onChange(result.purchase_order);
+  }
+
+  // Kept here, not in the form: the reload usually unmounts the form, and the owner still needs to know why.
+  function handleConflict(error: unknown) {
+    setConflict(error);
+    onReload();
   }
 
   function handlePayment(payment: PaymentDto) {
@@ -143,8 +152,21 @@ export function ProposalCard({
           <Notice tone="neutral">TrustRail hasn&apos;t evaluated this proposal yet.</Notice>
         )}
 
+        <ErrorNotice
+          error={conflict}
+          title="This proposal changed before it could be approved"
+          onRetry={onReload}
+          retryLabel="Reload request"
+        />
         {approvable && can("approve") ? (
-          <ApprovalForm key={decision?.id} requestId={requestId} po={po} onApproved={handleApproved} onReject={() => setRejectOpen(true)} />
+          <ApprovalForm
+            key={decision?.id}
+            requestId={requestId}
+            po={po}
+            onApproved={handleApproved}
+            onReject={() => setRejectOpen(true)}
+            onConflict={handleConflict}
+          />
         ) : null}
         {approvable && !can("approve") ? (
           <Notice tone="info" title="Awaiting owner approval">
@@ -186,7 +208,7 @@ export function ProposalCard({
           description={`Only this ${po.supplier_name} cart is rejected; other proposals on the request stay open. The reason is recorded in the audit log.`}
           confirmLabel="Reject proposal"
           onClose={() => setRejectOpen(false)}
-          onRejected={onRejected}
+          onRejected={onReload}
         />
       ) : null}
     </article>

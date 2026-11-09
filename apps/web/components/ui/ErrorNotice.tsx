@@ -12,11 +12,14 @@ import { Notice } from "./Notice";
 export function ErrorNotice({
   error,
   onRetry,
+  retryLabel = "Retry",
   title,
   className,
 }: {
   error: unknown;
   onRetry?: () => void;
+  /** The action's label, e.g. "Reload request" when the fix is to fetch fresh data rather than repeat. */
+  retryLabel?: string;
   title?: string;
   className?: string;
 }) {
@@ -34,7 +37,7 @@ export function ErrorNotice({
       action={
         onRetry && !apiError?.isForbidden ? (
           <Button size="sm" variant="secondary" onClick={onRetry}>
-            Retry
+            {retryLabel}
           </Button>
         ) : undefined
       }

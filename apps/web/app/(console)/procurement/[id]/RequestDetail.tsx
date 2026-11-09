@@ -25,6 +25,7 @@ import { SkeletonCard } from "@/components/ui/Skeleton";
 import { api } from "@/lib/api";
 import { dateTime, describeDemandMultiplier, num } from "@/lib/format";
 import { useAction, usePoller, useResource } from "@/lib/hooks";
+import { isConflictError } from "@/lib/http";
 import { REQUEST_STATUS_TONES } from "@/lib/labels";
 
 /** Guards against firing the long research call twice (e.g. React StrictMode remounts). */
@@ -38,7 +39,17 @@ export function RequestDetail({ id }: { id: string }) {
   const inventory = useResource((signal) => api.inventory.list({ signal }), []);
   const [researchStartedAt, setResearchStartedAt] = useState<number | null>(null);
   const setRequest = request.setData;
+  const reloadRequest = request.reload;
   const autoStarted = useRef(false);
+
+  // A 409 (REQUEST_NOT_RESEARCHABLE, RESEARCH_IN_PROGRESS, REQUEST_NOT_APPROVABLE…) means this page is
+  // out of date: reload it, which also starts the research poller if research is now running elsewhere.
+  const reloadOnConflict = useCallback(
+    (err: unknown) => {
+      if (isConflictError(err)) reloadRequest();
+    },
+    [reloadRequest],
+  );
 
   const research = useAction(async () => {
     if (researchInFlight.has(id)) return;
@@ -47,6 +58,9 @@ export function RequestDetail({ id }: { id: string }) {
     try {
       const result = await api.procurement.research(id);
       setRequest(result);
+    } catch (err) {
+      reloadOnConflict(err);
+      throw err;
     } finally {
       researchInFlight.delete(id);
       setResearchStartedAt(null);
@@ -54,8 +68,12 @@ export function RequestDetail({ id }: { id: string }) {
   });
 
   const evaluate = useAction(async () => {
-    const result = await api.procurement.evaluate(id);
-    setRequest(result);
+    try {
+      setRequest(await api.procurement.evaluate(id));
+    } catch (err) {
+      reloadOnConflict(err);
+      throw err;
+    }
   });
 
   const data = request.data;
@@ -177,11 +195,20 @@ export function RequestDetail({ id }: { id: string }) {
         ) : null}
 
         {researching ? <ResearchProgress startedAt={researchStartedAt ?? Date.parse(data.updated_at)} /> : null}
-        <ErrorNotice error={research.error} title="Research failed" onRetry={() => void research.run()} />
+        {isConflictError(research.error) ? (
+          <ErrorNotice error={research.error} title="Research didn't start" onRetry={reloadRequest} retryLabel="Reload request" />
+        ) : (
+          <ErrorNotice error={research.error} title="Research failed" onRetry={() => void research.run()} />
+        )}
         {serverResearching && poll.error ? (
           <ErrorNotice error={poll.error} title="Couldn't check research progress — retrying" onRetry={poll.restart} />
         ) : null}
-        <ErrorNotice error={evaluate.error} title="Re-evaluation failed" />
+        <ErrorNotice
+          error={evaluate.error}
+          title="Re-evaluation failed"
+          onRetry={isConflictError(evaluate.error) ? reloadRequest : undefined}
+          retryLabel="Reload request"
+        />
 
         {data.security_findings.length > 0 ? (
           <Card aria-labelledby="req-findings-title" className="border-block-line">
@@ -226,7 +253,7 @@ export function RequestDetail({ id }: { id: string }) {
           <h2 id="proposals-title" className="mb-3 text-[17px] font-semibold tracking-[-0.01em] text-ink">
             Proposals
           </h2>
-          <ProposalList requestId={data.id} proposals={data.proposals} onChange={updateProposal} onRejected={request.reload} />
+          <ProposalList requestId={data.id} proposals={data.proposals} onChange={updateProposal} onReload={request.reload} />
         </section>
       </div>
     </>
