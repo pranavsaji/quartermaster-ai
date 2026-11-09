@@ -45,6 +45,21 @@ describe("money", () => {
   it("computes basis points with half-up rounding", () => {
     expect(applyBps(16_000, 825)).toBe(1_320);
     expect(applyBps(10_800, 825)).toBe(891);
+    expect(applyBps(2, 2_500)).toBe(1); // 0.5 → 1
+    expect(applyBps(-2, 2_500)).toBe(0); // -0.5 → 0, like Math.round, and never -0
+    expect(Object.is(applyBps(-2, 2_500), 0)).toBe(true);
+    expect(applyBps(-6, 2_500)).toBe(-1); // -1.5 → -1
+  });
+
+  it("validates the rate and stays exact above 2^53 intermediate products", () => {
+    for (const bad of [-1, 10_001, 8.25, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => applyBps(10_000, bad)).toThrow(/Basis points/);
+    }
+    expect(() => applyBps(1.5, 825)).toThrow();
+    // 9_007_199_254_740_991 × 825 overflows a double; BigInt keeps it exact.
+    expect(applyBps(Number.MAX_SAFE_INTEGER, 825)).toBe(743_093_938_516_132); // …131.7575 rounds up
+    expect(applyBps(Number.MAX_SAFE_INTEGER, 10_000)).toBe(Number.MAX_SAFE_INTEGER);
+    expect(applyBps(0, 0)).toBe(0);
   });
 
   it("formats for display", () => {

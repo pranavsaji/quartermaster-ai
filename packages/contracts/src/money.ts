@@ -77,8 +77,32 @@ export function formatMoney(minor: number, currency: string, locale = "en-US"): 
   }).format(minor / 10 ** exp);
 }
 
-/** Basis-point percentage of an amount, rounded half-up. 825 bps = 8.25%. */
+export const MAX_BPS = 10_000;
+
+/** True for an integer basis-point rate in [0, 10 000] (0–100 %). */
+export function isValidBps(bps: number): boolean {
+  return Number.isInteger(bps) && bps >= 0 && bps <= MAX_BPS;
+}
+
+/**
+ * Basis-point percentage of an amount, rounded half-up (towards +∞, like `Math.round`).
+ * 825 bps = 8.25%. Exact for every safe-integer amount: the product is computed in BigInt, so
+ * `minor * bps` can never lose precision above 2^53. This is the single tax-rounding rule shared
+ * by quote building and policy evaluation.
+ */
 export function applyBps(minor: number, bps: number): number {
   assertMinor(minor);
-  return Math.round((minor * bps) / 10_000);
+  if (!isValidBps(bps)) throw new Error(`Basis points must be an integer between 0 and ${MAX_BPS}, received ${bps}`);
+  const d = 10_000n;
+  const n = BigInt(minor) * BigInt(bps);
+  let q = n / d;
+  let r = n % d;
+  if (r < 0n) {
+    q -= 1n;
+    r += d;
+  }
+  if (2n * r >= d) q += 1n;
+  const result = Number(q);
+  assertMinor(result, "basis-point result");
+  return result;
 }
