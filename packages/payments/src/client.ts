@@ -121,9 +121,11 @@ export class PayPalClient {
   /* ---------------------------------------------------------------- Webhooks */
 
   /**
-   * Verifies a webhook through PayPal's verify-webhook-signature API. Returns false for any
-   * verification failure; throws only if PayPal could not be reached (caller should 5xx so
-   * PayPal retries delivery).
+   * Verifies a webhook through PayPal's verify-webhook-signature API (one OAuth + one verify
+   * call, so callers should rate-limit and pre-validate before invoking it). Returns false for
+   * a rejected signature, missing headers or an untrusted cert URL; throws when PayPal could not
+   * be reached, answered 5xx/429, or answered with a malformed body (caller should 5xx so PayPal
+   * retries delivery).
    */
   async verifyWebhook(headers: WebhookHeaders, event: WebhookEvent): Promise<boolean> {
     if (!this.webhookConfigured) throw new PayPalNotConfiguredError();
@@ -143,7 +145,8 @@ export class PayPalClient {
       });
       return res.verification_status === "SUCCESS";
     } catch (err) {
-      if (err instanceof PayPalApiError && err.status >= 400 && err.status < 500) return false;
+      // A 4xx means PayPal rejected the verification request; a 429 only means we were throttled.
+      if (err instanceof PayPalApiError && err.status >= 400 && err.status < 500 && !err.rateLimited) return false;
       throw err;
     }
   }

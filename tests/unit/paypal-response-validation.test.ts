@@ -63,6 +63,13 @@ describe("PayPal response validation", () => {
     await expect(c.verifyWebhook(headers, { id: "E", event_type: "X", resource: {} })).rejects.toBeInstanceOf(PayPalAmbiguousError);
   });
 
+  it("does not report a throttled verification as an invalid signature", async () => {
+    const throttled = client(() => json(429, { name: "RATE_LIMIT_REACHED" }));
+    await expect(throttled.c.verifyWebhook(headers, { id: "E", event_type: "X", resource: {} })).rejects.toMatchObject({ rateLimited: true });
+    const rejected = client(() => json(400, { name: "VALIDATION_ERROR" }));
+    expect(await rejected.c.verifyWebhook(headers, { id: "E", event_type: "X", resource: {} })).toBe(false);
+  });
+
   it("keeps definite 4xx errors as PayPalApiError", async () => {
     const { c } = client(() => json(422, { name: "UNPROCESSABLE_ENTITY", details: [{ issue: "ORDER_NOT_APPROVED" }] }));
     const err = (await c.captureOrder("O", "req-5").catch((e: unknown) => e)) as PayPalApiError;
