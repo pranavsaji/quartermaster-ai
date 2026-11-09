@@ -1,11 +1,32 @@
 "use client";
 
-import { AllCommunityModule, ModuleRegistry, themeQuartz, type ColDef, type GetRowIdParams } from "ag-grid-community";
+import {
+  CellStyleModule,
+  ClientSideRowModelModule,
+  ModuleRegistry,
+  PaginationModule,
+  RowAutoHeightModule,
+  RowStyleModule,
+  themeQuartz,
+  TooltipModule,
+  ValidationModule,
+  type ColDef,
+  type GetRowIdParams,
+} from "ag-grid-community";
 import { AgGridReact, type AgGridReactProps } from "ag-grid-react";
 import { useCallback, useMemo } from "react";
 
-// Community features only; registered once per bundle.
-ModuleRegistry.registerModules([AllCommunityModule]);
+// Only the features our grids use (AllCommunityModule was a 1.4 MB chunk). In development the
+// ValidationModule warns in the console if a grid uses a feature whose module isn't listed here.
+ModuleRegistry.registerModules([
+  ClientSideRowModelModule, // rowData
+  CellStyleModule, // cellClass / cellClassRules
+  RowStyleModule, // rowClassRules
+  RowAutoHeightModule, // autoHeight columns
+  PaginationModule, // procurement request list
+  TooltipModule, // tooltipValueGetter (hashes, ids)
+  ...(process.env.NODE_ENV !== "production" ? [ValidationModule] : []),
+]);
 
 /**
  * Quartermaster grid theme via the AG Grid Theming API. Inherits the app font
