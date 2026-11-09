@@ -99,6 +99,7 @@ describe("research at the agent deadline", () => {
     const res = await owner.post(`/procurement/requests/${created.id}/research`);
     expect(res.status).toBe(503);
     expect(res.body.error).toMatchObject({ code: "AGENT_DEADLINE_EXCEEDED", details: { retryable: true } });
+    expect(res.headers["retry-after"]).toBeDefined();
     vi.restoreAllMocks();
 
     const [row] = await h.ctx.db.select().from(purchaseRequests).where(eq(purchaseRequests.id, created.id));
