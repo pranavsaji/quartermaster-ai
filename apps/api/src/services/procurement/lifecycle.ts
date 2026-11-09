@@ -1,14 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, inArray } from "drizzle-orm";
 import type { ApproveRequest, CreateProcurementRequest, IntentCertificateDto, PurchaseOrderDto } from "@qm/contracts";
-import { approvalEvents, intentCertificates, inventoryItems, organizations, purchaseOrders, purchaseRequests, type DbOrTx } from "@qm/database";
+import { approvalEvents, intentCertificates, inventoryItems, organizations, purchaseOrders, purchaseRequests, spendMandates, type DbOrTx } from "@qm/database";
 import { computeCartHash, issueCertificate, reviewCodes } from "@qm/trustrail";
 import type { AppContext } from "../../context";
 import { conflict, notFound, unprocessable } from "../../errors";
 import { appendAudit } from "../audit";
 import { currentAccount, localDate, reserve } from "../budget";
 import { recordFinding } from "../findings";
-import { getActiveMandateRow, rowToMandate } from "../mandates";
+import { rowToMandate } from "../mandates";
 import { cartFromRows, loadOrder, orderDtos, toCertificateDto } from "../orders";
 import { evaluateOrder } from "../policy";
 import { AgentRun } from "../agent/runtime";
@@ -119,6 +119,14 @@ export async function approveProposal(
 ): Promise<{ purchase_order: PurchaseOrderDto; certificate: IntentCertificateDto }> {
   const result = await withDeferredFailures(ctx, () => ctx.db.transaction(async (tx) => {
     const now = ctx.now();
+    // Hold the active mandate (shared) for the whole approval, so the version evaluated is the
+    // version signed and a concurrent mandate update cannot slip between them.
+    const [lockedMandate] = await tx
+      .select()
+      .from(spendMandates)
+      .where(and(eq(spendMandates.organizationId, actor.organizationId), eq(spendMandates.status, "ACTIVE")))
+      .for("share");
+    if (!lockedMandate) throw conflict("MANDATE_INACTIVE", "No active Spend Mandate.");
     const { po, items } = await loadOrder(tx, actor.organizationId, input.purchase_order_id, true);
     if (po.requestId !== requestId) throw notFound("Proposal for this request");
     if (po.status !== "PROPOSED") throw conflict("PROPOSAL_NOT_APPROVABLE", `Proposal is ${po.status}.`);
@@ -146,7 +154,13 @@ export async function approveProposal(
     if (ev.result.decision === "BLOCK") {
       const violations = ev.result.violations;
       throw new DeferredFailure(unprocessable("POLICY_BLOCKED", "TrustRail blocks this purchase.", { violations }), async (db) => {
-        await db.update(purchaseOrders).set({ status: "BLOCKED", updatedAt: ctx.now() }).where(eq(purchaseOrders.id, po.id));
+        // Only a still-PROPOSED order is marked blocked: a concurrent approval may have succeeded.
+        const changed = await db
+          .update(purchaseOrders)
+          .set({ status: "BLOCKED", updatedAt: ctx.now() })
+          .where(and(eq(purchaseOrders.id, po.id), eq(purchaseOrders.status, "PROPOSED")))
+          .returning({ id: purchaseOrders.id });
+        if (changed.length === 0) return;
         await recordFinding(db, {
           organizationId: actor.organizationId,
           type: "POLICY_VIOLATION",
@@ -167,9 +181,8 @@ export async function approveProposal(
     const missing = required.filter((c) => !input.acknowledged_review_codes.includes(c));
     if (missing.length) throw unprocessable("REVIEW_ACKNOWLEDGEMENT_REQUIRED", "Acknowledge every review item before approving.", { missing });
 
-    const mandateRow = await getActiveMandateRow(tx, actor.organizationId);
-    if (!mandateRow) throw conflict("MANDATE_INACTIVE", "No active Spend Mandate.");
-    const mandate = rowToMandate(mandateRow);
+    const mandate = rowToMandate(lockedMandate);
+    if (ev.result.mandate_version !== mandate.version) throw conflict("MANDATE_CHANGED", "The Spend Mandate changed during approval. Review again.");
 
     const [approval] = await tx
       .insert(approvalEvents)
