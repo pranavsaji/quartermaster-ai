@@ -142,7 +142,7 @@ async function runResearch(
         const res = await run.tool(
           "market.search",
           { query: item.searchQuery, sku: item.sku },
-          () => researchItem(ctx.db, ctx.channel3, { organizationId: orgId, requestId, item, currency: claimed.currency, now, maxAgeHours: ctx.config.agent.marketReferenceMaxAgeHours }),
+          () => researchItem(ctx.db, ctx.channel3, { organizationId: orgId, requestId, item, currency: claimed.currency, now, maxAgeHours: ctx.config.agent.marketReferenceMaxAgeHours }, ctx.log),
           (r) =>
             r.reference.status === "DISABLED"
               ? `Market data disabled (no Channel3 key); ${item.name} requires human price review.`

@@ -4,6 +4,7 @@ import { marketQuotes, type DbOrTx } from "@qm/database";
 import { Channel3Error, flattenOffers, type Channel3Client } from "@qm/integrations";
 import { median, usableUnits, withoutOutliers } from "@qm/quartermaster";
 import { detectPromptInjection } from "@qm/trustrail";
+import type { Logger } from "../logger";
 import type { InventoryRow } from "./inventory";
 
 /**
@@ -58,6 +59,7 @@ export async function researchItem(
   db: DbOrTx,
   channel3: Channel3Client,
   args: { organizationId: string; requestId: string; item: InventoryRow; currency: string; now: Date; maxAgeHours: number },
+  log?: Pick<Logger, "warn">,
 ): Promise<MarketResearchResult> {
   if (!channel3.enabled) {
     return {
@@ -70,41 +72,46 @@ export async function researchItem(
   let error: string | null = null;
   const inserted: QuoteRow[] = [];
   const suspicious: MarketResearchResult["suspicious"] = [];
+  // Only the Channel3 call is allowed to fail softly (the cached fallback below covers it); a
+  // database error while storing quotes is a real failure and propagates.
+  let offers: ReturnType<typeof flattenOffers> = [];
   try {
     const result = await channel3.search({ query: args.item.searchQuery, limit: 12, inStockOnly: true });
-    const offers = flattenOffers(result.products).slice(0, 24);
-    for (const o of offers) {
-      if (o.currency !== args.currency) continue;
-      const parsed = usableUnits(args.item.unit, o.title, o.description);
-      const priceMinor = floatToMinor(o.price, o.currency);
-      const comparable = parsed.units !== null && parsed.confidence === "HIGH" && priceMinor > 0;
-      const verdict = detectPromptInjection(`${o.title}\n${o.description ?? ""}`);
-      const [row] = await db
-        .insert(marketQuotes)
-        .values({
-          organizationId: args.organizationId,
-          requestId: args.requestId,
-          inventoryItemId: args.item.id,
-          source: "CHANNEL3_MARKET",
-          externalProductId: o.product_id.slice(0, 200),
-          title: o.title.slice(0, 500),
-          merchantDomain: (o.domain ?? "").slice(0, 200),
-          url: o.url.slice(0, 2000),
-          priceMinor,
-          currency: o.currency,
-          packQuantity: parsed.units,
-          normalizedUnitPriceMinor: comparable ? priceMinor / parsed.units! : null,
-          comparable,
-          availability: String(o.availability ?? "unknown").slice(0, 40),
-          suspicious: verdict.suspicious,
-          observedAt: args.now,
-        })
-        .returning();
-      inserted.push(row!);
-      if (verdict.suspicious) suspicious.push({ quote: row!, signals: verdict.signals.map((s) => s.rule), score: verdict.score });
-    }
+    offers = flattenOffers(result.products).slice(0, 24);
   } catch (err) {
+    log?.warn({ err, inventory_item_id: args.item.id }, "Channel3 market search failed; using cached quotes");
     error = err instanceof Channel3Error ? err.message : "Market search failed";
+  }
+  for (const o of offers) {
+    if (o.currency !== args.currency) continue;
+    const parsed = usableUnits(args.item.unit, o.title, o.description);
+    const units = parsed.units !== null && parsed.units > 0 ? parsed.units : null;
+    const priceMinor = floatToMinor(o.price, o.currency);
+    const comparable = units !== null && parsed.confidence === "HIGH" && priceMinor > 0;
+    const verdict = detectPromptInjection(`${o.title}\n${o.description ?? ""}`);
+    const [row] = await db
+      .insert(marketQuotes)
+      .values({
+        organizationId: args.organizationId,
+        requestId: args.requestId,
+        inventoryItemId: args.item.id,
+        source: "CHANNEL3_MARKET",
+        externalProductId: o.product_id.slice(0, 200),
+        title: o.title.slice(0, 500),
+        merchantDomain: (o.domain ?? "").slice(0, 200),
+        url: o.url.slice(0, 2000),
+        priceMinor,
+        currency: o.currency,
+        packQuantity: units,
+        normalizedUnitPriceMinor: comparable ? priceMinor / units! : null,
+        comparable,
+        availability: String(o.availability ?? "unknown").slice(0, 40),
+        suspicious: verdict.suspicious,
+        observedAt: args.now,
+      })
+      .returning();
+    inserted.push(row!);
+    if (verdict.suspicious) suspicious.push({ quote: row!, signals: verdict.signals.map((s) => s.rule), score: verdict.score });
   }
 
   // Fall back to recent cached quotes for this item when the live call failed or found nothing.
