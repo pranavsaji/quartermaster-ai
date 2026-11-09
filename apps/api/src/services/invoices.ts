@@ -1,7 +1,8 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import type { AnalyzeInvoiceRequest, InvoiceDto, Severity } from "@qm/contracts";
 import { invoiceMatches, invoices, paymentAttempts, purchaseOrderItems, purchaseOrders, suppliers, type DbOrTx } from "@qm/database";
-import { analyzeInvoice, normalizeInvoiceNumber } from "@qm/quartermaster";
+import { analyzeInvoice, normalizeInvoiceNumber, type InvoiceLine } from "@qm/quartermaster";
+import { z } from "zod";
 import type { AppContext } from "../context";
 import { notFound } from "../errors";
 import { appendAudit } from "./audit";
@@ -29,6 +30,22 @@ function toDto(r: InvoiceRow, matches: (typeof invoiceMatches.$inferSelect)[]): 
     })),
     created_at: r.createdAt.toISOString(),
   };
+}
+
+const StoredInvoiceLines = z.array(
+  z.object({
+    sku: z.string().nullable().optional(),
+    description: z.string(),
+    quantity: z.number().int(),
+    unit_price_minor: z.number().int(),
+    line_total_minor: z.number().int(),
+  }),
+);
+
+/** Stored invoice lines, validated; malformed history is ignored rather than trusted. */
+function storedLines(raw: unknown): InvoiceLine[] | undefined {
+  const parsed = StoredInvoiceLines.safeParse(raw);
+  return parsed.success ? parsed.data : undefined;
 }
 
 export async function listInvoices(db: DbOrTx, organizationId: string): Promise<InvoiceDto[]> {
@@ -110,6 +127,8 @@ export async function analyzeAndRecordInvoice(ctx: AppContext, actor: Actor, inp
         total_minor: e.totalMinor,
         content_hash: e.contentHash,
         status: e.status,
+        // Earlier partial invoices count towards the order, so the one for the remainder matches.
+        lines: storedLines(e.lines),
       })),
     );
 
