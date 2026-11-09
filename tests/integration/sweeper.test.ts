@@ -197,7 +197,15 @@ describe("housekeeping", () => {
     expect(await acquireLease(h.ctx.db, "sweeper", h.clock.now, "another-instance")).toBe(true);
     try {
       const report = await sweep(h.ctx);
-      expect(report).toEqual({ reconciled: 0, expired: 0, researchRecovered: 0, sessionsPurged: 0, idempotencyPurged: 0, errors: 0 });
+      expect(report).toEqual({
+        reconciled: 0,
+        expired: 0,
+        researchRecovered: 0,
+        refundsReconciled: 0,
+        sessionsPurged: 0,
+        idempotencyPurged: 0,
+        errors: 0,
+      });
       expect(await remaining([ids.expired], sessions)).toEqual([ids.expired]);
     } finally {
       await releaseLease(h.ctx.db, "sweeper", "another-instance");

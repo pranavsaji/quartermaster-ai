@@ -15,7 +15,8 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("bootstrap", () => {
+// Each case boots a fresh database and runs every migration, which is slow on a loaded CI worker.
+describe("bootstrap", { timeout: 120_000 }, () => {
   it("uses an ephemeral, registered signing key in development when none is configured", async () => {
     const ctx = await bootstrap({ env: { NODE_ENV: "development", LOG_LEVEL: "silent", DATABASE_URL: "pglite://memory" } });
     try {
