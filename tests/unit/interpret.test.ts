@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { interpretDeterministically, parseBudget } from "@qm/quartermaster";
+import { interpretDeterministically, isCalendarDate, parseBudget, sanitizeIntent } from "@qm/quartermaster";
 
 const inventory = [
   { id: "inv_tk", sku: "PKG-TAKEOUT-32", name: "Takeaway containers", category: "food_packaging", keywords: ["takeaway", "takeout", "boxes"] },
@@ -37,6 +37,39 @@ describe("budget extraction", () => {
 
   it("feeds the deterministic interpreter", () => {
     expect(interpretDeterministically("Restock oil, stay under $1500", inventory, now).budget_limit_minor).toBe(150_000);
+  });
+});
+
+describe("required-by dates", () => {
+  it("rejects impossible calendar dates instead of rolling them over", () => {
+    expect(isCalendarDate("2026-02-30")).toBe(false);
+    expect(isCalendarDate("2026-13-01")).toBe(false);
+    expect(isCalendarDate("2028-02-29")).toBe(true);
+    expect(isCalendarDate("2026-02-29")).toBe(false);
+    expect(interpretDeterministically("oil by 2026-02-30", inventory, now).required_by).toBeNull();
+    expect(interpretDeterministically("oil by 2026-02-30 or 2026-03-02", inventory, now).required_by).toBe("2026-03-02");
+    expect(sanitizeIntent({ required_by: "2026-02-30" }, inventory)?.required_by).toBeNull();
+    expect(sanitizeIntent({ required_by: "2026-11-13" }, inventory)?.required_by).toBe("2026-11-13");
+  });
+
+  it("resolves weekdays and 'tomorrow' in UTC by default", () => {
+    expect(interpretDeterministically("oil by friday", inventory, now).required_by).toBe("2026-11-13");
+    expect(interpretDeterministically("oil tomorrow", inventory, now).required_by).toBe("2026-11-11");
+    expect(interpretDeterministically("oil by tuesday", inventory, now).required_by).toBe("2026-11-17");
+  });
+
+  it("resolves relative dates in the owner's time zone when given", () => {
+    // 2026-11-10T03:00Z is still Monday 2026-11-09 evening in Los Angeles.
+    const lateMonday = new Date("2026-11-10T03:00:00Z");
+    expect(interpretDeterministically("oil tomorrow", inventory, lateMonday).required_by).toBe("2026-11-11");
+    expect(interpretDeterministically("oil tomorrow", inventory, lateMonday, { timeZone: "America/Los_Angeles" }).required_by).toBe("2026-11-10");
+    expect(interpretDeterministically("oil by tuesday", inventory, lateMonday, { timeZone: "America/Los_Angeles" }).required_by).toBe("2026-11-10");
+    expect(interpretDeterministically("oil by tuesday", inventory, lateMonday).required_by).toBe("2026-11-17");
+  });
+
+  it("falls back to UTC for an unknown time zone and to null for an invalid clock", () => {
+    expect(interpretDeterministically("oil tomorrow", inventory, now, { timeZone: "Mars/Olympus" }).required_by).toBe("2026-11-11");
+    expect(interpretDeterministically("oil tomorrow", inventory, new Date(Number.NaN)).required_by).toBeNull();
   });
 });
 

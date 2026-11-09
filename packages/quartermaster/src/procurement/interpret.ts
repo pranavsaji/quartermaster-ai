@@ -41,6 +41,18 @@ export const INTENT_JSON_SCHEMA = {
   },
 } as const;
 
+/**
+ * True only for a real `YYYY-MM-DD` calendar date. `Date.parse("2026-02-30")` succeeds (it rolls
+ * over to March 2), so the components are round-tripped through UTC instead.
+ */
+export function isCalendarDate(value: string): boolean {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!m) return false;
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const t = new Date(Date.UTC(y, mo - 1, d));
+  return t.getUTCFullYear() === y && t.getUTCMonth() === mo - 1 && t.getUTCDate() === d;
+}
+
 /** Validates and clamps model output. Unknown ids are dropped, never trusted. */
 export function sanitizeIntent(raw: unknown, inventory: InventoryRef[]): InterpretedIntent | null {
   if (!raw || typeof raw !== "object") return null;
@@ -50,7 +62,7 @@ export function sanitizeIntent(raw: unknown, inventory: InventoryRef[]): Interpr
   const mult = typeof r.demand_multiplier === "number" && Number.isFinite(r.demand_multiplier) ? r.demand_multiplier : 1;
   const budget =
     typeof r.budget_limit_minor === "number" && Number.isSafeInteger(r.budget_limit_minor) && r.budget_limit_minor > 0 ? r.budget_limit_minor : null;
-  const date = typeof r.required_by === "string" && /^\d{4}-\d{2}-\d{2}$/.test(r.required_by) && !Number.isNaN(Date.parse(r.required_by)) ? r.required_by : null;
+  const date = typeof r.required_by === "string" && isCalendarDate(r.required_by) ? r.required_by : null;
   return {
     inventory_item_ids: [...new Set(ids)],
     demand_multiplier: Math.round(Math.min(MULTIPLIER_MAX, Math.max(MULTIPLIER_MIN, mult)) * 100) / 100,
@@ -100,19 +112,42 @@ export function parseBudget(text: string): number | null {
   return Number.isSafeInteger(minor) && minor > 0 ? minor : null;
 }
 
-function parseDate(text: string, now: Date): string | null {
-  const iso = /\b(\d{4}-\d{2}-\d{2})\b/.exec(text);
-  if (iso) return iso[1]!;
-  const day = (d: Date) => d.toISOString().slice(0, 10);
-  if (/\btomorrow\b/i.test(text)) return day(new Date(now.getTime() + 86_400_000));
+/**
+ * The calendar date of `now` in `timeZone`, as a UTC-midnight Date so calendar arithmetic is
+ * DST-free. An unknown time zone falls back to UTC rather than failing the fallback interpreter.
+ */
+function localCalendarDay(now: Date, timeZone: string): Date {
+  let parts: Intl.DateTimeFormatPart[];
+  try {
+    parts = new Intl.DateTimeFormat("en-US", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(now);
+  } catch {
+    return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  }
+  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value);
+  return new Date(Date.UTC(get("year"), get("month") - 1, get("day")));
+}
+
+function parseDate(text: string, now: Date, timeZone: string): string | null {
+  // First syntactically ISO date that is a real calendar date ("2026-02-30" is ignored).
+  for (const iso of text.matchAll(/\b(\d{4}-\d{2}-\d{2})\b/g)) {
+    if (isCalendarDate(iso[1]!)) return iso[1]!;
+  }
+  if (Number.isNaN(now.getTime())) return null;
+  const today = localCalendarDay(now, timeZone);
+  const day = (offsetDays: number) => new Date(today.getTime() + offsetDays * 86_400_000).toISOString().slice(0, 10);
+  if (/\btomorrow\b/i.test(text)) return day(1);
   const weekday = /\b(by|before|for)\s+(?:this\s+)?(monday|tuesday|wednesday|thursday|friday|saturday|sunday|the weekend|weekend)\b/i.exec(text);
   if (weekday) {
     const names = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
     const target = /weekend/i.test(weekday[2]!) ? 5 : names.indexOf(weekday[2]!.toLowerCase());
-    const delta = (target - now.getUTCDay() + 7) % 7 || 7;
-    return day(new Date(now.getTime() + delta * 86_400_000));
+    return day((target - today.getUTCDay() + 7) % 7 || 7);
   }
   return null;
+}
+
+export interface InterpretOptions {
+  /** IANA time zone used to resolve "tomorrow" and weekday names. Defaults to UTC. */
+  timeZone?: string;
 }
 
 const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -126,7 +161,7 @@ function containsTerm(text: string, term: string): boolean {
 }
 
 /** Deterministic interpreter: keyword matching against inventory plus simple pattern extraction. */
-export function interpretDeterministically(instruction: string, inventory: InventoryRef[], now: Date): InterpretedIntent {
+export function interpretDeterministically(instruction: string, inventory: InventoryRef[], now: Date, options: InterpretOptions = {}): InterpretedIntent {
   const text = instruction.toLowerCase();
   const matched = inventory.filter((item) => {
     const terms = [item.name.toLowerCase(), item.sku.toLowerCase(), ...item.keywords.map((k) => k.toLowerCase())];
@@ -137,7 +172,7 @@ export function interpretDeterministically(instruction: string, inventory: Inven
     inventory_item_ids: matched.map((i) => i.id),
     demand_multiplier: Math.min(MULTIPLIER_MAX, Math.max(MULTIPLIER_MIN, Math.round(parseMultiplier(instruction) * 100) / 100)),
     budget_limit_minor: parseBudget(instruction),
-    required_by: parseDate(instruction, now),
+    required_by: parseDate(instruction, now, options.timeZone ?? "UTC"),
     notes: matched.length
       ? `Restock ${matched.map((m) => m.name).join(", ")}.`
       : wantsAll
