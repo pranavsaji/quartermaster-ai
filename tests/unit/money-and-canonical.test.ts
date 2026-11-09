@@ -23,6 +23,14 @@ describe("money", () => {
     expect(decimalStringToMinor("10.500", "USD")).toBe(1050);
   });
 
+  it("never returns negative zero", () => {
+    for (const s of ["-0", "-0.00", "-0.0", "0", "-00"]) {
+      expect(Object.is(decimalStringToMinor(s, "USD"), 0)).toBe(true);
+    }
+    expect(Object.is(decimalStringToMinor("-0", "JPY"), 0)).toBe(true);
+    expect(decimalStringToMinor("-0.01", "USD")).toBe(-1);
+  });
+
   it("rejects malformed and unsafe amounts", () => {
     expect(() => decimalStringToMinor("1e3", "USD")).toThrow();
     expect(() => minorToDecimalString(1.5, "USD")).toThrow();
@@ -37,6 +45,21 @@ describe("money", () => {
   it("computes basis points with half-up rounding", () => {
     expect(applyBps(16_000, 825)).toBe(1_320);
     expect(applyBps(10_800, 825)).toBe(891);
+    expect(applyBps(2, 2_500)).toBe(1); // 0.5 → 1
+    expect(applyBps(-2, 2_500)).toBe(0); // -0.5 → 0, like Math.round, and never -0
+    expect(Object.is(applyBps(-2, 2_500), 0)).toBe(true);
+    expect(applyBps(-6, 2_500)).toBe(-1); // -1.5 → -1
+  });
+
+  it("validates the rate and stays exact above 2^53 intermediate products", () => {
+    for (const bad of [-1, 10_001, 8.25, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => applyBps(10_000, bad)).toThrow(/Basis points/);
+    }
+    expect(() => applyBps(1.5, 825)).toThrow();
+    // 9_007_199_254_740_991 × 825 overflows a double; BigInt keeps it exact.
+    expect(applyBps(Number.MAX_SAFE_INTEGER, 825)).toBe(743_093_938_516_132); // …131.7575 rounds up
+    expect(applyBps(Number.MAX_SAFE_INTEGER, 10_000)).toBe(Number.MAX_SAFE_INTEGER);
+    expect(applyBps(0, 0)).toBe(0);
   });
 
   it("formats for display", () => {
@@ -62,6 +85,27 @@ describe("canonical encoding", () => {
     expect(() => canonicalize({ a: Number.NaN })).toThrow();
     expect(() => canonicalize({ a: new Date() })).toThrow();
     expect(() => canonicalize({ a: () => 1 })).toThrow();
+  });
+
+  it("rejects sparse arrays instead of emitting invalid JSON", () => {
+    expect(() => canonicalize([1, , 3])).toThrow(TypeError);
+    expect(() => canonicalize({ a: new Array(2) })).toThrow(/sparse/);
+    expect(canonicalize([1, null, 3])).toBe("[1,null,3]");
+  });
+
+  it("rejects cycles with a TypeError but allows shared references", () => {
+    const cyclic: Record<string, unknown> = { a: 1 };
+    cyclic.self = cyclic;
+    expect(() => canonicalize(cyclic)).toThrow(TypeError);
+    const arr: unknown[] = [];
+    arr.push(arr);
+    expect(() => canonicalize(arr)).toThrow(/cyclic/);
+    const shared = { x: 1 };
+    expect(canonicalize({ a: shared, b: [shared, shared] })).toBe('{"a":{"x":1},"b":[{"x":1},{"x":1}]}');
+  });
+
+  it("does not Unicode-normalise strings (documented)", () => {
+    expect(canonicalize("é")).not.toBe(canonicalize("é"));
   });
 
   it("escapes strings exactly like JSON", () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildCart, evaluatePolicy, reviewCodes } from "@qm/trustrail";
+import { buildCart, evaluatePolicy, reviewCodes, type PolicyInput } from "@qm/trustrail";
 import { NOW, OTHER_SUPPLIER, SUPPLIER, baseInput, fee, mandate, product, shipping, tax } from "../helpers/fixtures";
 
 const codes = (r: ReturnType<typeof evaluatePolicy>) => r.violations.map((v) => v.code);
@@ -11,6 +11,31 @@ describe("TrustRail policy engine", () => {
     expect(r.violations).toEqual([]);
     expect(r.human_approval_required).toBe(true);
     expect(r.input_digest).toMatch(/^sha256:[a-f0-9]{64}$/);
+  });
+
+  describe("auto-approval (mandate.human_approval_required = false)", () => {
+    const auto = (overrides: Parameters<typeof mandate>[0] = {}) => mandate({ human_approval_required: false, auto_approval_limit_minor: 20_000, ...overrides });
+
+    it("auto-approves an ALLOW decision within the auto-approval limit", () => {
+      const r = evaluatePolicy(baseInput({ mandate: auto() }));
+      expect(r.decision).toBe("ALLOW");
+      expect(r.human_approval_required).toBe(false);
+    });
+
+    it("auto-approves a total exactly at the limit", () => {
+      expect(evaluatePolicy(baseInput({ mandate: auto({ auto_approval_limit_minor: 17_320 }) })).human_approval_required).toBe(false);
+    });
+
+    it("requires a human above the auto-approval limit", () => {
+      const r = evaluatePolicy(baseInput({ mandate: auto({ auto_approval_limit_minor: 17_319 }) }));
+      expect(r.decision).toBe("ALLOW");
+      expect(r.human_approval_required).toBe(true);
+    });
+
+    it("requires a human for any REVIEW or BLOCK decision", () => {
+      expect(evaluatePolicy(baseInput({ mandate: auto(), market: [] })).human_approval_required).toBe(true);
+      expect(evaluatePolicy(baseInput({ mandate: auto(), supplier: null })).human_approval_required).toBe(true);
+    });
   });
 
   it("is deterministic: identical input yields an identical digest and decision", () => {
@@ -190,9 +215,42 @@ describe("TrustRail policy engine", () => {
   });
 
   it("changes its input digest when any decisive fact changes", () => {
-    const a = evaluatePolicy(baseInput());
-    const b = evaluatePolicy(baseInput({ budget: { limit_minor: 50_000, spent_minor: 1, reserved_minor: 0 } }));
-    expect(a.input_digest).not.toBe(b.input_digest);
+    const base = evaluatePolicy(baseInput()).input_digest;
+    const supplier = baseInput().supplier!;
+    const variants: Partial<PolicyInput>[] = [
+      { budget: { limit_minor: 50_000, spent_minor: 1, reserved_minor: 0 } },
+      { catalog: baseInput().catalog.map((c) => (c.sku === "TK-250" ? { ...c, unit_price_minor: 8_001 } : c)) },
+      { catalog: baseInput().catalog.map((c) => (c.sku === "TK-250" ? { ...c, category: "cleaning_supplies" as const } : c)) },
+      { catalog: baseInput().catalog.map((c) => (c.sku === "WINE-12" ? { ...c, quarantined: true } : c)) },
+      { supplier: { ...supplier, fee_terms: [{ ...supplier.fee_terms[0]!, amount_minor: 999 }] } },
+      { supplier: { ...supplier, fee_terms: [{ ...supplier.fee_terms[0]!, waived_over_minor: null }] } },
+      { supplier: { ...supplier, tax_rate_bps: 800 } },
+      { supplier: { ...supplier, active: false } },
+      { needed_units_by_sku: { "TK-250": 461 } },
+      { pack_quantity_by_sku: { "TK-250": 251, "WINE-12": 12, "DESCALE-SUB": 1 } },
+      { prior_orders: [{ id: "p", supplier_id: SUPPLIER, skus: ["X"], status: "PAID", created_at: "2026-11-10T10:00:00Z" }] },
+      { now: new Date(NOW.getTime() + 1) },
+      { market_reference_max_age_hours: 24 },
+      { mandate: mandate({ max_market_price_premium_pct: 11 }) },
+      { mandate: mandate({ human_approval_required: false }) },
+      { request_budget_limit_minor: 99_999 },
+      { quarantined_source_ids: ["x"] },
+    ];
+    const digests = variants.map((v) => evaluatePolicy(baseInput(v)).input_digest);
+    for (const d of digests) expect(d).not.toBe(base);
+    expect(new Set(digests).size).toBe(variants.length);
+  });
+
+  it("keeps the digest stable under reordering of set-like inputs", () => {
+    const priors = [
+      { id: "a", supplier_id: SUPPLIER, skus: ["X", "Y"], status: "PAID", created_at: "2026-11-01T00:00:00Z" },
+      { id: "b", supplier_id: SUPPLIER, skus: ["Z"], status: "PAID", created_at: "2026-11-01T00:00:00Z" },
+    ];
+    const a = evaluatePolicy(baseInput({ prior_orders: priors, quarantined_source_ids: ["q1", "q2"] }));
+    const b = evaluatePolicy(
+      baseInput({ prior_orders: [{ ...priors[1]! }, { ...priors[0]!, skus: ["Y", "X"] }], quarantined_source_ids: ["q2", "q1"], catalog: [...baseInput().catalog].reverse() }),
+    );
+    expect(a.input_digest).toBe(b.input_digest);
   });
 
   it("waives shipping only when the subtotal meets the published threshold", () => {

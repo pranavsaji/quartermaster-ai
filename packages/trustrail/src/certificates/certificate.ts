@@ -1,9 +1,18 @@
 import { randomBytes, sign, verify, type KeyObject } from "node:crypto";
 import type { CertificateVerificationStatus, IntentCertificatePayload } from "@qm/contracts";
 import { canonicalize } from "../canonical";
-import type { SigningKey } from "./keys";
+import { keyIdMatchesKey, type SigningKey } from "./keys";
 
 export const CERTIFICATE_DOMAIN = "trustrail.intent-certificate.v1";
+export const MAX_CERTIFICATE_TTL_MINUTES = 60;
+/**
+ * A 64-byte Ed25519 signature in unpadded base64url is exactly 86 characters, and the last one
+ * carries only 2 significant bits, so it must be one of A, Q, g or w; anything else would be a
+ * second spelling of the same bytes.
+ */
+const ED25519_SIGNATURE_RE = /^[A-Za-z0-9_-]{85}[AQgw]$/;
+/** Clock skew tolerated before `approved_at` (the certificate's not-before time). */
+export const CERTIFICATE_CLOCK_SKEW_MS = 60_000;
 
 export interface IssueCertificateInput {
   intent_id: string;
@@ -37,7 +46,10 @@ export function issueCertificate(input: IssueCertificateInput, key: SigningKey):
   if (!Number.isSafeInteger(input.approved_amount_minor) || input.approved_amount_minor <= 0) {
     throw new Error("Approved amount must be a positive integer in minor units");
   }
-  if (input.ttl_minutes < 1 || input.ttl_minutes > 60) throw new Error("Certificate TTL must be 1–60 minutes");
+  if (!Number.isInteger(input.ttl_minutes) || input.ttl_minutes < 1 || input.ttl_minutes > MAX_CERTIFICATE_TTL_MINUTES) {
+    throw new Error(`Certificate TTL must be a whole number of minutes between 1 and ${MAX_CERTIFICATE_TTL_MINUTES}`);
+  }
+  if (!(input.approved_at instanceof Date) || Number.isNaN(input.approved_at.getTime())) throw new Error("Certificate approval time is invalid");
   const expires = new Date(input.approved_at.getTime() + input.ttl_minutes * 60_000);
   const payload: IntentCertificatePayload = {
     certificate_version: 1,
@@ -99,18 +111,34 @@ export function verifyCertificate(cert: SignedCertificate, ctx: VerificationCont
 
   const key = ctx.resolve_public_key(cert.key_id);
   const keyMatches = cert.payload.key_id === cert.key_id;
-  if (!key || !keyMatches) {
-    checks.push({ code: "KEY_KNOWN", passed: false, detail: !key ? `Unknown signing key ${cert.key_id}.` : "Key id in payload differs from envelope." });
+  const keyBound = !!key && keyIdMatchesKey(cert.key_id, key);
+  if (!key || !keyMatches || !keyBound) {
+    checks.push({
+      code: "KEY_KNOWN",
+      passed: false,
+      detail: !key ? `Unknown signing key ${cert.key_id}.` : !keyMatches ? "Key id in payload differs from envelope." : `Key ${cert.key_id} is not the fingerprint of the resolved public key.`,
+    });
     fail("UNKNOWN_KEY");
   } else {
     checks.push({ code: "KEY_KNOWN", passed: true, detail: `Signed by ${cert.key_id}.` });
     let sigOk = false;
+    // Node's base64url decoder silently skips invalid characters, so several distinct strings
+    // decode to the same bytes. Only the one canonical unpadded encoding of 64 bytes is accepted.
+    const encodingOk = typeof cert.signature === "string" && ED25519_SIGNATURE_RE.test(cert.signature);
     try {
-      sigOk = cert.algorithm === "Ed25519" && verify(null, signingInput(cert.payload), key, Buffer.from(cert.signature, "base64url"));
+      sigOk =
+        encodingOk &&
+        cert.algorithm === "Ed25519" &&
+        key.asymmetricKeyType === "ed25519" &&
+        verify(null, signingInput(cert.payload), key, Buffer.from(cert.signature, "base64url"));
     } catch {
       sigOk = false;
     }
-    checks.push({ code: "SIGNATURE", passed: sigOk, detail: sigOk ? "Ed25519 signature is valid." : "Signature does not verify." });
+    checks.push({
+      code: "SIGNATURE",
+      passed: sigOk,
+      detail: sigOk ? "Ed25519 signature is valid." : !encodingOk ? "Signature is not a canonical base64url Ed25519 signature." : "Signature does not verify.",
+    });
     if (!sigOk) fail("SIGNATURE_INVALID");
   }
 
@@ -130,7 +158,18 @@ export function verifyCertificate(cert: SignedCertificate, ctx: VerificationCont
   checks.push({ code: "AMOUNT", passed: amountOk, detail: amountOk ? "Amount and currency match the approval." : "Amount or currency differs from the approval." });
   if (!cartOk || !amountOk) fail("CART_MODIFIED");
 
-  const expired = ctx.now.getTime() >= Date.parse(p.expires_at);
+  // Validity window [approved_at − skew, expires_at). Every comparison is written so that a
+  // NaN (unparseable timestamp or invalid clock) fails closed.
+  const now = ctx.now instanceof Date ? ctx.now.getTime() : Number.NaN;
+  const approvedAt = Date.parse(p.approved_at);
+  const expiresAt = Date.parse(p.expires_at);
+  const windowOk = expiresAt > approvedAt && expiresAt - approvedAt <= MAX_CERTIFICATE_TTL_MINUTES * 60_000;
+  checks.push({ code: "VALIDITY_WINDOW", passed: windowOk, detail: windowOk ? "Approval and expiry times are well-formed." : "Approval or expiry time is malformed." });
+  if (!windowOk) fail("PAYLOAD_MISMATCH");
+  const notYetValid = !(now >= approvedAt - CERTIFICATE_CLOCK_SKEW_MS);
+  checks.push({ code: "NOT_BEFORE", passed: !notYetValid, detail: notYetValid ? `Not valid before ${p.approved_at}.` : "Certificate is within its validity period." });
+  if (notYetValid) fail("PAYLOAD_MISMATCH");
+  const expired = !(now < expiresAt);
   checks.push({ code: "NOT_EXPIRED", passed: !expired, detail: expired ? `Expired at ${p.expires_at}.` : `Valid until ${p.expires_at}.` });
 
   if (ctx.stored_status === "REVOKED") {

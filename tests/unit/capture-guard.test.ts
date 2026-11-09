@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { canTransition, guardCapture, type CaptureGuardInput } from "@qm/trustrail";
-import type { PaymentStatus } from "@qm/contracts";
+import { PAYMENT_STATUSES, type PaymentStatus } from "@qm/contracts";
 
 function input(overrides: Partial<CaptureGuardInput> = {}): CaptureGuardInput {
   return {
@@ -67,6 +67,17 @@ describe("capture guard", () => {
     expect(failCodes(input({ provider_order: { ...input().provider_order, payee_merchant_id: "ATTACKER" } }))).toContain("PAYEE_MISMATCH");
   });
 
+  it("refuses when the provider order omits its payee but a merchant is expected", () => {
+    const r = guardCapture(input({ provider_order: { ...input().provider_order, payee_merchant_id: null } }));
+    expect(r.allowed).toBe(false);
+    expect(r.failures).toEqual([{ code: "PAYEE_MISMATCH", detail: expect.stringMatching(/does not identify its payee/) }]);
+  });
+
+  it("does not require a payee when none is configured", () => {
+    expect(guardCapture(input({ expected_payee_merchant_id: null, provider_order: { ...input().provider_order, payee_merchant_id: null } })).allowed).toBe(true);
+    expect(guardCapture(input({ expected_payee_merchant_id: null, provider_order: { ...input().provider_order, payee_merchant_id: "ANY" } })).allowed).toBe(true);
+  });
+
   it("refuses anyone other than the approving buyer", () => {
     expect(failCodes(input({ authenticated_user_id: "manager_1" }))).toContain("BUYER_MISMATCH");
     expect(failCodes(input({ authenticated_org_id: "org_2" }))).toContain("ORG_MISMATCH");
@@ -113,5 +124,31 @@ describe("payment state machine", () => {
   ];
   it.each(cases)("%s → %s allowed: %s", (from, to, ok) => {
     expect(canTransition(from, to)).toBe(ok);
+  });
+
+  it("matches the full transition matrix over every payment status", () => {
+    // Rows: from. Columns: to, in PAYMENT_STATUSES order. Written out explicitly so any change
+    // to the state machine has to be made here deliberately.
+    const order = ["CREATED", "ORDER_CREATED", "PAYER_APPROVED", "CAPTURE_PENDING", "COMPLETED", "FAILED", "VOIDED", "PARTIALLY_REFUNDED", "REFUNDED"] as const;
+    expect([...PAYMENT_STATUSES].sort()).toEqual([...order].sort());
+    const matrix: Record<(typeof order)[number], string> = {
+      //                   CRE ORD PAY CAP COM FAI VOI PAR REF
+      CREATED:            "0   1   1   1   1   1   1   0   0",
+      ORDER_CREATED:      "0   0   1   1   1   1   1   0   0",
+      PAYER_APPROVED:     "0   0   0   1   1   1   1   0   0",
+      CAPTURE_PENDING:    "0   0   0   0   1   1   1   0   0",
+      COMPLETED:          "0   0   0   0   0   0   0   1   1",
+      FAILED:             "0   0   0   0   1   0   0   0   0",
+      VOIDED:             "0   0   0   0   1   0   0   0   0",
+      PARTIALLY_REFUNDED: "0   0   0   0   0   0   0   0   1",
+      REFUNDED:           "0   0   0   0   0   0   0   0   0",
+    };
+    for (const from of order) {
+      const row = matrix[from].split(/\s+/).map((c) => c === "1");
+      expect(row).toHaveLength(order.length);
+      order.forEach((to, i) => {
+        expect([from, to, canTransition(from, to)]).toEqual([from, to, row[i]]);
+      });
+    }
   });
 });

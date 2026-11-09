@@ -12,29 +12,111 @@ export interface PackParse {
 
 const COUNT_WORDS = "(?:count|ct|pcs|pieces|pc|pack|pk|units|containers|boxes|sets|rolls|sheets|gloves|pairs|liners|bags|lids)";
 
-const PATTERNS: { re: RegExp; compute: (m: RegExpExecArray) => number; confidence: "HIGH" | "LOW" }[] = [
-  // "Case of 6 x 50", "6 packs of 50", "6 x 50 count"
-  { re: /\b(\d{1,4})\s*(?:packs?|boxes|sleeves|rolls|bags)?\s*(?:x|×|of)\s*(\d{1,5})\s*(?:count|ct|pcs|pieces|sheets|each)?\b/i, compute: (m) => Number(m[1]) * Number(m[2]), confidence: "HIGH" },
-  // "Pack of 150", "Case of 300", "Set of 50", "Box of 200"
-  { re: /\b(?:pack|case|set|box|bag|carton|bundle|sleeve)\s+of\s+(\d{1,6})\b/i, compute: (m) => Number(m[1]), confidence: "HIGH" },
-  // "150 Count", "150-ct", "150 pcs", "150 Pack"
-  { re: new RegExp(`\\b(\\d{1,6})\\s*-?\\s*${COUNT_WORDS}\\b`, "i"), compute: (m) => Number(m[1]), confidence: "HIGH" },
-  // "(150)" at the end of a title
-  { re: /\((\d{2,6})\)\s*$/, compute: (m) => Number(m[1]), confidence: "LOW" },
-];
+/** An integer, optionally comma-grouped ("1,000"); never the tail of a longer number or decimal. */
+const NUM = String.raw`(?<![\d.,])(\d{1,3}(?:,\d{3})+|\d{1,6})(?![\d]|[.,]\d)`;
 
-export function parsePackQuantity(title: string, description?: string | null): PackParse {
-  for (const text of [title, description ?? ""]) {
-    for (const p of PATTERNS) {
-      const m = p.re.exec(text);
-      if (m) {
-        const qty = p.compute(m);
-        if (Number.isSafeInteger(qty) && qty >= 1 && qty <= 1_000_000) {
-          return { pack_quantity: qty, confidence: text === title ? p.confidence : "LOW", matched: m[0] };
-        }
-      }
-    }
+/**
+ * A number followed by a length/weight/volume unit is a dimension, not a count: "8x8 inch",
+ * "9 x 13 in", "12 x 12 x 2". Matching "8x8" as a 64-pack is the classic mis-parse.
+ */
+const NOT_DIMENSION = String.raw`(?!\s*(?:in(?:ch(?:es)?)?\b|["”″']|cm\b|mm\b|m\b|oz\b|ft\b|feet\b|lbs?\b|l\b|ml\b|gal|qt\b|[x×]\s*\d))`;
+
+// "6 x 50 count", "6 packs of 50", "6 sleeves x 50"; the multiplier word or count word makes it explicit.
+const MULTIPACK = new RegExp(
+  String.raw`(?<![\d.,])\b(\d{1,4})(?!\s*(?:in(?:ch(?:es)?)?\b|["”″']|cm\b|mm\b|oz\b|ft\b))\s*(packs?|boxes|sleeves|rolls|bags|cases)?\s*(x|×|of)\s*(\d{1,5})(?![\d]|[.,]\d)${NOT_DIMENSION}\s*(count|ct|pcs|pieces|sheets|each)?\b`,
+  "gi",
+);
+// "Pack of 150", "Case of 300", "(Pack of 10)"; not "Case of 6 x 50" (that is a multipack).
+const PACK_OF = new RegExp(String.raw`\b(?:pack|case|set|box|bag|carton|bundle|sleeve)\s+of\s+${NUM}(?!\s*[x×]\s*\d)`, "gi");
+// "150 Count", "150-ct", "1,000 pcs", "150 Pack"
+const COUNT = new RegExp(String.raw`${NUM}\s*-?\s*${COUNT_WORDS}\b`, "gi");
+// "(150)" at the end of a title
+const TRAILING_PAREN = /\((\d{2,6})\)\s*$/;
+// "100 Count (Pack of 10)", "50 count each", "50 per sleeve": the pack-of is a multiplier.
+const EXPLICIT_MULTIPLIER = /\(\s*(?:pack|case|set|box|bag|carton|bundle)\s+of\s+\d[\d,]*\s*\)|\beach\b|\bper\s+(?:pack|box|case|bag|sleeve|carton)\b/i;
+
+const MAX_PACK = 1_000_000;
+const toInt = (s: string) => Number(s.replace(/,/g, ""));
+const valid = (n: number) => Number.isSafeInteger(n) && n >= 1 && n <= MAX_PACK;
+
+interface Hit {
+  qty: number;
+  index: number;
+  end: number;
+  text: string;
+}
+
+function hits(re: RegExp, text: string, group: number): Hit[] {
+  const out: Hit[] = [];
+  for (const m of text.slice(0, 2_000).matchAll(re)) {
+    const qty = toInt(m[group]!);
+    if (valid(qty)) out.push({ qty, index: m.index, end: m.index + m[0].length, text: m[0] });
   }
+  return out;
+}
+
+function parseOne(text: string): Omit<PackParse, "confidence"> & { confidence: "HIGH" | "LOW" } | null {
+  const multi = [...text.slice(0, 2_000).matchAll(MULTIPACK)]
+    .map((m) => ({
+      a: Number(m[1]),
+      b: Number(m[4]),
+      // "6 packs of 50", "6 x 50 count", or "Case of 6 x 50" are unambiguous multipacks.
+      explicit: !!(m[2] || m[5] || /of/i.test(m[3]!)) || /\b(?:pack|case|set|box|bag|carton|bundle)\s+of\s+$/i.test(text.slice(Math.max(0, m.index - 24), m.index)),
+      index: m.index,
+      end: m.index + m[0].length,
+      text: m[0],
+    }))
+    .filter((m) => valid(m.a * m.b));
+  const mp = multi.find((m) => m.explicit) ?? multi[0];
+  const outside = (h: Hit) => !mp || h.end <= mp.index || h.index >= mp.end;
+  const packOf = hits(PACK_OF, text, 1).filter(outside);
+  const counts = hits(COUNT, text, 1).filter(outside);
+  const distinct = (xs: number[]) => [...new Set(xs)];
+
+  if (mp?.explicit) {
+    const qty = mp.a * mp.b;
+    const conflicting = distinct([...packOf, ...counts].map((h) => h.qty)).filter((n) => n !== qty && n !== mp.a && n !== mp.b);
+    return { pack_quantity: qty, confidence: conflicting.length === 0 ? "HIGH" : "LOW", matched: mp.text };
+  }
+
+  const countValues = distinct(counts.map((h) => h.qty));
+  const packValues = distinct(packOf.map((h) => h.qty));
+  const c = counts[0];
+  const p = packOf[0];
+  // Several different counts (or pack-ofs) in one title disagree with each other.
+  const selfConsistent = countValues.length <= 1 && packValues.length <= 1;
+  if (c && p) {
+    if (c.qty === p.qty) return { pack_quantity: c.qty, confidence: selfConsistent ? "HIGH" : "LOW", matched: c.text };
+    // "100 Count (Pack of 10)" is 1,000 units. Without an explicit multiplier form the two
+    // figures may instead both describe the total, so the product is kept but not trusted.
+    const qty = c.qty * p.qty;
+    if (!valid(qty)) return { pack_quantity: c.qty, confidence: "LOW", matched: c.text };
+    return { pack_quantity: qty, confidence: selfConsistent && EXPLICIT_MULTIPLIER.test(text) ? "HIGH" : "LOW", matched: `${c.text} … ${p.text}` };
+  }
+  const single = c ?? p;
+  if (single) {
+    // A bare "12x16" next to an explicit count is probably a sheet size; the count wins, but
+    // only with LOW confidence because the two readings disagree.
+    const disagrees = !selfConsistent || (mp !== undefined && mp.a * mp.b !== single.qty);
+    return { pack_quantity: single.qty, confidence: disagrees ? "LOW" : "HIGH", matched: single.text };
+  }
+  // A bare "6 x 50" with no count or pack word could just as well be a size ("12x12").
+  if (mp) return { pack_quantity: mp.a * mp.b, confidence: "LOW", matched: mp.text };
+  const paren = TRAILING_PAREN.exec(text);
+  if (paren && valid(Number(paren[1]))) return { pack_quantity: Number(paren[1]), confidence: "LOW", matched: paren[0] };
+  return null;
+}
+
+/**
+ * Pack quantity from a listing title (HIGH confidence possible) or description (LOW at most).
+ * Total: never throws; returns a positive safe integer or null.
+ */
+export function parsePackQuantity(title: string, description?: string | null): PackParse {
+  const t = typeof title === "string" ? title : "";
+  const fromTitle = parseOne(t);
+  if (fromTitle) return fromTitle;
+  const fromDescription = typeof description === "string" ? parseOne(description) : null;
+  if (fromDescription) return { ...fromDescription, confidence: "LOW" };
   return { pack_quantity: null, confidence: "NONE", matched: null };
 }
 
