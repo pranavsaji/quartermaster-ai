@@ -104,6 +104,14 @@ describe("invoice reconciliation", () => {
       ["GLV-1001", "GLV1001", true],
       ["INV-0042", "invoice #42", true],
       ["QS-OLD-1", "QSOLD1", true],
+      // v3: "No."/"Number" before the digits is a label, not part of the number.
+      ["No. 42", "INV-42", true],
+      ["Invoice No. 42", "#42", true],
+      ["Invoice Number 0042", "42", true],
+      ["Nr. 2024-001", "2024/001", true],
+      ["NUM 7", "inv 7", true],
+      ["NOVA-42", "42", false],
+      ["No. 42", "No. 43", false],
     ])("%s vs %s → same: %s", (a, b, same) => {
       expect(normalizeInvoiceNumber(a) === normalizeInvoiceNumber(b)).toBe(same);
     });
@@ -117,7 +125,7 @@ describe("invoice reconciliation", () => {
       }
       expect(legacyNormalizeInvoiceNumber("№ ٤٢")).toBe("NO");
       expect(legacyNormalizeInvoiceNumber("2024-001")).toBe(legacyNormalizeInvoiceNumber("202-4001"));
-      expect(INVOICE_NUMBER_NORMALIZATION_VERSION).toBe(2);
+      expect(INVOICE_NUMBER_NORMALIZATION_VERSION).toBe(3);
     });
 
     it("does not call two digit-free invoice numbers the same invoice, and asks for review", () => {

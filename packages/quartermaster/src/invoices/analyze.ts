@@ -61,13 +61,18 @@ export interface InvoiceAnalysis {
   injection: InjectionVerdict | null;
 }
 
-/** Strips "INV"/"INVOICE" prefixes and leading zeros to a fixed point, so the result is idempotent. */
-function stripInvoicePrefix(joined: string): string {
+/**
+ * Strips "INV"/"INVOICE" prefixes and leading zeros to a fixed point, so the result is idempotent.
+ * With `numberWords` (v3) it also strips "NO", "NUMBER", "NUM", "NBR" and "NR" — but only right
+ * before a digit, so "No. 42" and "Invoice Nr 42" become "42" while "NOVA-42" stays "NOVA42".
+ */
+function stripInvoicePrefix(joined: string, numberWords = false): string {
   // "INVINVOICE7" → "INVOICE7" → "7" in one call, never "7" only on a second call. Each pass
   // shortens the string or stops.
   let core = joined;
   for (;;) {
-    const next = core.replace(/^(INVOICE|INV)(?=[A-Z0-9])/, "").replace(/^0+(?=\d)/, "");
+    let next = core.replace(/^(INVOICE|INV)(?=[A-Z0-9])/, "").replace(/^0+(?=\d)/, "");
+    if (numberWords) next = next.replace(/^(?:NUMBER|NUM|NBR|NR|NO)(?=\d)/, "");
     if (next === core) return core;
     core = next;
   }
@@ -87,12 +92,13 @@ function asciiDigits(text: string): string {
 }
 
 /**
- * Version of `normalizeInvoiceNumber`. v2 maps non-Latin digits and keeps digit groups apart;
+ * Version of `normalizeInvoiceNumber`. v2 maps non-Latin digits and keeps digit groups apart; v3
+ * also strips "No."/"Number"/"Nr" before the digits, so "No. 42" equals "INV-42" and "#42";
  * `legacyNormalizeInvoiceNumber` is v1. `analyzeInvoice` re-normalises the raw numbers of
- * existing invoices on every call, so stored `invoice_number_normalized` values (v1) are never
- * compared with v2 output; they only feed a database index.
+ * existing invoices on every call, so stored `invoice_number_normalized` values (v1 or v2) are
+ * never compared with current output; they only feed a database index.
  */
-export const INVOICE_NUMBER_NORMALIZATION_VERSION = 2;
+export const INVOICE_NUMBER_NORMALIZATION_VERSION = 3;
 
 /**
  * Canonical core of an invoice number, so "INV-0042", "Invoice #42" and "inv42" compare equal.
@@ -103,7 +109,8 @@ export const INVOICE_NUMBER_NORMALIZATION_VERSION = 2;
  * - Separators between two digit groups are kept as a single "-": "2024-001" and "202-4001"
  *   stay distinct (v1 merged both into "2024001"). Separators next to a letter are dropped as
  *   before ("GLV-1001" → "GLV1001", "INV-0042" → "42").
- * - "INV"/"INVOICE" prefixes and the leading zeros of the first group are stripped.
+ * - "INV"/"INVOICE" prefixes, "NO"/"NUMBER"/"NUM"/"NBR"/"NR" right before the digits (v3) and
+ *   the leading zeros of the first group are stripped: "Invoice No. 0042" → "42".
  *
  * Output: [A-Z0-9] with "-" only between two digits. Idempotent. May be empty or digit-free
  * ("###", "DRAFT"); `isReadableInvoiceNumber` tells whether a core can identify an invoice.
@@ -117,7 +124,7 @@ export function normalizeInvoiceNumber(n: string): string {
   const groups = upper.split(/[^A-Z0-9]+/).filter(Boolean);
   let joined = "";
   for (const g of groups) joined += joined && /\d$/.test(joined) && /^\d/.test(g) ? `-${g}` : g;
-  return stripInvoicePrefix(joined);
+  return stripInvoicePrefix(joined, true);
 }
 
 /** True when a normalised core can identify an invoice: it contains at least one digit. */
