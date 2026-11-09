@@ -1,4 +1,9 @@
-/** Application errors carry a stable machine-readable code and an HTTP status. */
+/**
+ * Application errors carry a stable machine-readable code and an HTTP status. `message` is sent
+ * to the client, so it must be authored text, never an upstream or driver `err.message`. For
+ * 4xx, `details` is sent verbatim; for 5xx only its scalar non-string fields are (see
+ * publicServerErrorDetails), the rest is logged.
+ */
 export class AppError extends Error {
   constructor(
     readonly status: number,

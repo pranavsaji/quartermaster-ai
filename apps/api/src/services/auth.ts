@@ -23,30 +23,33 @@ export function hashToken(token: string): string {
 }
 
 /**
- * Verifies credentials and opens a session. Responses and timing are identical for unknown
- * users and wrong passwords; repeated failures lock the account temporarily.
+ * Verifies credentials and opens a session. Unknown users, disabled users, wrong passwords and
+ * locked accounts all get the same 401 after the same password-hash work, so neither the
+ * response nor its timing reveals whether an account exists or is locked. (A locked account
+ * refuses even the correct password until the lock expires; the message says so generically.)
+ * MAX_FAILED_LOGINS consecutive failures lock the account for LOCKOUT_MINUTES.
  */
 export async function login(ctx: AppContext, email: string, password: string, meta: { ip?: string; userAgent?: string }) {
   const now = ctx.now();
   const [user] = await ctx.db.select().from(users).where(sql`lower(${users.email}) = ${email.toLowerCase()}`);
-  const invalid = new AppError(401, "INVALID_CREDENTIALS", "Email or password is incorrect.");
-  if (!user) {
+  const invalid = new AppError(401, "INVALID_CREDENTIALS", "Email or password is incorrect, or sign-in is temporarily locked after repeated failures.");
+  if (!user || user.disabled) {
     await verifyPassword(password, await dummyPasswordHash());
     throw invalid;
-  }
-  if (user.disabled) {
-    await verifyPassword(password, await dummyPasswordHash());
-    throw invalid;
-  }
-  if (user.lockedUntil && user.lockedUntil > now) {
-    throw new AppError(429, "ACCOUNT_LOCKED", "Too many failed sign-in attempts. Try again later.");
   }
   const ok = await verifyPassword(password, user.passwordHash);
+  if (user.lockedUntil && user.lockedUntil > now) throw invalid;
   if (!ok) {
-    const failed = user.failedLogins + 1;
+    // One atomic statement, so concurrent failures cannot overwrite each other's count or
+    // clear a lock another request just set. SET expressions all see the pre-update row.
+    const lockUntil = new Date(now.getTime() + LOCKOUT_MINUTES * 60_000);
+    const reachesLimit = sql`${users.failedLogins} + 1 >= ${MAX_FAILED_LOGINS}`;
     await ctx.db
       .update(users)
-      .set({ failedLogins: failed >= MAX_FAILED_LOGINS ? 0 : failed, lockedUntil: failed >= MAX_FAILED_LOGINS ? new Date(now.getTime() + LOCKOUT_MINUTES * 60_000) : null })
+      .set({
+        failedLogins: sql`case when ${reachesLimit} then 0 else ${users.failedLogins} + 1 end`,
+        lockedUntil: sql`case when ${reachesLimit} then ${lockUntil.toISOString()}::timestamptz else ${users.lockedUntil} end`,
+      })
       .where(eq(users.id, user.id));
     throw invalid;
   }

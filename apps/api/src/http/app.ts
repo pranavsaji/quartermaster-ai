@@ -8,6 +8,7 @@ import { notFound } from "../errors";
 import { sessionAuth } from "./middleware/auth";
 import { errorHandler } from "./middleware/errors";
 import { correlation, csrfGuard } from "./middleware/security";
+import { paypalWebhookGuard, paypalWebhookLimiter } from "./middleware/webhooks";
 import { authRoutes } from "./routes/auth";
 import { inventoryRoutes } from "./routes/inventory";
 import { operationsRoutes } from "./routes/operations";
@@ -65,10 +66,20 @@ export function createApp(ctx: AppContext) {
 
   const api = Router();
   // Webhooks authenticate by signature and need the raw body, so they precede JSON parsing.
+  // They get their own limiter and local header checks, which run before any call to PayPal.
+  api.use("/webhooks/paypal", paypalWebhookLimiter(ctx), paypalWebhookGuard(ctx));
   api.use(webhookRoutes(ctx));
   api.use(json({ limit: "100kb" }));
   api.use(cookieParser());
-  api.use(rateLimit({ windowMs: 60_000, limit: ctx.config.env === "test" ? 10_000 : 300, standardHeaders: "draft-8", legacyHeaders: false }));
+  api.use(
+    rateLimit({
+      windowMs: 60_000,
+      limit: ctx.config.rateLimits.perMinute,
+      standardHeaders: "draft-8",
+      legacyHeaders: false,
+      message: { error: { code: "RATE_LIMITED", message: "Too many requests. Try again shortly." } },
+    }),
+  );
   api.use(csrfGuard);
   api.use(authRoutes(ctx));
 

@@ -33,6 +33,8 @@ export interface DatabaseOptions {
   /** PEM CA bundle for providers that use a private CA. Verification is never disabled. */
   sslCa?: string;
   migrationsFolder?: string;
+  /** Receives errors from idle pooled connections (e.g. the server restarting). */
+  onPoolError?: (err: Error) => void;
 }
 
 export function defaultMigrationsFolder(): string {
@@ -72,9 +74,9 @@ export async function createDatabase(options: DatabaseOptions): Promise<Database
     statement_timeout: 30_000,
     application_name: "quartermaster",
   });
-  pool.on("error", () => {
-    /* idle client errors are surfaced on next query; avoid crashing the process */
-  });
+  // Without a listener an idle client's error would crash the process. The pool discards that
+  // client and later queries get a fresh one, so report it rather than rethrowing.
+  pool.on("error", (err) => options.onPoolError?.(err));
   const db = drizzlePg(pool, { schema }) as unknown as Database;
   return {
     db,

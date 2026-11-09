@@ -42,6 +42,7 @@ export class AgentRun {
   private researchCalls = 0;
   private tokens = 0;
   private readonly startedAt = Date.now();
+  private readonly deadline: AbortSignal;
   aiMode: AiMode = "DETERMINISTIC_FALLBACK";
   model: string | null = null;
 
@@ -50,7 +51,9 @@ export class AgentRun {
     readonly id: string,
     readonly organizationId: string,
     private readonly limits: AgentLimits,
-  ) {}
+  ) {
+    this.deadline = AbortSignal.timeout(Math.max(0, limits.deadlineMs));
+  }
 
   static async start(db: DbOrTx, args: { organizationId: string; requestId: string; kind: string; limits: AgentLimits }): Promise<AgentRun> {
     const [row] = await db
@@ -62,6 +65,14 @@ export class AgentRun {
 
   get remainingMs(): number {
     return this.limits.deadlineMs - (Date.now() - this.startedAt);
+  }
+
+  /**
+   * Aborts when the run's deadline passes. Pass it to every outbound call made for this run
+   * (OpenAI, Channel3) so in-flight requests stop at the deadline, not only the next tool call.
+   */
+  get signal(): AbortSignal {
+    return this.deadline;
   }
 
   get tokensUsed(): number {
@@ -81,7 +92,7 @@ export class AgentRun {
     if (!(AGENT_TOOLS as readonly string[]).includes(tool)) throw new Error(`Tool ${tool} is not allowlisted`);
     if (this.calls >= this.limits.maxToolCalls) throw new AgentBudgetExceeded("tool call limit reached");
     if (tool === "market.search" && this.researchCalls >= this.limits.maxResearchCalls) throw new AgentBudgetExceeded("research call limit reached");
-    if (this.remainingMs <= 0) throw new AgentBudgetExceeded("deadline exceeded");
+    if (this.remainingMs <= 0 || this.deadline.aborted) throw new AgentBudgetExceeded("deadline exceeded");
     this.calls++;
     if (tool === "market.search") this.researchCalls++;
     const started = new Date();

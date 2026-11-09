@@ -1,4 +1,6 @@
-import { PayPalAmbiguousError, PayPalApiError, PayPalNotConfiguredError } from "./errors";
+import type { z } from "zod";
+import { PayPalAmbiguousError, PayPalApiError, PayPalInvalidResponseError, PayPalNotConfiguredError } from "./errors";
+import { OAuthTokenSchema, PayPalCaptureSchema, PayPalOrderSchema, PayPalRefundSchema, WebhookVerificationSchema, issuePaths } from "./schemas";
 import type { CreateOrderRequest, PayPalCapture, PayPalOrder, PayPalRefund, WebhookEvent, WebhookHeaders } from "./types";
 
 export interface PayPalConfig {
@@ -30,8 +32,9 @@ interface CachedToken {
 }
 
 /**
- * Thin, dependency-free PayPal REST client. Every mutating call takes a caller-supplied
- * `PayPal-Request-Id` so retries of the same logical operation are idempotent at PayPal.
+ * Thin PayPal REST client. Every mutating call takes a caller-supplied `PayPal-Request-Id` so
+ * retries of the same logical operation are idempotent at PayPal. Every 2xx body is validated
+ * (schemas.ts); a malformed one raises PayPalInvalidResponseError, an ambiguous outcome.
  */
 export class PayPalClient {
   private token: CachedToken | null = null;
@@ -67,10 +70,11 @@ export class PayPalClient {
         headers: { Authorization: `Basic ${basic}`, "Content-Type": "application/x-www-form-urlencoded" },
         body: "grant_type=client_credentials",
       });
-      const body = (await res.json().catch(() => ({}))) as { access_token?: string; expires_in?: number };
-      if (!res.ok || !body.access_token) throw new PayPalApiError(res.status, body, "oauth.token");
-      this.token = { token: body.access_token, expiresAt: Date.now() + (body.expires_in ?? 300) * 1000 };
-      return body.access_token;
+      const body: unknown = await res.json().catch(() => null);
+      if (!res.ok) throw new PayPalApiError(res.status, body, "oauth.token");
+      const token = parseBody("oauth.token", res.status, OAuthTokenSchema, body, this.config.log);
+      this.token = { token: token.access_token, expiresAt: Date.now() + (token.expires_in ?? 300) * 1000 };
+      return token.access_token;
     })();
     try {
       return await this.tokenInflight;
@@ -82,30 +86,31 @@ export class PayPalClient {
   /* ------------------------------------------------------------------ Orders */
 
   createOrder(body: CreateOrderRequest, requestId: string): Promise<PayPalOrder> {
-    return this.request<PayPalOrder>("orders.create", "POST", "/v2/checkout/orders", body, {
+    return this.request("orders.create", PayPalOrderSchema, "POST", "/v2/checkout/orders", body, {
       "PayPal-Request-Id": requestId,
       Prefer: "return=representation",
     });
   }
 
   getOrder(orderId: string): Promise<PayPalOrder> {
-    return this.request<PayPalOrder>("orders.get", "GET", `/v2/checkout/orders/${encodeURIComponent(orderId)}`);
+    return this.request("orders.get", PayPalOrderSchema, "GET", `/v2/checkout/orders/${encodeURIComponent(orderId)}`);
   }
 
   captureOrder(orderId: string, requestId: string): Promise<PayPalOrder> {
-    return this.request<PayPalOrder>("orders.capture", "POST", `/v2/checkout/orders/${encodeURIComponent(orderId)}/capture`, {}, {
+    return this.request("orders.capture", PayPalOrderSchema, "POST", `/v2/checkout/orders/${encodeURIComponent(orderId)}/capture`, {}, {
       "PayPal-Request-Id": requestId,
       Prefer: "return=representation",
     });
   }
 
   getCapture(captureId: string): Promise<PayPalCapture> {
-    return this.request<PayPalCapture>("captures.get", "GET", `/v2/payments/captures/${encodeURIComponent(captureId)}`);
+    return this.request("captures.get", PayPalCaptureSchema, "GET", `/v2/payments/captures/${encodeURIComponent(captureId)}`);
   }
 
   refundCapture(captureId: string, requestId: string, amount?: { currency_code: string; value: string }, note?: string): Promise<PayPalRefund> {
-    return this.request<PayPalRefund>(
+    return this.request(
       "captures.refund",
+      PayPalRefundSchema,
       "POST",
       `/v2/payments/captures/${encodeURIComponent(captureId)}/refund`,
       { ...(amount ? { amount } : {}), ...(note ? { note_to_payer: note.slice(0, 255) } : {}) },
@@ -116,9 +121,11 @@ export class PayPalClient {
   /* ---------------------------------------------------------------- Webhooks */
 
   /**
-   * Verifies a webhook through PayPal's verify-webhook-signature API. Returns false for any
-   * verification failure; throws only if PayPal could not be reached (caller should 5xx so
-   * PayPal retries delivery).
+   * Verifies a webhook through PayPal's verify-webhook-signature API (one OAuth + one verify
+   * call, so callers should rate-limit and pre-validate before invoking it). Returns false for
+   * a rejected signature, missing headers or an untrusted cert URL; throws when PayPal could not
+   * be reached, answered 5xx/429, or answered with a malformed body (caller should 5xx so PayPal
+   * retries delivery).
    */
   async verifyWebhook(headers: WebhookHeaders, event: WebhookEvent): Promise<boolean> {
     if (!this.webhookConfigured) throw new PayPalNotConfiguredError();
@@ -127,7 +134,7 @@ export class PayPalClient {
     const certUrl = headers["paypal-cert-url"]!;
     if (!isTrustedCertUrl(certUrl, this.config.environment)) return false;
     try {
-      const res = await this.request<{ verification_status: string }>("webhooks.verify", "POST", "/v1/notifications/verify-webhook-signature", {
+      const res = await this.request("webhooks.verify", WebhookVerificationSchema, "POST", "/v1/notifications/verify-webhook-signature", {
         auth_algo: headers["paypal-auth-algo"],
         cert_url: certUrl,
         transmission_id: headers["paypal-transmission-id"],
@@ -138,14 +145,15 @@ export class PayPalClient {
       });
       return res.verification_status === "SUCCESS";
     } catch (err) {
-      if (err instanceof PayPalApiError && err.status >= 400 && err.status < 500) return false;
+      // A 4xx means PayPal rejected the verification request; a 429 only means we were throttled.
+      if (err instanceof PayPalApiError && err.status >= 400 && err.status < 500 && !err.rateLimited) return false;
       throw err;
     }
   }
 
   /* ----------------------------------------------------------------- Plumbing */
 
-  private async request<T>(operation: string, method: string, path: string, body?: unknown, extraHeaders: Record<string, string> = {}): Promise<T> {
+  private async request<T>(operation: string, schema: z.ZodType<T>, method: string, path: string, body?: unknown, extraHeaders: Record<string, string> = {}): Promise<T> {
     const token = await this.getAccessToken();
     const started = Date.now();
     const res = await this.rawFetch(operation, path, {
@@ -173,7 +181,7 @@ export class PayPalClient {
     });
     if (res.status === 401) this.token = null;
     if (!res.ok) throw new PayPalApiError(res.status, parsed, operation);
-    return parsed as T;
+    return parseBody(operation, res.status, schema, parsed, this.config.log);
   }
 
   private async rawFetch(operation: string, path: string, init: RequestInit): Promise<Response> {
@@ -187,6 +195,15 @@ export class PayPalClient {
       clearTimeout(timer);
     }
   }
+}
+
+/** Validates a 2xx body; a mismatch is an ambiguous outcome, never a definite failure. */
+function parseBody<T>(operation: string, status: number, schema: z.ZodType<T>, body: unknown, log?: PayPalConfig["log"]): T {
+  const r = schema.safeParse(body);
+  if (r.success) return r.data;
+  const invalid = issuePaths(r.error);
+  log?.("paypal.invalid_response", { operation, status, invalid });
+  throw new PayPalInvalidResponseError(operation, status, invalid);
 }
 
 /** Only accept certificate URLs hosted by PayPal over HTTPS. */

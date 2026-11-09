@@ -16,9 +16,27 @@ export class PayPalApiError extends Error {
     this.details = body;
   }
 
-  /** True when the outcome is known not to have changed state (safe to retry the same operation). */
+  /**
+   * PayPal answered 5xx: the request reached PayPal but the outcome is unknown. A mutating call
+   * (capture, refund) may have taken effect, so reconcile by reading the resource first.
+   */
+  get ambiguous(): boolean {
+    return this.status >= 500;
+  }
+
+  /** PayPal throttled the request (429) before processing it: state is known not to have changed. */
+  get rateLimited(): boolean {
+    return this.status === 429;
+  }
+
+  /**
+   * True when the same operation may be retried later with the same PayPal-Request-Id: either
+   * it was throttled (`rateLimited`, nothing changed) or its outcome is unknown (`ambiguous`,
+   * PayPal may have applied it). It does NOT mean state is unchanged; callers deciding whether
+   * money may have moved must treat it as unknown, and should prefer `ambiguous`.
+   */
   get retryable(): boolean {
-    return this.status === 429 || this.status >= 500;
+    return this.rateLimited || this.ambiguous;
   }
 }
 
@@ -33,6 +51,23 @@ export class PayPalAmbiguousError extends Error {
     this.name = "PayPalAmbiguousError";
     this.operation = operation;
     this.cause = cause;
+  }
+}
+
+/**
+ * PayPal answered 2xx with a body that failed schema validation. Treated as ambiguous: a
+ * malformed success response to a capture or refund may still mean money moved, so callers
+ * must reconcile exactly as they would after a dropped connection.
+ */
+export class PayPalInvalidResponseError extends PayPalAmbiguousError {
+  readonly status: number;
+  /** Paths of the invalid fields (never their values). */
+  readonly invalidPaths: string[];
+  constructor(operation: string, status: number, invalidPaths: string[]) {
+    super(operation, new Error(`unexpected ${status} response (invalid: ${invalidPaths.join(", ") || "body"})`));
+    this.name = "PayPalInvalidResponseError";
+    this.status = status;
+    this.invalidPaths = invalidPaths;
   }
 }
 
