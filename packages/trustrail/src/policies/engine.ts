@@ -1,4 +1,4 @@
-import type { PolicyDecisionKind, ProductCategory, ViolationCode } from "@qm/contracts";
+import { applyBps, isValidBps, type PolicyDecisionKind, type ProductCategory, type ViolationCode } from "@qm/contracts";
 import { type Cart, checkCartArithmetic } from "../cart";
 import { digest } from "../canonical";
 import type { SpendMandate } from "../mandates/types";
@@ -152,6 +152,13 @@ export function evaluatePolicy(input: PolicyInput): PolicyResult {
 
   if (!supplier || !supplier.active) {
     violate({ code: "SUPPLIER_INACTIVE", severity: "BLOCK", message: "Supplier is unknown or inactive." });
+  } else if (!isValidBps(supplier.tax_rate_bps)) {
+    violate({
+      code: "SUPPLIER_INACTIVE",
+      severity: "BLOCK",
+      message: "Supplier's published tax rate is malformed.",
+      evidence: { tax_rate_bps: String(supplier.tax_rate_bps) },
+    });
   }
 
   // --- Line items vs. catalog and published terms -------------------------------------
@@ -261,7 +268,7 @@ export function evaluatePolicy(input: PolicyInput): PolicyResult {
         violate({ code: "UNAUTHORIZED_LINE_ITEM", severity: "BLOCK", message: "The cart contains more than one tax line." });
         continue;
       }
-      const expectedTax = supplier ? Math.round((cart.subtotal_minor * supplier.tax_rate_bps) / 10_000) : null;
+      const expectedTax = supplier ? expectedTaxMinor(cart.subtotal_minor, supplier.tax_rate_bps) : null;
       if (expectedTax === null || line.line_total_minor !== expectedTax) {
         unauthorizedCount++;
         violate({
@@ -426,6 +433,19 @@ export function evaluatePolicy(input: PolicyInput): PolicyResult {
   }
 
   return finalize(input, violations, checks, mandate);
+}
+
+/**
+ * Tax the supplier's published rate yields on `subtotal`, using the same rounding rule as quote
+ * building (`applyBps`). Null when the rate or subtotal is malformed, so the tax line cannot match.
+ */
+function expectedTaxMinor(subtotal: number, bps: number): number | null {
+  if (!isValidBps(bps) || !Number.isSafeInteger(subtotal) || subtotal < 0) return null;
+  try {
+    return applyBps(subtotal, bps);
+  } catch {
+    return null;
+  }
 }
 
 function finalize(input: PolicyInput, violations: Violation[], checks: PolicyCheck[], mandate: SpendMandate | null): PolicyResult {
