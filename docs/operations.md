@@ -106,3 +106,10 @@ code; provider and database text stays in the logs.
 | `REFUND_IN_PROGRESS`                               | 409     | Another refund on that payment is unresolved; retry it or wait for the sweeper.          |
 | `WEBHOOK_MALFORMED`, `WEBHOOK_STALE`               | 400     | Rejected before contacting PayPal (bad headers or clock skew beyond ±5 minutes).         |
 | `RATE_LIMITED`                                     | 429     | Per-IP or per-account limit; counters are shared across instances in production.         |
+
+## Signing key ids
+
+`pnpm keys:generate` now derives the key id from the SHA-256 of the DER public key (`trk_` + 16 hex).
+Deployments that relied on an earlier default id should keep it by setting `TRUSTRAIL_SIGNING_KEY_ID`
+explicitly; certificates signed under older ids still verify because public keys are kept in
+`signing_keys`.
