@@ -10,7 +10,7 @@ import type {
   ViolationDto,
 } from "@qm/contracts";
 import { render, type RenderOptions } from "@testing-library/react";
-import { createElement, type ReactElement, type ReactNode } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { vi } from "vitest";
 import { SessionProvider, type Session } from "@/components/session/SessionProvider";
 import { userCan } from "@/lib/roles";
@@ -103,7 +103,7 @@ export function testSession(role: Role = "OWNER"): Session {
 export function renderWithSession(ui: ReactElement, options: { role?: Role } & Omit<RenderOptions, "wrapper"> = {}) {
   const { role = "OWNER", ...rest } = options;
   const session = testSession(role);
-  const wrapper = ({ children }: { children: ReactNode }) => createElement(SessionProvider, { session, children });
+  const wrapper = ({ children }: { children: ReactNode }) => <SessionProvider session={session}>{children}</SessionProvider>;
   return render(ui, { wrapper, ...rest });
 }
 
