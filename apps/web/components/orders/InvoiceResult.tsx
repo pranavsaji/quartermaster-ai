@@ -40,6 +40,7 @@ export function InvoiceResult({ invoice }: { invoice: InvoiceDto }) {
               <Icons.x className="mt-0.5 size-3.5 text-block" strokeWidth={2.4} />
             )}
             <span className="min-w-0">
+              <span className="sr-only">{m.passed ? "Passed: " : "Failed: "}</span>
               <span className="font-medium text-ink-2">{humanize(m.check)}</span>
               {!m.passed && m.severity ? (
                 <Badge tone={SEVERITY_TONES[m.severity]} className="mx-1.5">

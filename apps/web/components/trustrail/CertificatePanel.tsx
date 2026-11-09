@@ -110,6 +110,7 @@ export function CertificatePanel({ certificate }: { certificate: IntentCertifica
                   <Icons.x className="mt-0.5 size-3.5 text-block" strokeWidth={2.4} />
                 )}
                 <span>
+                  <span className="sr-only">{c.passed ? "Passed: " : "Failed: "}</span>
                   <span className="font-medium text-ink-2">{humanize(c.code)}</span>
                   <span className="text-ink-3"> — {c.detail}</span>
                 </span>
