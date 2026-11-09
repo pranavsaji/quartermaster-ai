@@ -1,12 +1,10 @@
 import type { NextFunction, Request, RequestHandler, Response } from "express";
 import type { Role } from "@qm/contracts";
-import type { AppContext } from "../../context";
-import { currentScope } from "../../context";
+import { currentScope, type AppContext } from "../../context";
 import { forbidden, unauthorized } from "../../errors";
 import { authenticate, type AuthenticatedUser } from "../../services/auth";
 
 declare global {
-  // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Express {
     interface Request {
       user?: AuthenticatedUser;
