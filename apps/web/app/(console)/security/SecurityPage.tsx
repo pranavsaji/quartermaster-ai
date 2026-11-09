@@ -32,7 +32,7 @@ export function SecurityPage() {
   const idBase = useId();
   const [tab, setTab] = useState<Tab>("findings");
   const [severity, setSeverity] = useState<Severity | "">("");
-  const summary = useResource((signal) => api.analytics.summary({ signal }), []);
+  const summary = useResource((signal, { refresh }) => api.analytics.summary({ signal, fresh: refresh }), []);
   const findings = usePagedResource(
     (cursor, signal) => api.security.events({ limit: 100, cursor, severity: severity || undefined }, { signal }),
     [severity],

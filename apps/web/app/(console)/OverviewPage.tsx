@@ -17,7 +17,7 @@ import { useResource } from "@/lib/hooks";
 
 export function OverviewPage() {
   const { user, config, can } = useSession();
-  const summary = useResource((signal) => api.analytics.summary({ signal }), []);
+  const summary = useResource((signal, { refresh }) => api.analytics.summary({ signal, fresh: refresh }), []);
   const inventory = useResource((signal) => api.inventory.list({ signal }), []);
   const deliveries = useResource((signal) => api.deliveries.list({ signal }), []);
   const orders = useResource((signal) => api.purchaseOrders.list({ limit: 100 }, { signal }), []);

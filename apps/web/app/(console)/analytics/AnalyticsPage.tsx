@@ -161,7 +161,7 @@ function useChartOptions(s: AnalyticsSummaryDto | undefined) {
 }
 
 export function AnalyticsPage() {
-  const summary = useResource((signal) => api.analytics.summary({ signal }), []);
+  const summary = useResource((signal, { refresh }) => api.analytics.summary({ signal, fresh: refresh }), []);
   const s = summary.data;
   const charts = useChartOptions(s);
   const cur = s?.currency ?? "USD";

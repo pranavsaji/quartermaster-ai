@@ -46,8 +46,12 @@ import type {
 } from "@qm/contracts";
 import { request, type RequestOptions } from "./http";
 import { withIdempotency } from "./idempotency";
+import { sharedRequest } from "./shared-cache";
 
 type Signal = { signal?: AbortSignal };
+
+/** How long a shared read (see `sharedRequest`) is reused across pages, unless the user refreshes. */
+const SHARED_TTL_MS = 15_000;
 
 export interface PageQuery {
   limit?: number;
@@ -168,6 +172,12 @@ export const api = {
   },
 
   analytics: {
-    summary: (o?: Signal) => get<AnalyticsSummaryDto>("/analytics/summary", o),
+    /** Shared by Overview, Security and Analytics; `fresh` (the Refresh button) bypasses the cache. */
+    summary: (o?: Signal & { fresh?: boolean }) =>
+      sharedRequest("/analytics/summary", () => get<AnalyticsSummaryDto>("/analytics/summary"), {
+        ttlMs: SHARED_TTL_MS,
+        signal: o?.signal,
+        fresh: o?.fresh,
+      }),
   },
 } as const;

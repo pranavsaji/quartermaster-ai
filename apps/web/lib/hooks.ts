@@ -44,12 +44,17 @@ interface Loaded<T> {
   at: number | undefined;
 }
 
+export interface FetchContext {
+  /** True when this request was started by `reload()` (e.g. a Refresh button), so caches should be bypassed. */
+  refresh: boolean;
+}
+
 /**
  * Fetches a resource on mount and whenever `deps` change. Requests are aborted
  * when superseded or on unmount, so out-of-order responses can't clobber state.
  */
 export function useResource<T>(
-  fetcher: (signal: AbortSignal) => Promise<T>,
+  fetcher: (signal: AbortSignal, context: FetchContext) => Promise<T>,
   deps: DependencyList,
   options: { enabled?: boolean } = {},
 ): ResourceState<T> {
@@ -66,13 +71,18 @@ export function useResource<T>(
   // Bumped by `setData`. A response to a request started before a local write is older than
   // that write (e.g. Refresh, then save an adjustment), so it must not overwrite it.
   const writes = useRef(0);
+  // The (deps version, reload count) of the previous request, to tell a reload from a deps change.
+  const previousRequest = useRef<{ deps: number; reloads: number } | null>(null);
 
   useEffect(() => {
     if (!enabled) return;
     const controller = new AbortController();
     const writesAtStart = writes.current;
     const superseded = () => controller.signal.aborted || writes.current !== writesAtStart;
-    fetchLatest(controller.signal)
+    const prev = previousRequest.current;
+    const refresh = prev !== null && prev.deps === depsVersion && prev.reloads !== reloads;
+    previousRequest.current = { deps: depsVersion, reloads };
+    fetchLatest(controller.signal, { refresh })
       .then((result) => {
         if (superseded()) return;
         setLoaded({ value: result, version: depsVersion, at: Date.now() });
@@ -86,7 +96,7 @@ export function useResource<T>(
         if (!controller.signal.aborted) setSettledKey(requestKey);
       });
     return () => controller.abort();
-  }, [enabled, requestKey, depsVersion]);
+  }, [enabled, requestKey, depsVersion, reloads]);
 
   const reload = useCallback(() => setReloads((n) => n + 1), []);
   const setData = useCallback(

@@ -11,6 +11,7 @@
  *   `UNEXPECTED_RESPONSE` error rather than a string handed to a component.
  */
 import type { ApiError } from "@qm/contracts";
+import { clearSharedCache } from "./shared-cache";
 
 export const API_BASE = "/api/v1";
 
@@ -202,6 +203,8 @@ export async function request<T>(method: HttpMethod, path: string, options: Requ
   }
 
   if (body.kind === "other") throw unexpectedResponse(response);
+  // A successful write can change any cached read (e.g. the analytics summary).
+  if (mutating) clearSharedCache();
   return (body.kind === "json" ? body.value : undefined) as T;
 }
 
