@@ -700,3 +700,10 @@ export const idempotencyKeys = pgTable(
   },
   (t) => [uniqueIndex("idempotency_scope_uq").on(t.organizationId, t.userId, t.key)],
 );
+
+/** Time-bound leases electing a single runner for background jobs across instances. */
+export const jobLeases = pgTable("job_leases", {
+  name: text("name").primaryKey(),
+  holder: text("holder").notNull(),
+  leaseUntil: ts("lease_until").notNull(),
+});
