@@ -13,6 +13,31 @@ describe("TrustRail policy engine", () => {
     expect(r.input_digest).toMatch(/^sha256:[a-f0-9]{64}$/);
   });
 
+  describe("auto-approval (mandate.human_approval_required = false)", () => {
+    const auto = (overrides: Parameters<typeof mandate>[0] = {}) => mandate({ human_approval_required: false, auto_approval_limit_minor: 20_000, ...overrides });
+
+    it("auto-approves an ALLOW decision within the auto-approval limit", () => {
+      const r = evaluatePolicy(baseInput({ mandate: auto() }));
+      expect(r.decision).toBe("ALLOW");
+      expect(r.human_approval_required).toBe(false);
+    });
+
+    it("auto-approves a total exactly at the limit", () => {
+      expect(evaluatePolicy(baseInput({ mandate: auto({ auto_approval_limit_minor: 17_320 }) })).human_approval_required).toBe(false);
+    });
+
+    it("requires a human above the auto-approval limit", () => {
+      const r = evaluatePolicy(baseInput({ mandate: auto({ auto_approval_limit_minor: 17_319 }) }));
+      expect(r.decision).toBe("ALLOW");
+      expect(r.human_approval_required).toBe(true);
+    });
+
+    it("requires a human for any REVIEW or BLOCK decision", () => {
+      expect(evaluatePolicy(baseInput({ mandate: auto(), market: [] })).human_approval_required).toBe(true);
+      expect(evaluatePolicy(baseInput({ mandate: auto(), supplier: null })).human_approval_required).toBe(true);
+    });
+  });
+
   it("is deterministic: identical input yields an identical digest and decision", () => {
     const a = evaluatePolicy(baseInput());
     const b = evaluatePolicy(baseInput());
