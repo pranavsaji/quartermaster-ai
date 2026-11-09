@@ -9,7 +9,7 @@ import {
 } from "@qm/contracts";
 import { useEffect, useRef, useState } from "react";
 import { PayPalCheckout } from "@/components/payments/PayPalCheckout";
-import { PaymentStatusPanel } from "@/components/payments/PaymentStatusPanel";
+import { isSameOrNewer, PaymentStatusPanel } from "@/components/payments/PaymentStatusPanel";
 import { useSession } from "@/components/session/SessionProvider";
 import { CertificatePanel } from "@/components/trustrail/CertificatePanel";
 import { DecisionBadge } from "@/components/trustrail/DecisionBadge";
@@ -21,6 +21,7 @@ import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Notice } from "@/components/ui/Notice";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import { Icons } from "@/components/shell/icons";
+import { api } from "@/lib/api";
 import { countdown, money } from "@/lib/format";
 import { useNow } from "@/lib/hooks";
 import { PO_STATUS_TONES } from "@/lib/labels";
@@ -29,6 +30,9 @@ import { ProposalLines } from "./ProposalLines";
 import { RejectDialog } from "./RejectDialog";
 
 const SETTLED_OR_SETTLING = new Set<PaymentDto["status"]>([...SETTLED_PAYMENT_STATUSES, "CAPTURE_PENDING"]);
+/** Payment outcomes that also change the purchase order (its status, and the delivery a capture schedules). */
+const FINAL_PAYMENT_STATUSES = new Set<PaymentDto["status"]>([...SETTLED_PAYMENT_STATUSES, "FAILED", "VOIDED"]);
+
 export function isEvidenceOnly(po: PurchaseOrderDto): boolean {
   return po.status === "BLOCKED" || po.status === "SUPERSEDED";
 }
@@ -85,8 +89,21 @@ export function ProposalCard({
     onReload();
   }
 
+  /** The payment settled outside the capture call (polling, a re-read, a refund): status and delivery live on the order. */
+  async function refreshOrder(payment: PaymentDto) {
+    try {
+      const fresh = await api.purchaseOrders.get(po.id);
+      const keepPayment = !fresh.payment || (fresh.payment.id === payment.id && !isSameOrNewer(fresh.payment, payment));
+      onChange(keepPayment ? { ...fresh, payment } : fresh);
+    } catch {
+      onReload();
+    }
+  }
+
   function handlePayment(payment: PaymentDto) {
+    const changed = po.payment?.id !== payment.id || po.payment.status !== payment.status;
     onChange({ ...po, payment });
+    if (changed && FINAL_PAYMENT_STATUSES.has(payment.status)) void refreshOrder(payment);
   }
 
   function handleCaptured(result: CaptureResponse) {
