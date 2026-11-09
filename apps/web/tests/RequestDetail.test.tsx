@@ -1,5 +1,5 @@
 import type { ProcurementRequestDto } from "@qm/contracts";
-import { screen, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { RequestDetail } from "@/app/(console)/procurement/[id]/RequestDetail";
 import { jsonResponse, mockFetch, policyDecision, purchaseOrder, renderWithSession, violation } from "./helpers";
@@ -69,6 +69,45 @@ describe("RequestDetail", () => {
     expect(within(cards[0]!).getByText("TrustRail blocked this cart")).toBeInTheDocument();
     expect(within(cards[0]!).queryByRole("button", { name: "Approve & sign" })).not.toBeInTheDocument();
     expect(within(cards[1]!).getByRole("button", { name: "Approve & sign" })).toBeDisabled();
+  });
+
+  it("reloads the request when research is refused with a 409, so a run started elsewhere is picked up", async () => {
+    const { calls } = mockFetch({
+      "GET /api/v1/procurement/requests/req-1": [
+        jsonResponse(request({ status: "DRAFT" })),
+        jsonResponse(request({ status: "RESEARCHING" })),
+      ],
+      "GET /api/v1/inventory": [jsonResponse({ items: [] })],
+      "POST /api/v1/procurement/requests/req-1/research": [
+        jsonResponse({ error: { code: "RESEARCH_IN_PROGRESS", message: "Research is already running for this request." } }, 409),
+      ],
+    });
+    renderWithSession(<RequestDetail id="req-1" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Run research" }));
+
+    expect(await screen.findByText("Research is already running for this request.")).toBeInTheDocument();
+    expect(screen.getByText("Research didn't start")).toBeInTheDocument();
+    await waitFor(() => expect(calls.filter((c) => c.method === "GET" && c.url.includes("/procurement/requests/req-1"))).toHaveLength(2));
+    expect(await screen.findByText("Request: Researching")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Reload request" }));
+    await waitFor(() => expect(calls.filter((c) => c.method === "GET" && c.url.includes("/procurement/requests/req-1"))).toHaveLength(3));
+  });
+
+  it("reloads the request when re-evaluation is refused with a 409", async () => {
+    const { calls } = mockFetch({
+      "GET /api/v1/procurement/requests/req-1": [jsonResponse(request())],
+      "GET /api/v1/inventory": [jsonResponse({ items: [] })],
+      "POST /api/v1/procurement/requests/req-1/evaluate": [
+        jsonResponse({ error: { code: "REQUEST_NOT_APPROVABLE", message: "This request has no open proposals to evaluate." } }, 409),
+      ],
+    });
+    renderWithSession(<RequestDetail id="req-1" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Re-evaluate" }));
+
+    expect(await screen.findByText("This request has no open proposals to evaluate.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reload request" })).toBeInTheDocument();
+    await waitFor(() => expect(calls.filter((c) => c.method === "GET" && c.url.includes("/procurement/requests/req-1"))).toHaveLength(2));
   });
 
   it("shows the API's error with a retry when the request can't be loaded", async () => {

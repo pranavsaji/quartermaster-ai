@@ -7,7 +7,7 @@ import { StatusBadge } from "@/components/ui/Badge";
 import { ButtonLink } from "@/components/ui/ButtonLink";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { ResourceView, type ResourceLike } from "@/components/ui/ResourceView";
 import { SkeletonRows } from "@/components/ui/Skeleton";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import { num } from "@/lib/format";
@@ -36,7 +36,7 @@ function CoverBar({ days, leadTime }: { days: number | null; leadTime: number })
   );
 }
 
-export function LowStockList({ items, error, onRetry }: { items: InventoryItemDto[] | undefined; error: unknown; onRetry: () => void }) {
+export function LowStockList({ items, resource }: { items: InventoryItemDto[] | undefined; resource: ResourceLike }) {
   const { can } = useSession();
   const low = items ? sortByUrgency(items.filter((i) => i.status !== "OK")).slice(0, 8) : undefined;
   const source = items?.[0]?.data_source;
@@ -56,8 +56,7 @@ export function LowStockList({ items, error, onRetry }: { items: InventoryItemDt
         }
       />
       <CardBody className="pt-2">
-        {error && !items ? <ErrorNotice error={error} onRetry={onRetry} /> : null}
-        {!low && !error ? <SkeletonRows rows={4} className="pt-2" /> : null}
+        <ResourceView resource={resource} hasData={Boolean(items)} loading={<SkeletonRows rows={4} className="pt-2" />} />
         {low && low.length === 0 ? (
           <EmptyState compact title="Everything is above its reorder point" description="Nice. Nothing needs restocking." />
         ) : null}

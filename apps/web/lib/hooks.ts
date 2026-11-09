@@ -56,16 +56,28 @@ export interface FetchContext {
 export function useResource<T>(
   fetcher: (signal: AbortSignal, context: FetchContext) => Promise<T>,
   deps: DependencyList,
-  options: { enabled?: boolean } = {},
+  options: {
+    enabled?: boolean;
+    /**
+     * Data already loaded for the initial `deps` (e.g. by a server component). The first fetch is
+     * skipped; `reload()` and a change of `deps` fetch as usual.
+     */
+    initialData?: T;
+  } = {},
 ): ResourceState<T> {
   const enabled = options.enabled ?? true;
   const depsVersion = useDepsVersion(deps);
-  const [loaded, setLoaded] = useState<Loaded<T>>({ value: undefined, version: -1, at: undefined });
+  const [initial] = useState(() => (options.initialData === undefined ? null : { data: options.initialData, at: Date.now() }));
+  const [loaded, setLoaded] = useState<Loaded<T>>(() =>
+    initial ? { value: initial.data, version: 0, at: initial.at } : { value: undefined, version: -1, at: undefined },
+  );
   const [failure, setFailure] = useState<{ error: unknown; version: number } | null>(null);
   const [reloads, setReloads] = useState(0);
   // A request is identified by (deps version, reload count); it is in flight until it settles.
   const requestKey = `${depsVersion}:${reloads}`;
-  const [settledKey, setSettledKey] = useState<string | null>(null);
+  // With initial data, the first request ("0:0") counts as already settled and is never sent.
+  const initialKey = initial ? "0:0" : null;
+  const [settledKey, setSettledKey] = useState<string | null>(initialKey);
   const inFlight = enabled && settledKey !== requestKey;
   const fetchLatest = useEffectEvent(fetcher);
   // Bumped by `setData`. A response to a request started before a local write is older than
@@ -76,6 +88,10 @@ export function useResource<T>(
 
   useEffect(() => {
     if (!enabled) return;
+    if (requestKey === initialKey) {
+      previousRequest.current = { deps: depsVersion, reloads };
+      return;
+    }
     const controller = new AbortController();
     const writesAtStart = writes.current;
     const superseded = () => controller.signal.aborted || writes.current !== writesAtStart;
@@ -96,7 +112,7 @@ export function useResource<T>(
         if (!controller.signal.aborted) setSettledKey(requestKey);
       });
     return () => controller.abort();
-  }, [enabled, requestKey, depsVersion, reloads]);
+  }, [enabled, requestKey, initialKey, depsVersion, reloads]);
 
   const reload = useCallback(() => setReloads((n) => n + 1), []);
   const setData = useCallback(
@@ -166,13 +182,17 @@ export function useAction<A extends unknown[], R>(action: (...args: A) => Promis
   return { run, pending, error, reset };
 }
 
-/** Current time, re-rendered every `intervalMs`. For countdowns and "x minutes ago". */
-export function useNow(intervalMs = 1000): number {
+/**
+ * Current time, re-rendered every `intervalMs` while `active`. For countdowns and "x minutes ago".
+ * Pass `active: false` when nothing time-dependent is on screen, so the component stops re-rendering.
+ */
+export function useNow(intervalMs = 1000, active = true): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
+    if (!active) return;
     const id = window.setInterval(() => setNow(Date.now()), intervalMs);
     return () => window.clearInterval(id);
-  }, [intervalMs]);
+  }, [intervalMs, active]);
   return now;
 }
 

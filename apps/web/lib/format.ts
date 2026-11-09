@@ -99,9 +99,11 @@ const dateTimeFmt = new Intl.DateTimeFormat("en-US", {
 });
 const shortDateFmt = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" });
 
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
 function toDate(value: string | Date): Date | null {
   // Bare YYYY-MM-DD dates are calendar dates, not instants: render them in local time.
-  const d = typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T00:00:00`) : new Date(value);
+  const d = typeof value === "string" && DATE_ONLY.test(value) ? new Date(`${value}T00:00:00`) : new Date(value);
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
@@ -126,6 +128,8 @@ export function dateTime(value: string | null | undefined): string {
 const relFmt = new Intl.RelativeTimeFormat("en-US", { numeric: "auto" });
 export function relativeTime(value: string | null | undefined, now = Date.now()): string {
   if (!value) return "—";
+  // A calendar date has no time of day, so "15 hours ago" would be meaningless: count days instead.
+  if (DATE_ONLY.test(value)) return relativeDay(value, undefined, now);
   const d = toDate(value);
   if (!d) return value;
   const seconds = Math.round((d.getTime() - now) / 1000);
@@ -174,6 +178,31 @@ export function plural(count: number, singular: string, pluralForm = `${singular
 export function humanize(code: string): string {
   const s = code.replace(/[_-]+/g, " ").trim().toLowerCase();
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/** A calendar date (YYYY-MM-DD) moved by `days`, without time zones or DST getting involved. */
+export function addDaysIso(isoDate: string, days: number): string {
+  const [y, m, d] = isoDate.split("-").map(Number);
+  const moved = new Date(Date.UTC(y ?? 1970, (m ?? 1) - 1, (d ?? 1) + days));
+  return moved.toISOString().slice(0, 10);
+}
+
+/** Whole calendar days from `fromIso` to `toIso` (both YYYY-MM-DD); negative when `toIso` is earlier. */
+export function daysBetweenIso(fromIso: string, toIso: string): number {
+  const utc = (iso: string) => {
+    const [y, m, d] = iso.split("-").map(Number);
+    return Date.UTC(y ?? 1970, (m ?? 1) - 1, d ?? 1);
+  };
+  return Math.round((utc(toIso) - utc(fromIso)) / 86_400_000);
+}
+
+/**
+ * A calendar date relative to the organisation's today: "today", "tomorrow", "in 3 days",
+ * "2 days ago". For date-only values (a delivery's expected date), where hours would be meaningless.
+ */
+export function relativeDay(isoDate: string | null | undefined, timeZone?: string, now: Date | number = Date.now()): string {
+  if (!isoDate || !DATE_ONLY.test(isoDate)) return isoDate || "—";
+  return relFmt.format(daysBetweenIso(todayIso(timeZone, now), isoDate), "day");
 }
 
 /**

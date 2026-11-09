@@ -1,5 +1,7 @@
 import type {
+  AnalyticsSummaryDto,
   DeliveryDto,
+  IntentCertificateDto,
   InventoryItemDto,
   PaymentDto,
   PolicyDecisionDto,
@@ -166,6 +168,76 @@ export function purchaseOrder(overrides: Partial<PurchaseOrderDto> = {}): Purcha
     payment: null,
     delivery: null,
     created_at: "2026-11-09T10:00:00.000Z",
+    ...overrides,
+  };
+}
+
+export function analyticsSummary(overrides: Partial<AnalyticsSummaryDto> = {}): AnalyticsSummaryDto {
+  return {
+    currency: "USD",
+    budget: {
+      period_start: "2026-11-09",
+      period_end: "2026-11-15",
+      currency: "USD",
+      limit_minor: 150000,
+      reserved_minor: 10000,
+      spent_minor: 20000,
+      remaining_minor: 120000,
+    },
+    totals: {
+      approved_spend_minor: 30000,
+      captured_spend_minor: 20000,
+      refunded_minor: 0,
+      orders_paid: 2,
+      orders_blocked: 1,
+      pending_approvals: 3,
+      requests_total: 5,
+    },
+    security: {
+      findings_total: 7,
+      blocked_attempts: 2,
+      prompt_injections_detected: 1,
+      duplicate_invoices_flagged: 0,
+      duplicate_captures: 0,
+    },
+    inventory: { items_low: 2, items_critical: 1, items_out: 0 },
+    deliveries: { scheduled: 1, delayed: 0, delivered: 1 },
+    spend_by_week: [],
+    spend_by_category: [],
+    decisions_by_kind: [],
+    findings_by_type: [],
+    procurement_time_ms: { median: null, p90: null },
+    ...overrides,
+  };
+}
+
+export function certificate(overrides: Partial<IntentCertificateDto> = {}): IntentCertificateDto {
+  return {
+    id: "intent-1",
+    status: "ACTIVE",
+    key_id: "key-2026",
+    signature: "c2lnbmF0dXJl",
+    algorithm: "Ed25519",
+    issued_at: "2026-11-09T10:00:00.000Z",
+    expires_at: "2099-01-01T00:00:00.000Z",
+    payload: {
+      certificate_version: 1,
+      intent_id: "intent-1",
+      organization_id: "org-1",
+      buyer_id: "u-1",
+      purchase_order_id: "po-1",
+      supplier_id: "sup-1",
+      cart_hash: "sha256:cart-1",
+      mandate_id: "mandate-1",
+      mandate_version: 3,
+      policy_decision_id: "dec-1",
+      currency: "USD",
+      approved_amount_minor: 10000,
+      approved_at: "2026-11-09T10:00:00.000Z",
+      expires_at: "2099-01-01T00:00:00.000Z",
+      nonce: "nonce-1",
+      key_id: "key-2026",
+    },
     ...overrides,
   };
 }

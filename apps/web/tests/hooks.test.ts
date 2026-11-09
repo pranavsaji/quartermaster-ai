@@ -19,6 +19,18 @@ function deferred<T>(): Deferred<T> {
 }
 
 describe("useResource", () => {
+  it("starts from initial data without fetching, and still reloads on demand", async () => {
+    const fetcher = vi.fn(async (_signal: AbortSignal, _context: { refresh: boolean }) => "fresh");
+    const { result } = renderHook(() => useResource(fetcher, [], { initialData: "from the server" }));
+    expect(result.current).toMatchObject({ data: "from the server", loading: false, refreshing: false });
+    expect(fetcher).not.toHaveBeenCalled();
+
+    act(() => result.current.reload());
+    await waitFor(() => expect(result.current.data).toBe("fresh"));
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0]![1]).toEqual({ refresh: true });
+  });
+
   it("ignores a superseded response that arrives late and aborts its request", async () => {
     const calls: Array<{ key: string; signal: AbortSignal; d: Deferred<string> }> = [];
     const { result, rerender } = renderHook(

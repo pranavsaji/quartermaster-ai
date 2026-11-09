@@ -8,11 +8,9 @@
 import type {
   AnalyticsSummaryDto,
   AnalyzeInvoiceRequest,
-  ApprovalResponse,
   ApproveRequest,
   AuditChainVerificationDto,
   AuditEventDto,
-  CaptureResponse,
   CertificateVerificationDto,
   CreateProcurementRequest,
   DelayDeliveryRequest,
@@ -27,8 +25,6 @@ import type {
   MandateResponse,
   MandateUpdateResponse,
   Page,
-  PaymentDto,
-  PayPalOrderResponse,
   PolicyDecisionDto,
   ProcurementRequestDto,
   ProcurementRequestSummaryDto,
@@ -37,7 +33,6 @@ import type {
   PurchaseOrderStatus,
   ReceiveDeliveryRequest,
   RefundRequest,
-  RefundResponse,
   RejectRequest,
   SecurityFindingDto,
   SessionResponse,
@@ -46,6 +41,7 @@ import type {
 } from "@qm/contracts";
 import { request, type RequestOptions } from "./http";
 import { withIdempotency } from "./idempotency";
+import { ensureShape, isApprovalResponse, isCaptureResponse, isPayment, isPayPalOrderResponse, isRefundResponse } from "./response-guards";
 import { sharedRequest } from "./shared-cache";
 
 type Signal = { signal?: AbortSignal };
@@ -68,6 +64,13 @@ export interface SecurityEventsFilter extends PageQuery {
   type?: string;
 }
 
+/**
+ * An adjustment, optionally guarded by the on-hand quantity the user saw: the API then refuses with
+ * 409 STOCK_CHANGED (details.on_hand = the current quantity) instead of applying a delta that was
+ * worked out from stale stock.
+ */
+export type InventoryAdjustmentInput = InventoryAdjustmentRequest & { expected_on_hand?: number };
+
 export interface ForecastInput {
   demand_multiplier: number;
   inventory_item_ids?: string[];
@@ -77,11 +80,20 @@ export interface ForecastInput {
 const get = <T>(path: string, options?: RequestOptions) => request<T>("GET", path, options);
 const post = <T>(path: string, body?: unknown, options?: RequestOptions) => request<T>("POST", path, { ...options, body: body ?? {} });
 
-/** POST/PUT to an (I) endpoint with a per-action idempotency key. */
-function idempotent<T>(method: "POST" | "PUT", path: string, body: unknown, options?: RequestOptions): Promise<T> {
-  return withIdempotency(`${method} ${path}`, body, (idempotencyKey) =>
-    request<T>(method, path, { ...options, body: body ?? {}, idempotencyKey }),
-  );
+/**
+ * POST/PUT to an (I) endpoint with a per-action idempotency key. With `check`, the response's shape
+ * is verified inside the idempotent action, so an unreadable answer keeps the key for a safe retry.
+ */
+function idempotent<T>(
+  method: "POST" | "PUT",
+  path: string,
+  body: unknown,
+  check?: { guard: (value: unknown) => value is T; what: string },
+): Promise<T> {
+  return withIdempotency(`${method} ${path}`, body, async (idempotencyKey) => {
+    const result = await request<unknown>(method, path, { body: body ?? {}, idempotencyKey });
+    return check ? ensureShape(result, check.guard, check.what) : (result as T);
+  });
 }
 
 const id = (value: string) => encodeURIComponent(value);
@@ -101,7 +113,7 @@ export const api = {
 
   inventory: {
     list: (o?: Signal) => get<ItemsResponse<InventoryItemDto>>("/inventory", o),
-    adjust: (itemId: string, body: InventoryAdjustmentRequest) =>
+    adjust: (itemId: string, body: InventoryAdjustmentInput) =>
       idempotent<InventoryAdjustmentResponse>("POST", `/inventory/${id(itemId)}/adjustments`, body),
     forecast: (body: ForecastInput) => post<ForecastRunDto>("/inventory/forecast", body),
   },
@@ -117,7 +129,7 @@ export const api = {
     research: (requestId: string) => post<ProcurementRequestDto>(`/procurement/requests/${id(requestId)}/research`),
     evaluate: (requestId: string) => post<ProcurementRequestDto>(`/procurement/requests/${id(requestId)}/evaluate`),
     approve: (requestId: string, body: ApproveRequest) =>
-      idempotent<ApprovalResponse>("POST", `/procurement/requests/${id(requestId)}/approve`, body),
+      idempotent("POST", `/procurement/requests/${id(requestId)}/approve`, body, { guard: isApprovalResponse, what: "an approval" }),
     /** With `purchase_order_id` rejects only that proposal; without it, every open proposal on the request. */
     reject: (requestId: string, body: RejectRequest) => post<ProcurementRequestDto>(`/procurement/requests/${id(requestId)}/reject`, body),
   },
@@ -129,14 +141,16 @@ export const api = {
 
   intents: {
     verify: (intentId: string, o?: Signal) => get<CertificateVerificationDto>(`/intents/${id(intentId)}/verify`, o),
-    createPayPalOrder: (intentId: string) => idempotent<PayPalOrderResponse>("POST", `/intents/${id(intentId)}/paypal-order`, {}),
+    createPayPalOrder: (intentId: string) =>
+      idempotent("POST", `/intents/${id(intentId)}/paypal-order`, {}, { guard: isPayPalOrderResponse, what: "a PayPal order" }),
   },
 
   payments: {
-    get: (paymentId: string, o?: Signal) => get<PaymentDto>(`/payments/${id(paymentId)}`, o),
+    get: async (paymentId: string, o?: Signal) => ensureShape(await get<unknown>(`/payments/${id(paymentId)}`, o), isPayment, "a payment"),
     capture: (paymentId: string, body: { paypal_order_id: string }) =>
-      idempotent<CaptureResponse>("POST", `/payments/${id(paymentId)}/capture`, body),
-    refund: (paymentId: string, body: RefundRequest) => idempotent<RefundResponse>("POST", `/payments/${id(paymentId)}/refund`, body),
+      idempotent("POST", `/payments/${id(paymentId)}/capture`, body, { guard: isCaptureResponse, what: "a capture result" }),
+    refund: (paymentId: string, body: RefundRequest) =>
+      idempotent("POST", `/payments/${id(paymentId)}/refund`, body, { guard: isRefundResponse, what: "a refund result" }),
   },
 
   purchaseOrders: {

@@ -55,7 +55,7 @@ describe("AdjustmentDialog", () => {
     fireEvent.change(quantity(), { target: { value: "3" } });
     save();
     await waitFor(() => expect(onSaved).toHaveBeenCalledWith(expect.objectContaining({ on_hand: 7 })));
-    expect(calls[0]!.body).toEqual({ quantity_delta: -3, reason: "WASTE" });
+    expect(calls[0]!.body).toEqual({ quantity_delta: -3, reason: "WASTE", expected_on_hand: 10 });
     expect(onClose).toHaveBeenCalled();
   });
 
@@ -82,7 +82,61 @@ describe("AdjustmentDialog", () => {
     expect(quantity()).toHaveAccessibleDescription("Will add 3 cases — on hand after: 13 cases.");
     save();
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
-    expect(calls[0]!.body).toEqual({ quantity_delta: 3, reason: "COUNT_CORRECTION" });
+    expect(calls[0]!.body).toEqual({ quantity_delta: 3, reason: "COUNT_CORRECTION", expected_on_hand: 10 });
+  });
+
+  it("keeps the dialog open with the new on-hand when the stock changed underneath a count", async () => {
+    const changed = { ...item, on_hand: 8, available: 8 };
+    const { calls } = mockFetch({
+      "POST /api/v1/inventory/inv-1/adjustments": [
+        jsonResponse(
+          { error: { code: "STOCK_CHANGED", message: "On-hand stock changed since you looked.", details: { on_hand: 8 } } },
+          409,
+        ),
+        jsonResponse({ item: { ...changed, on_hand: 13 }, movement: {} }),
+      ],
+      "GET /api/v1/inventory": [jsonResponse({ items: [changed] })],
+    });
+    const onItemChanged = vi.fn();
+    const onSaved = vi.fn();
+    const onClose = vi.fn();
+    render(<AdjustmentDialog item={item} onClose={onClose} onSaved={onSaved} onItemChanged={onItemChanged} />);
+    const quantity = () => screen.getByRole("textbox", { name: /Counted on hand/ });
+    fireEvent.change(quantity(), { target: { value: "13" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save adjustment" }));
+
+    expect(await screen.findByText("The stock changed while you were adjusting it")).toBeInTheDocument();
+    expect(screen.getByText(/it now has 8 cases on hand \(it was 10\)/)).toBeInTheDocument();
+    expect(onItemChanged).toHaveBeenCalledWith(changed);
+    expect(onSaved).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+    // The count is kept and the difference is now worked out from the new on-hand quantity.
+    expect(quantity()).toHaveValue("13");
+    expect(quantity()).toHaveAccessibleDescription("Will add 5 cases — on hand after: 13 cases.");
+    expect(screen.queryByText("On-hand stock changed since you looked.")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save adjustment" }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalled());
+    const adjustments = calls.filter((c) => c.method === "POST");
+    expect(adjustments[0]!.body).toEqual({ quantity_delta: 3, reason: "COUNT_CORRECTION", expected_on_hand: 10 });
+    expect(adjustments[1]!.body).toEqual({ quantity_delta: 5, reason: "COUNT_CORRECTION", expected_on_hand: 8 });
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("falls back to the on-hand quantity from the 409 when the item can't be re-read", async () => {
+    mockFetch({
+      "POST /api/v1/inventory/inv-1/adjustments": [
+        jsonResponse({ error: { code: "STOCK_CHANGED", message: "Stock changed.", details: { on_hand: 4 } } }, 409),
+      ],
+      "GET /api/v1/inventory": [jsonResponse({ error: { code: "INTERNAL", message: "boom" } }, 500)],
+    });
+    const { reason, quantity, save } = setup();
+    fireEvent.change(reason, { target: { value: "WASTE" } });
+    fireEvent.change(quantity(), { target: { value: "3" } });
+    save();
+
+    expect(await screen.findByText(/it now has 4 cases on hand \(it was 10\)/)).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toHaveAccessibleDescription("Currently 4 cases on hand · SKU HF-TK32");
   });
 
   it("announces a field error and focuses the field instead of submitting", async () => {

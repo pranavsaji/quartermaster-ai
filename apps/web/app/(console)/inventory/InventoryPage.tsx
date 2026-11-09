@@ -35,12 +35,18 @@ export function InventoryPage() {
   }, []);
 
   const setInventory = inventory.setData;
-  const onSaved = useCallback(
+  const replaceItem = useCallback(
     (updated: InventoryItemDto) => {
       setInventory((prev) => ({ items: (prev?.items ?? []).map((i) => (i.id === updated.id ? updated : i)) }));
-      setSavedMessage(`${updated.name} adjusted — now ${updated.on_hand} ${updated.unit} on hand.`);
     },
     [setInventory],
+  );
+  const onSaved = useCallback(
+    (updated: InventoryItemDto) => {
+      replaceItem(updated);
+      setSavedMessage(`${updated.name} adjusted — now ${updated.on_hand} ${updated.unit} on hand.`);
+    },
+    [replaceItem],
   );
 
   const source = items?.[0]?.data_source;
@@ -96,7 +102,9 @@ export function InventoryPage() {
         <ForecastPanel canRun={can("runForecast")} />
       </div>
 
-      {adjusting ? <AdjustmentDialog item={adjusting} onClose={() => setAdjusting(null)} onSaved={onSaved} /> : null}
+      {adjusting ? (
+        <AdjustmentDialog item={adjusting} onClose={() => setAdjusting(null)} onSaved={onSaved} onItemChanged={replaceItem} />
+      ) : null}
     </>
   );
 }

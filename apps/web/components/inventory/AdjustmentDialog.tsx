@@ -7,9 +7,11 @@ import { Dialog } from "@/components/ui/Dialog";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { ErrorSummary, useErrorFocus } from "@/components/ui/FormErrors";
-import { api } from "@/lib/api";
+import { Notice } from "@/components/ui/Notice";
+import { api, type InventoryAdjustmentInput } from "@/lib/api";
 import { num } from "@/lib/format";
 import { useAction } from "@/lib/hooks";
+import { ApiRequestError } from "@/lib/http";
 import { checkNumber, type NumberCheck } from "@/lib/numbers";
 
 type Reason = InventoryAdjustmentRequest["reason"];
@@ -53,16 +55,34 @@ function describeDelta(delta: number, unit: string, onHand: number): string {
   return `Will ${verb} ${num(Math.abs(delta))} ${unit} — on hand after: ${num(onHand + delta)} ${unit}.`;
 }
 
-/** Stock adjustment for one item. Mount it only while open so each opening starts blank. */
+/** The current on-hand quantity a 409 STOCK_CHANGED reports in its details, if it is usable. */
+function reportedOnHand(details: unknown): number | null {
+  if (typeof details !== "object" || details === null) return null;
+  const value = (details as { on_hand?: unknown }).on_hand;
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : null;
+}
+
+/**
+ * Stock adjustment for one item. Mount it only while open so each opening starts blank.
+ *
+ * Count corrections and removals are worked out from the on-hand quantity shown, so they are sent
+ * with `expected_on_hand`: if someone else changed the stock meanwhile the API refuses (409
+ * STOCK_CHANGED) rather than apply a stale delta, and the dialog shows the new quantity to check against.
+ */
 export function AdjustmentDialog({
-  item,
+  item: initialItem,
   onClose,
   onSaved,
+  onItemChanged,
 }: {
   item: InventoryItemDto;
   onClose: () => void;
   onSaved: (item: InventoryItemDto) => void;
+  /** The item was re-read after a concurrent change (no adjustment was made), e.g. to update its grid row. */
+  onItemChanged?: (item: InventoryItemDto) => void;
 }) {
+  const [item, setItem] = useState(initialItem);
+  const [stockChanged, setStockChanged] = useState<{ from: number; to: number } | null>(null);
   const [quantity, setQuantity] = useState("");
   const [reason, setReason] = useState<Reason>("COUNT_CORRECTION");
   const [note, setNote] = useState("");
@@ -70,10 +90,25 @@ export function AdjustmentDialog({
   const formId = useId();
   const { containerRef, focusFirstError, attempt } = useErrorFocus<HTMLFormElement>();
 
-  const save = useAction(async (itemId: string, body: InventoryAdjustmentRequest) => {
-    const res = await api.inventory.adjust(itemId, body);
-    onSaved(res.item);
-    onClose();
+  const save = useAction(async (body: InventoryAdjustmentInput) => {
+    try {
+      const res = await api.inventory.adjust(item.id, body);
+      onSaved(res.item);
+      onClose();
+    } catch (err) {
+      if (!(err instanceof ApiRequestError && err.status === 409 && err.code === "STOCK_CHANGED")) throw err;
+      const reported = reportedOnHand(err.details);
+      let fresh: InventoryItemDto = reported === null ? item : { ...item, on_hand: reported };
+      try {
+        // Re-read the item so available stock, status and cover are current too, not just on hand.
+        fresh = (await api.inventory.list()).items.find((i) => i.id === item.id) ?? fresh;
+      } catch {
+        // The quantity from the 409 is enough to recheck against.
+      }
+      setStockChanged({ from: item.on_hand, to: fresh.on_hand });
+      setItem(fresh);
+      onItemChanged?.(fresh);
+    }
   });
 
   const mode = REASONS.find((r) => r.value === reason)?.mode ?? "count";
@@ -99,7 +134,9 @@ export function AdjustmentDialog({
       return;
     }
     setFieldError(null);
-    void save.run(item.id, parsed.data);
+    setStockChanged(null);
+    // A receipt adds a delivered amount whatever else happened; the others depend on the stock shown.
+    void save.run(mode === "add" ? parsed.data : { ...parsed.data, expected_on_hand: item.on_hand });
   }
 
   const label =
@@ -165,6 +202,12 @@ export function AdjustmentDialog({
           )}
         </Field>
         <ErrorSummary key={attempt} messages={[fieldError]} />
+        {stockChanged ? (
+          <Notice tone="review" live title="The stock changed while you were adjusting it">
+            Someone else updated {item.name}: it now has {num(stockChanged.to)} {item.unit} on hand (it was {num(stockChanged.from)}).
+            Nothing was saved. {mode === "count" ? "Check your count" : "Check the quantity"} and save again.
+          </Notice>
+        ) : null}
         <ErrorNotice error={save.error} />
       </form>
     </Dialog>

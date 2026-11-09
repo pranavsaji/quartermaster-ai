@@ -16,15 +16,25 @@ import { usePayPalSdk } from "./usePayPalSdk";
 
 type Phase = "idle" | "creating" | "approving" | "capturing";
 
-/** A capture whose outcome on the server is unknown (network failure, gateway error, 5xx). */
+/**
+ * A capture whose outcome on the server is unknown: a network failure, gateway error or 5xx, or a
+ * 409 saying another capture of this payment is still running.
+ */
 interface UncertainCapture {
   paymentId: string;
   orderId: string;
   reason: string;
 }
 
-function isAmbiguousFailure(error: unknown): boolean {
-  return error instanceof ApiRequestError ? error.isAmbiguous : true;
+/**
+ * 409s that mean "a capture is already running", not "refused": money may be moving, so the outcome
+ * is as unknown as after a timeout. (lib/idempotency keeps the key for these too.)
+ */
+const IN_PROGRESS_CODES = new Set(["CAPTURE_IN_PROGRESS", "IDEMPOTENCY_IN_PROGRESS"]);
+
+function isAmbiguousCaptureFailure(error: unknown): boolean {
+  if (!(error instanceof ApiRequestError)) return true;
+  return error.isAmbiguous || (error.status === 409 && IN_PROGRESS_CODES.has(error.code));
 }
 
 /** A definitive decline (e.g. INSTRUMENT_DECLINED) the buyer can recover from by paying again. */
@@ -82,7 +92,7 @@ export function PayPalCheckout({
       setMessage(null);
       onCaptured(result);
     } catch (err) {
-      if (!isAmbiguousFailure(err)) {
+      if (!isAmbiguousCaptureFailure(err)) {
         setError(err);
         return;
       }
@@ -136,6 +146,7 @@ export function PayPalCheckout({
     setPhase("creating");
 
     // Deliberately NOT awaited: PayPal needs session.start() inside the click.
+    let orderFailed = false;
     const orderPromise = api.intents.createPayPalOrder(intentId).then((res) => {
       paymentIdRef.current = res.payment.id;
       onPayment(res.payment);
@@ -143,12 +154,16 @@ export function PayPalCheckout({
       return { orderId: res.paypal_order_id };
     });
     orderPromise.catch((err: unknown) => {
+      // The API's refusal (TrustRail's reason, its code and correlation id) always wins.
+      orderFailed = true;
       setError(err);
       setPhase("idle");
     });
 
     session.start({ presentationMode: "auto" }, orderPromise).catch((err: unknown) => {
-      setError(err);
+      // When the order call failed the SDK rejects too, often with a generic error that would hide
+      // the API's explanation, so the SDK's error is shown only when nothing else explains the failure.
+      if (!orderFailed) setError((prev: unknown) => prev ?? err);
       setPhase("idle");
     });
   }

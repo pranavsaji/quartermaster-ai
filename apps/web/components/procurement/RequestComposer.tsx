@@ -37,13 +37,19 @@ export function RequestComposer({
   const [errors, setErrors] = useState<{ instruction?: string; budget?: string; requiredBy?: string }>({});
   const { containerRef, focusFirstError, attempt } = useErrorFocus<HTMLFormElement>();
 
+  // Stays true after the request is created until the detail page replaces this one: router.push
+  // returns at once and the idempotency key is retired, so another press would create a second request.
+  const [navigating, setNavigating] = useState(false);
   const create = useAction(async (body: CreateProcurementRequest) => {
     const created = await api.procurement.create(body);
+    setNavigating(true);
     router.push(`/procurement/${created.id}?research=1`);
   });
+  const busy = create.pending || navigating;
 
   function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (busy) return;
     const next: typeof errors = {};
     const budgetMinor = budget.trim() === "" ? undefined : inputToMinor(budget, currency);
     if (budgetMinor === null) next.budget = "Enter an amount like 300 or 299.99.";
@@ -152,7 +158,7 @@ export function RequestComposer({
               Cancel
             </Button>
           ) : null}
-          <Button type="submit" variant="primary" loading={create.pending}>
+          <Button type="submit" variant="primary" loading={busy}>
             Create &amp; research
           </Button>
         </CardFooter>

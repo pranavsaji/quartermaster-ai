@@ -59,12 +59,29 @@ describe("ReceiveDialog", () => {
 describe("DelayDialog", () => {
   afterEach(() => vi.useRealTimers());
 
-  it("uses the organisation's today for the earliest date", () => {
+  it("uses the organisation's today for the earliest date when the delivery is already overdue", () => {
     // 23:30 on Nov 9 in New York is already Nov 10 in UTC.
     vi.useFakeTimers({ now: Date.parse("2026-11-10T04:30:00Z"), toFake: ["Date"] });
     mockFetch({});
-    render(<DelayDialog target={target} timeZone="America/New_York" onClose={vi.fn()} onDone={vi.fn()} />);
+    const overdue = { ...target, delivery: delivery({ expected_date: "2026-11-05" }) };
+    render(<DelayDialog target={overdue} timeZone="America/New_York" onClose={vi.fn()} onDone={vi.fn()} />);
     expect(screen.getByLabelText(/New expected date/)).toHaveAttribute("min", "2026-11-09");
+  });
+
+  it("only offers dates after the current expected date, which the API requires", async () => {
+    vi.useFakeTimers({ now: Date.parse("2026-11-09T12:00:00Z"), toFake: ["Date"] });
+    const { fetchMock } = mockFetch({});
+    render(<DelayDialog target={target} timeZone="UTC" onClose={vi.fn()} onDone={vi.fn()} />);
+    const dateInput = screen.getByLabelText(/New expected date/);
+    expect(dateInput).toHaveAttribute("min", "2026-11-13");
+
+    fireEvent.change(dateInput, { target: { value: "2026-11-12" } });
+    fireEvent.change(screen.getByRole("textbox", { name: /Reason/ }), { target: { value: "Truck broke down" } });
+    fireEvent.click(screen.getByRole("button", { name: "Report delay" }));
+    expect(dateInput).toHaveAccessibleDescription(
+      "Pick a date after Nov 12, 2026, when it's currently expected. After Nov 12, 2026, the current expected date.",
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("explains each missing field and focuses the first", async () => {
@@ -83,12 +100,13 @@ describe("DelayDialog", () => {
       "POST /api/v1/deliveries/del-1/delay": [jsonResponse({ delivery: delivery({ status: "DELAYED", expected_date: "2026-11-14" }) })],
     });
     const onDone = vi.fn();
-    render(<DelayDialog target={target} timeZone="UTC" onClose={vi.fn()} onDone={onDone} />);
+    const overdue = { ...target, delivery: delivery({ expected_date: "2026-11-05" }) };
+    render(<DelayDialog target={overdue} timeZone="UTC" onClose={vi.fn()} onDone={onDone} />);
     const dateInput = screen.getByLabelText(/New expected date/);
     fireEvent.change(dateInput, { target: { value: "2026-11-08" } });
     fireEvent.change(screen.getByRole("textbox", { name: /Reason/ }), { target: { value: "Truck broke down" } });
     fireEvent.click(screen.getByRole("button", { name: "Report delay" }));
-    expect(dateInput).toHaveAccessibleDescription("Pick today or a later date.");
+    expect(dateInput).toHaveAccessibleDescription(/^Pick today or a later date\./);
 
     fireEvent.change(dateInput, { target: { value: "2026-11-14" } });
     fireEvent.click(screen.getByRole("button", { name: "Report delay" }));

@@ -9,6 +9,8 @@ vi.mock("@/components/session/SessionProvider", () => ({
 }));
 
 let sessionOptions: PayPalOneTimePaymentSessionOptions | null = null;
+/** When set, start() rejects with this once the order promise settles, like an SDK that wraps errors. */
+let sdkStartError: Error | null = null;
 const fakeSdk: PayPalSdkInstance = {
   findEligibleMethods: async () => ({ isEligible: () => true }),
   createPayPalOneTimePaymentSession: (options) => {
@@ -16,6 +18,10 @@ const fakeSdk: PayPalSdkInstance = {
     return {
       // Mirrors the SDK: wait for the order, then the buyer approves it in the popup.
       start: async (_opts, createOrder) => {
+        if (sdkStartError) {
+          await createOrder!.catch(() => undefined);
+          throw sdkStartError;
+        }
         const { orderId } = await createOrder!;
         await options.onApprove({ orderId });
       },
@@ -30,10 +36,14 @@ vi.mock("@/components/payments/usePayPalSdk", () => ({
 describe("PayPalCheckout", () => {
   beforeEach(() => {
     sessionOptions = null;
+    sdkStartError = null;
   });
 
   it("reports an ambiguous capture as unknown, re-reads the payment, and retries with the same idempotency key", async () => {
-    const captured = { payment: payment({ status: "COMPLETED", captured_amount_minor: 12345 }), purchase_order: { id: "po-1" } };
+    const captured = {
+      payment: payment({ status: "COMPLETED", captured_amount_minor: 12345 }),
+      purchase_order: { id: "po-1", status: "PAID" },
+    };
     const { calls } = mockFetch({
       "POST /api/v1/intents/intent-1/paypal-order": [jsonResponse({ payment: payment(), paypal_order_id: "ORDER-1" })],
       "POST /api/v1/payments/pay-1/capture": [
@@ -93,5 +103,48 @@ describe("PayPalCheckout", () => {
     expect(screen.getByText("PayPal declined the funding source.")).toBeInTheDocument();
     expect(screen.getByText(/Use the PayPal button again/)).toBeInTheDocument();
     expect(screen.queryByText("Payment outcome unknown")).not.toBeInTheDocument();
+  });
+
+  it.each(["CAPTURE_IN_PROGRESS", "IDEMPOTENCY_IN_PROGRESS"])("treats a 409 %s as an unknown outcome and starts polling", async (code) => {
+    mockFetch({
+      "POST /api/v1/intents/intent-1/paypal-order": [jsonResponse({ payment: payment(), paypal_order_id: "ORDER-1" })],
+      "POST /api/v1/payments/pay-1/capture": [
+        jsonResponse({ error: { code, message: "A capture for this payment is already in progress." } }, 409),
+      ],
+      "GET /api/v1/payments/pay-1": [jsonResponse(payment({ status: "CAPTURE_PENDING" }))],
+    });
+    const onPayment = vi.fn();
+    const { container } = render(
+      <PayPalCheckout intentId="intent-1" amountMinor={12345} currency="USD" onPayment={onPayment} onCaptured={vi.fn()} />,
+    );
+    fireEvent.click(container.querySelector("paypal-button")!);
+
+    expect(await screen.findByText("Payment outcome unknown")).toBeInTheDocument();
+    expect(screen.queryByText("Payment didn't go through")).not.toBeInTheDocument();
+    // The re-read payment goes up to the card, whose PaymentStatusPanel polls it until it settles.
+    await waitFor(() => expect(onPayment).toHaveBeenLastCalledWith(expect.objectContaining({ status: "CAPTURE_PENDING" })));
+  });
+
+  it("keeps the API's refusal when the SDK's start() rejects afterwards with its own error", async () => {
+    sdkStartError = new Error("PayPal: createOrder failed");
+    mockFetch({
+      "POST /api/v1/intents/intent-1/paypal-order": [
+        jsonResponse(
+          { error: { code: "CERTIFICATE_EXPIRED", message: "The Intent Certificate has expired.", correlation_id: "corr-42" } },
+          422,
+        ),
+      ],
+    });
+    const { container } = render(
+      <PayPalCheckout intentId="intent-1" amountMinor={12345} currency="USD" onPayment={vi.fn()} onCaptured={vi.fn()} />,
+    );
+    fireEvent.click(container.querySelector("paypal-button")!);
+
+    expect(await screen.findByText("The Intent Certificate has expired.")).toBeInTheDocument();
+    // Let the SDK's later rejection land: it must not replace the API's reason or correlation id.
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(screen.getByText("The Intent Certificate has expired.")).toBeInTheDocument();
+    expect(screen.getByText("corr-42")).toBeInTheDocument();
+    expect(screen.queryByText("PayPal: createOrder failed")).not.toBeInTheDocument();
   });
 });

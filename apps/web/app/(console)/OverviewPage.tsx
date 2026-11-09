@@ -45,17 +45,12 @@ export function OverviewPage() {
         </Notice>
       ) : null}
 
-      <KpiRow summary={summary.data} error={summary.error} onRetry={summary.reload} />
+      <KpiRow summary={summary.data} resource={summary} />
 
       <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-[1.4fr_1fr]">
-        <LowStockList items={inventory.data?.items} error={inventory.error} onRetry={inventory.reload} />
+        <LowStockList items={inventory.data?.items} resource={inventory} />
         <div className="space-y-6">
-          <UpcomingDeliveries
-            deliveries={deliveries.data?.items}
-            orders={orders.data?.items}
-            error={deliveries.error}
-            onRetry={deliveries.reload}
-          />
+          <UpcomingDeliveries deliveries={deliveries.data?.items} orders={orders.data?.items} resource={deliveries} />
           <Card aria-labelledby="findings-title">
             <CardHeader
               id="findings-title"

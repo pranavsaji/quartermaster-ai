@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Skeleton } from "@/components/ui/Skeleton";
-import { SessionProvider, useLoadSession } from "@/components/session/SessionProvider";
+import { SessionProvider, useLoadSession, type InitialSession } from "@/components/session/SessionProvider";
 import { Header } from "./Header";
 import { Icons } from "./icons";
 import { Brand, SidebarNav } from "./Sidebar";
@@ -39,9 +39,12 @@ function ShellSkeleton() {
 /**
  * Authenticated console frame: persistent left sidebar (drawer below lg),
  * sticky header with org/user/role, and the session context for pages.
+ *
+ * `initialSession` comes from the server layout, so pages render and start their own requests
+ * straight away; without it (the API was unreachable from the server) the session loads here.
  */
-export function ConsoleShell({ children }: { children: ReactNode }) {
-  const { session, loading, error, retry } = useLoadSession();
+export function ConsoleShell({ initialSession, children }: { initialSession?: InitialSession | null; children: ReactNode }) {
+  const { session, loading, error, retry } = useLoadSession(initialSession);
   const [menuOpen, setMenuOpen] = useState(false);
   const pathname = usePathname();
   const [menuPath, setMenuPath] = useState(pathname);

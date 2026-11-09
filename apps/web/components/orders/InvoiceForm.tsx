@@ -10,39 +10,17 @@ import { ErrorSummary, useErrorFocus } from "@/components/ui/FormErrors";
 import { Notice } from "@/components/ui/Notice";
 import { api } from "@/lib/api";
 import { inputToMinor, minorToInput, money, todayIso } from "@/lib/format";
+import { DEMO_MODE } from "@/lib/demo";
 import { useAction } from "@/lib/hooks";
 import { checkNumber } from "@/lib/numbers";
+import { InvoiceLines, QUANTITY_RULE, blankLine, lineTotal, linesFromOrder, type LineDraft, type LineErrors } from "./InvoiceLines";
 import { InvoiceResult } from "./InvoiceResult";
-
-interface LineDraft {
-  key: string;
-  sku: string;
-  description: string;
-  quantity: string;
-  unitPrice: string;
-}
-
-let lineSeq = 0;
-const blankLine = (): LineDraft => ({ key: `l${(lineSeq += 1)}`, sku: "", description: "", quantity: "1", unitPrice: "" });
 
 /** A request to fill the form from a purchase order; a new `seq` re-applies it even for the same PO. */
 export interface InvoicePrefill {
   po: PurchaseOrderDto;
   seq: number;
 }
-
-const QUANTITY_RULE = { integer: true, min: 1, max: 1_000_000 } as const;
-
-function lineTotal(line: LineDraft, currency: string): number | null {
-  // Digits only: `Number()` would read "1e2" as 100 and "0x10" as 16.
-  const qty = checkNumber(line.quantity, QUANTITY_RULE);
-  const unit = inputToMinor(line.unitPrice, currency);
-  if (!qty.ok || unit === null) return null;
-  const total = qty.value * unit;
-  return Number.isSafeInteger(total) ? total : null;
-}
-
-type LineErrors = Partial<Record<"description" | "quantity" | "unitPrice", string>>;
 
 export interface InvoiceErrors {
   supplier?: string;
@@ -163,7 +141,7 @@ export function InvoiceForm({
   const [poId, setPoId] = useState("");
   const [number, setNumber] = useState("");
   const [invoiceDate, setInvoiceDate] = useState(() => todayIso(timeZone));
-  const [lines, setLines] = useState<LineDraft[]>([blankLine()]);
+  const [lines, setLines] = useState<LineDraft[]>(() => [blankLine("l0")]);
   const [notes, setNotes] = useState("");
   const [totalOverride, setTotalOverride] = useState("");
   const [errors, setErrors] = useState<InvoiceErrors>(NO_ERRORS);
@@ -186,15 +164,7 @@ export function InvoiceForm({
     setPoId(po.id);
     setNumber(`INV-${po.number.replace(/^PO-?/i, "")}`);
     setInvoiceDate(todayIso(timeZone));
-    setLines(
-      po.items.map((item) => ({
-        key: `l${(lineSeq += 1)}`,
-        sku: item.sku ?? "",
-        description: item.description,
-        quantity: String(item.quantity),
-        unitPrice: minorToInput(item.unit_price_minor, po.currency),
-      })),
-    );
+    setLines(linesFromOrder(po));
     setTotalOverride("");
     setNotes("");
     setResult(null);
@@ -225,10 +195,6 @@ export function InvoiceForm({
     const t = lineTotal(l, currency);
     return sum === null || t === null ? null : sum + t;
   }, 0);
-
-  function updateLine(key: string, patch: Partial<LineDraft>) {
-    setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
-  }
 
   function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -311,111 +277,7 @@ export function InvoiceForm({
             </Field>
           </div>
 
-          <fieldset>
-            <legend className="mb-2 text-[13px] font-medium text-ink-2">Lines</legend>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[640px] text-left text-[13px]">
-                <thead className="text-[11.5px] text-ink-3">
-                  <tr>
-                    <th scope="col" className="pb-1.5 font-medium">
-                      SKU
-                    </th>
-                    <th scope="col" className="pb-1.5 pl-2 font-medium">
-                      Description
-                    </th>
-                    <th scope="col" className="w-20 pb-1.5 pl-2 font-medium">
-                      Qty
-                    </th>
-                    <th scope="col" className="w-32 pb-1.5 pl-2 font-medium">
-                      Unit price
-                    </th>
-                    <th scope="col" className="w-28 pb-1.5 pl-2 text-right font-medium">
-                      Line total
-                    </th>
-                    <th scope="col" className="w-10 pb-1.5">
-                      <span className="sr-only">Remove</span>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {lines.map((l, i) => {
-                    const t = lineTotal(l, currency);
-                    const lineErrors = errors.lines[l.key] ?? {};
-                    const errorProps = (field: keyof LineErrors) => ({
-                      "aria-invalid": lineErrors[field] ? (true as const) : undefined,
-                      "aria-describedby": lineErrors[field] ? `${idBase}-${l.key}-${field}` : undefined,
-                    });
-                    const errorText = (field: keyof LineErrors) =>
-                      lineErrors[field] ? (
-                        <p id={`${idBase}-${l.key}-${field}`} className="mt-1 text-[12px] font-medium text-block">
-                          {lineErrors[field]}
-                        </p>
-                      ) : null;
-                    return (
-                      <tr key={l.key} className="align-top">
-                        <td className="py-1">
-                          <Input
-                            aria-label={`Line ${i + 1} SKU`}
-                            value={l.sku}
-                            onChange={(e) => updateLine(l.key, { sku: e.target.value })}
-                            className="w-28 font-mono text-[12px]"
-                          />
-                        </td>
-                        <td className="py-1 pl-2">
-                          <Input
-                            aria-label={`Line ${i + 1} description`}
-                            aria-required
-                            {...errorProps("description")}
-                            value={l.description}
-                            onChange={(e) => updateLine(l.key, { description: e.target.value })}
-                          />
-                          {errorText("description")}
-                        </td>
-                        <td className="py-1 pl-2">
-                          <Input
-                            aria-label={`Line ${i + 1} quantity`}
-                            aria-required
-                            {...errorProps("quantity")}
-                            inputMode="numeric"
-                            value={l.quantity}
-                            onChange={(e) => updateLine(l.key, { quantity: e.target.value })}
-                            className="tnum"
-                          />
-                          {errorText("quantity")}
-                        </td>
-                        <td className="py-1 pl-2">
-                          <MoneyInput
-                            currency={currency}
-                            aria-label={`Line ${i + 1} unit price`}
-                            aria-required
-                            {...errorProps("unitPrice")}
-                            value={l.unitPrice}
-                            onChange={(e) => updateLine(l.key, { unitPrice: e.target.value })}
-                          />
-                          {errorText("unitPrice")}
-                        </td>
-                        <td className="tnum py-1 pl-2 text-right leading-9 text-ink-2">{t !== null ? money(t, currency) : "—"}</td>
-                        <td className="py-1 pl-1 text-right">
-                          <button
-                            type="button"
-                            onClick={() => setLines((ls) => (ls.length > 1 ? ls.filter((x) => x.key !== l.key) : ls))}
-                            className="rounded p-1.5 text-ink-3 hover:bg-ink/5 hover:text-block disabled:opacity-30"
-                            disabled={lines.length === 1}
-                            aria-label={`Remove line ${i + 1}`}
-                          >
-                            ×
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-            <Button size="sm" variant="ghost" className="mt-1" onClick={() => setLines((ls) => [...ls, blankLine()])}>
-              + Add line
-            </Button>
-          </fieldset>
+          <InvoiceLines lines={lines} errors={errors.lines} currency={currency} idBase={idBase} onChange={setLines} />
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <Field
@@ -458,15 +320,18 @@ export function InvoiceForm({
             </div>
           ) : null}
         </CardBody>
-        <CardFooter className="justify-between">
-          <Button
-            variant="secondary"
-            onClick={simulateDuplicate}
-            disabled={!lastSubmitted || analyze.pending}
-            title={lastSubmitted ? `Resubmit invoice ${lastSubmitted.invoice_number} with the same number` : "Analyze an invoice first"}
-          >
-            Simulate duplicate invoice
-          </Button>
+        <CardFooter className={DEMO_MODE ? "justify-between" : "justify-end"}>
+          {/* A demo of duplicate detection: only offered when the build is in demo mode. */}
+          {DEMO_MODE ? (
+            <Button
+              variant="secondary"
+              onClick={simulateDuplicate}
+              disabled={!lastSubmitted || analyze.pending}
+              title={lastSubmitted ? `Resubmit invoice ${lastSubmitted.invoice_number} with the same number` : "Analyze an invoice first"}
+            >
+              Simulate duplicate invoice
+            </Button>
+          ) : null}
           <Button type="submit" variant="primary" loading={analyze.pending}>
             Analyze invoice
           </Button>

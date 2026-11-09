@@ -1,6 +1,6 @@
 "use client";
 
-import type { Severity } from "@qm/contracts";
+import type { AnalyticsSummaryDto, Severity } from "@qm/contracts";
 import { useId, useState, type ReactNode } from "react";
 import { AuditLog } from "@/components/security/AuditLog";
 import { DecisionsGrid } from "@/components/security/DecisionsGrid";
@@ -26,6 +26,33 @@ type Tab = "findings" | "decisions" | "audit";
 function loadedCount<T>(state: PagedState<T>): string | undefined {
   if (!state.items || state.stale) return undefined;
   return `${num(state.items.length)}${state.hasMore ? "+" : ""}`;
+}
+
+function SecurityTiles({ totals: s }: { totals: AnalyticsSummaryDto["security"] | undefined }) {
+  return (
+    <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <StatTile label="Findings" loading={!s} value={s ? num(s.findings_total) : ""} />
+      <StatTile
+        label="Blocked attempts"
+        loading={!s}
+        value={s ? num(s.blocked_attempts) : ""}
+        tone={s && s.blocked_attempts > 0 ? "block" : "neutral"}
+      />
+      <StatTile
+        label="Prompt injections detected"
+        loading={!s}
+        value={s ? num(s.prompt_injections_detected) : ""}
+        tone={s && s.prompt_injections_detected > 0 ? "review" : "neutral"}
+      />
+      <StatTile
+        label="Duplicate captures"
+        loading={!s}
+        value={s ? num(s.duplicate_captures) : ""}
+        tone={s && s.duplicate_captures === 0 ? "allow" : "block"}
+        sub="Target: always 0"
+      />
+    </div>
+  );
 }
 
 export function SecurityPage() {
@@ -70,27 +97,15 @@ export function SecurityPage() {
         }
       />
 
-      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatTile label="Findings" loading={!s} value={s?.findings_total ?? 0} />
-        <StatTile
-          label="Blocked attempts"
-          loading={!s}
-          value={s?.blocked_attempts ?? 0}
-          tone={s && s.blocked_attempts > 0 ? "block" : "neutral"}
-        />
-        <StatTile
-          label="Prompt injections detected"
-          loading={!s}
-          value={s?.prompt_injections_detected ?? 0}
-          tone={s && s.prompt_injections_detected > 0 ? "review" : "neutral"}
-        />
-        <StatTile
-          label="Duplicate captures"
-          loading={!s}
-          value={s?.duplicate_captures ?? 0}
-          tone={s && s.duplicate_captures === 0 ? "allow" : "block"}
-          sub="Target: always 0"
-        />
+      <div className="mb-6">
+        <ResourceView
+          resource={summary}
+          hasData={Boolean(s)}
+          errorTitle="Couldn't load the security totals"
+          loading={<SecurityTiles totals={undefined} />}
+        >
+          <SecurityTiles totals={s} />
+        </ResourceView>
       </div>
 
       <Card>

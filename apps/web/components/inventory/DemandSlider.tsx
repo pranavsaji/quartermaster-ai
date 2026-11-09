@@ -45,9 +45,8 @@ export function DemandSlider({
         <span>2×</span>
         <span>{max}×</span>
       </div>
-      <p className="mt-2 rounded-md bg-accent-soft px-2.5 py-1.5 text-[13px] font-medium text-accent-strong" aria-live="polite">
-        {assumption}
-      </p>
+      {/* Not a live region: the slider's aria-valuetext already announces this as it moves. */}
+      <p className="mt-2 rounded-md bg-accent-soft px-2.5 py-1.5 text-[13px] font-medium text-accent-strong">{assumption}</p>
     </div>
   );
 }

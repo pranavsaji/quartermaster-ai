@@ -9,7 +9,7 @@ import {
 } from "@qm/contracts";
 import { useEffect, useRef, useState } from "react";
 import { PayPalCheckout } from "@/components/payments/PayPalCheckout";
-import { PaymentStatusPanel } from "@/components/payments/PaymentStatusPanel";
+import { isSameOrNewer, PaymentStatusPanel } from "@/components/payments/PaymentStatusPanel";
 import { useSession } from "@/components/session/SessionProvider";
 import { CertificatePanel } from "@/components/trustrail/CertificatePanel";
 import { DecisionBadge } from "@/components/trustrail/DecisionBadge";
@@ -17,9 +17,11 @@ import { DecisionPanel } from "@/components/trustrail/DecisionPanel";
 import { StatusBadge } from "@/components/ui/Badge";
 import { cn } from "@/components/ui/cn";
 import { CopyValue } from "@/components/ui/CopyValue";
+import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Notice } from "@/components/ui/Notice";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import { Icons } from "@/components/shell/icons";
+import { api } from "@/lib/api";
 import { countdown, money } from "@/lib/format";
 import { useNow } from "@/lib/hooks";
 import { PO_STATUS_TONES } from "@/lib/labels";
@@ -28,6 +30,8 @@ import { ProposalLines } from "./ProposalLines";
 import { RejectDialog } from "./RejectDialog";
 
 const SETTLED_OR_SETTLING = new Set<PaymentDto["status"]>([...SETTLED_PAYMENT_STATUSES, "CAPTURE_PENDING"]);
+/** Payment outcomes that also change the purchase order (its status, and the delivery a capture schedules). */
+const FINAL_PAYMENT_STATUSES = new Set<PaymentDto["status"]>([...SETTLED_PAYMENT_STATUSES, "FAILED", "VOIDED"]);
 
 export function isEvidenceOnly(po: PurchaseOrderDto): boolean {
   return po.status === "BLOCKED" || po.status === "SUPERSEDED";
@@ -41,12 +45,13 @@ export function ProposalCard({
   requestId,
   po,
   onChange,
-  onRejected,
+  onReload,
 }: {
   requestId: string;
   po: PurchaseOrderDto;
   onChange: (po: PurchaseOrderDto) => void;
-  onRejected: () => void;
+  /** Reload the request: the proposals changed on the server (a rejection, or a 409 conflict). */
+  onReload: () => void;
 }) {
   const { can } = useSession();
   const now = useNow(5000);
@@ -57,6 +62,7 @@ export function ProposalCard({
   const certUsable = cert !== null && cert.status === "ACTIVE" && countdown(cert.expires_at, now) !== null;
   const titleRef = useRef<HTMLHeadingElement>(null);
   const [rejectOpen, setRejectOpen] = useState(false);
+  const [conflict, setConflict] = useState<unknown>(null);
 
   // Approving or rejecting removes the approval form, and with it the focused button. Put focus
   // on this card's title instead of letting it fall back to the top of the page.
@@ -73,11 +79,31 @@ export function ProposalCard({
     !(po.payment && SETTLED_OR_SETTLING.has(po.payment.status));
 
   function handleApproved(result: ApprovalResponse) {
+    setConflict(null);
     onChange(result.purchase_order);
   }
 
+  // Kept here, not in the form: the reload usually unmounts the form, and the owner still needs to know why.
+  function handleConflict(error: unknown) {
+    setConflict(error);
+    onReload();
+  }
+
+  /** The payment settled outside the capture call (polling, a re-read, a refund): status and delivery live on the order. */
+  async function refreshOrder(payment: PaymentDto) {
+    try {
+      const fresh = await api.purchaseOrders.get(po.id);
+      const keepPayment = !fresh.payment || (fresh.payment.id === payment.id && !isSameOrNewer(fresh.payment, payment));
+      onChange(keepPayment ? { ...fresh, payment } : fresh);
+    } catch {
+      onReload();
+    }
+  }
+
   function handlePayment(payment: PaymentDto) {
+    const changed = po.payment?.id !== payment.id || po.payment.status !== payment.status;
     onChange({ ...po, payment });
+    if (changed && FINAL_PAYMENT_STATUSES.has(payment.status)) void refreshOrder(payment);
   }
 
   function handleCaptured(result: CaptureResponse) {
@@ -143,8 +169,21 @@ export function ProposalCard({
           <Notice tone="neutral">TrustRail hasn&apos;t evaluated this proposal yet.</Notice>
         )}
 
+        <ErrorNotice
+          error={conflict}
+          title="This proposal changed before it could be approved"
+          onRetry={onReload}
+          retryLabel="Reload request"
+        />
         {approvable && can("approve") ? (
-          <ApprovalForm key={decision?.id} requestId={requestId} po={po} onApproved={handleApproved} onReject={() => setRejectOpen(true)} />
+          <ApprovalForm
+            key={decision?.id}
+            requestId={requestId}
+            po={po}
+            onApproved={handleApproved}
+            onReject={() => setRejectOpen(true)}
+            onConflict={handleConflict}
+          />
         ) : null}
         {approvable && !can("approve") ? (
           <Notice tone="info" title="Awaiting owner approval">
@@ -152,7 +191,8 @@ export function ProposalCard({
           </Notice>
         ) : null}
 
-        {cert ? <CertificatePanel certificate={cert} /> : null}
+        {/* Keyed by certificate and status: a verification result belongs to the certificate it checked. */}
+        {cert ? <CertificatePanel key={`${cert.id}:${cert.status}`} certificate={cert} /> : null}
 
         {payable && can("pay") && cert ? (
           <section aria-label="Pay with PayPal" className="rounded-xl border border-line bg-canvas/50 p-4">
@@ -186,7 +226,7 @@ export function ProposalCard({
           description={`Only this ${po.supplier_name} cart is rejected; other proposals on the request stay open. The reason is recorded in the audit log.`}
           confirmLabel="Reject proposal"
           onClose={() => setRejectOpen(false)}
-          onRejected={onRejected}
+          onRejected={onReload}
         />
       ) : null}
     </article>

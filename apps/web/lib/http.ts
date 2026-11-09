@@ -61,6 +61,11 @@ export class ApiRequestError extends Error {
     return this.status === 403 && this.code === "ROLE_REQUIRED";
   }
 
+  /** 409: the resource changed underneath the caller (or another request is still working on it). */
+  get isConflict(): boolean {
+    return this.status === 409;
+  }
+
   /** Network failure, gateway problem or 5xx: the outcome on the server is unknown. */
   get isAmbiguous(): boolean {
     return this.status === 0 || this.status >= 500;
@@ -205,7 +210,14 @@ export async function request<T>(method: HttpMethod, path: string, options: Requ
   if (body.kind === "other") throw unexpectedResponse(response);
   // A successful write can change any cached read (e.g. the analytics summary).
   if (mutating) clearSharedCache();
+  // Trusted to match @qm/contracts, which the API shares. Responses that move money or sign
+  // certificates are additionally shape-checked in lib/api.ts (see lib/response-guards.ts).
   return (body.kind === "json" ? body.value : undefined) as T;
+}
+
+/** True for an API 409, i.e. what the caller saw is out of date and should be reloaded. */
+export function isConflictError(error: unknown): boolean {
+  return error instanceof ApiRequestError && error.isConflict;
 }
 
 export function isAbortError(error: unknown): boolean {

@@ -9,13 +9,13 @@ import { Field, Input } from "@/components/ui/Field";
 import { ErrorSummary, useErrorFocus } from "@/components/ui/FormErrors";
 import { api } from "@/lib/api";
 import { useAction } from "@/lib/hooks";
+import { DEMO_MODE } from "@/lib/demo";
 import { safeNext } from "@/lib/redirect";
 
 /**
- * Seeded demo logins. /config/public has no demo-mode flag, so deployments
- * with real users hide them with NEXT_PUBLIC_DEMO_ACCOUNTS=false (read at build time).
+ * Seeded demo logins, hidden when the build turns demo mode off (see lib/demo).
  */
-const SHOW_DEMO_ACCOUNTS = process.env.NEXT_PUBLIC_DEMO_ACCOUNTS !== "false";
+const SHOW_DEMO_ACCOUNTS = DEMO_MODE;
 
 const DEMO_ACCOUNTS = [
   { role: "Owner", email: "owner@demo.quartermaster.dev" },

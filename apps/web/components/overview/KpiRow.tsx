@@ -2,12 +2,20 @@
 
 import type { AnalyticsSummaryDto } from "@qm/contracts";
 import { BudgetMeter } from "@/components/ui/Meter";
-import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { ResourceView, type ResourceLike } from "@/components/ui/ResourceView";
 import { StatTile } from "@/components/ui/StatTile";
 import { money, num } from "@/lib/format";
 
-export function KpiRow({ summary, error, onRetry }: { summary: AnalyticsSummaryDto | undefined; error: unknown; onRetry: () => void }) {
-  if (error && !summary) return <ErrorNotice error={error} onRetry={onRetry} title="Couldn't load KPIs" />;
+/** The overview KPIs: loading tiles, the load error with Retry, or the tiles (with a notice if a refresh failed). */
+export function KpiRow({ summary, resource }: { summary: AnalyticsSummaryDto | undefined; resource: ResourceLike }) {
+  return (
+    <ResourceView resource={resource} hasData={Boolean(summary)} errorTitle="Couldn't load KPIs" loading={<KpiTiles summary={undefined} />}>
+      <KpiTiles summary={summary} />
+    </ResourceView>
+  );
+}
+
+function KpiTiles({ summary }: { summary: AnalyticsSummaryDto | undefined }) {
   const loading = !summary;
   const b = summary?.budget;
   const used = b ? b.spent_minor + b.reserved_minor : 0;
