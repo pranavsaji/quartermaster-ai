@@ -287,11 +287,13 @@ export async function withDeferredFailures<T>(ctx: AppContext, fn: () => Promise
   }
 }
 
-export async function rejectRequest(ctx: AppContext, actor: Actor, requestId: string, reason: string) {
+export async function rejectRequest(ctx: AppContext, actor: Actor, requestId: string, reason: string, purchaseOrderId?: string) {
   await ctx.db.transaction(async (tx) => {
     const [req] = await tx.select().from(purchaseRequests).where(and(eq(purchaseRequests.id, requestId), eq(purchaseRequests.organizationId, actor.organizationId))).for("update");
     if (!req) throw notFound("Procurement request");
-    const open = await tx.select().from(purchaseOrders).where(and(eq(purchaseOrders.requestId, requestId), eq(purchaseOrders.status, "PROPOSED")));
+    const scope = and(eq(purchaseOrders.requestId, requestId), eq(purchaseOrders.status, "PROPOSED"), purchaseOrderId ? eq(purchaseOrders.id, purchaseOrderId) : undefined);
+    const open = await tx.select().from(purchaseOrders).where(scope).for("update");
+    if (purchaseOrderId && open.length === 0) throw conflict("PROPOSAL_NOT_OPEN", "That proposal is no longer open for rejection.");
     if (open.length === 0 && !["DRAFT", "BLOCKED", "FAILED"].includes(req.status)) throw conflict("NOTHING_TO_REJECT", "There is no open proposal to reject.");
     for (const po of open) {
       await tx.update(purchaseOrders).set({ status: "REJECTED", updatedAt: ctx.now() }).where(eq(purchaseOrders.id, po.id));

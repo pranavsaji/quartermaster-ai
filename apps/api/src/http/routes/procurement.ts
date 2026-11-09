@@ -77,7 +77,7 @@ export function procurementRoutes(ctx: AppContext): Router {
     requireRole("OWNER"),
     asyncHandler(async (req, res) => {
       const input = parse(RejectRequest, req.body);
-      res.json(await rejectRequest(ctx, actorOf(req), param(req, "id"), input.reason));
+      res.json(await rejectRequest(ctx, actorOf(req), param(req, "id"), input.reason, input.purchase_order_id));
     }),
   );
 

@@ -54,6 +54,8 @@ export type ApproveRequest = z.infer<typeof ApproveRequest>;
 
 export const RejectRequest = z.object({
   reason: z.string().trim().min(1).max(500),
+  /** Reject only this proposal; omitted rejects every open proposal on the request. */
+  purchase_order_id: z.string().uuid().optional(),
 });
 export type RejectRequest = z.infer<typeof RejectRequest>;
 
