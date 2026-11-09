@@ -69,7 +69,7 @@ export function idempotent(ctx: AppContext, route: string, handler: (req: Reques
         }
         if (existing.status === "COMPLETED") {
           res.setHeader("idempotent-replayed", "true");
-          return res.status(existing.responseStatus ?? 200).json(existing.responseBody);
+          return void res.status(existing.responseStatus ?? 200).json(existing.responseBody);
         }
         if (ctx.now().getTime() - existing.createdAt.getTime() < STALE_MS) {
           throw conflict("IDEMPOTENCY_IN_PROGRESS", "A request with this Idempotency-Key is still in progress.");

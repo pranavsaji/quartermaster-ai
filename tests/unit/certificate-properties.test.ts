@@ -35,7 +35,7 @@ const issueInput = fc.record({
 }) satisfies fc.Arbitrary<IssueCertificateInput>;
 
 /** A context that matches the certificate, at a point strictly inside its validity window. */
-function contextFor(input: IssueCertificateInput, cert: SignedCertificate, offsetFraction: number): VerificationContext {
+function contextFor(input: IssueCertificateInput, _cert: SignedCertificate, offsetFraction: number): VerificationContext {
   const ttlMs = input.ttl_minutes * 60_000;
   return {
     current_cart_hash: input.cart_hash,

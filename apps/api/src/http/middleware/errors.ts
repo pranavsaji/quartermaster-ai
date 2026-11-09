@@ -59,29 +59,29 @@ export function errorHandler(log: Logger): ErrorRequestHandler {
         log.error({ err, details: err.details, correlation_id }, err.message);
         // A retryable 503 (e.g. AGENT_DEADLINE_EXCEEDED) tells clients when to try again.
         if (err.status === 503 && isRetryable(err.details)) res.set("Retry-After", String(RETRY_AFTER_SECONDS));
-        return res
+        return void res
           .status(err.status)
           .json({ error: { code: err.code, message: err.message, details: publicServerErrorDetails(err.details), correlation_id } });
       }
-      return res.status(err.status).json({ error: { code: err.code, message: err.message, details: err.details, correlation_id } });
+      return void res.status(err.status).json({ error: { code: err.code, message: err.message, details: err.details, correlation_id } });
     }
     if (err instanceof ZodError) {
-      return res
+      return void res
         .status(400)
         .json({ error: { code: "BAD_REQUEST", message: "Request validation failed", details: err.issues, correlation_id } });
     }
     if (err && typeof err === "object" && "type" in err && (err as { type: string }).type === "entity.parse.failed") {
-      return res.status(400).json({ error: { code: "MALFORMED_JSON", message: "Request body is not valid JSON", correlation_id } });
+      return void res.status(400).json({ error: { code: "MALFORMED_JSON", message: "Request body is not valid JSON", correlation_id } });
     }
     if (err && typeof err === "object" && "type" in err && (err as { type: string }).type === "entity.too.large") {
-      return res.status(413).json({ error: { code: "PAYLOAD_TOO_LARGE", message: "Request body is too large", correlation_id } });
+      return void res.status(413).json({ error: { code: "PAYLOAD_TOO_LARGE", message: "Request body is too large", correlation_id } });
     }
     // Unique-constraint races surface as conflicts, not 500s.
     // Drizzle wraps driver errors, so the SQLSTATE may be on `cause`.
     const sqlState =
       (err as { code?: string; cause?: { code?: string } } | null)?.code ?? (err as { cause?: { code?: string } } | null)?.cause?.code;
     if (sqlState === "23505") {
-      return res
+      return void res
         .status(409)
         .json({ error: { code: "CONFLICT", message: "The resource was modified concurrently. Retry the request.", correlation_id } });
     }

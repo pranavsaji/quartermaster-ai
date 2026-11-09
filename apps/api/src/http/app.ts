@@ -52,7 +52,7 @@ export function createApp(ctx: AppContext) {
         res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT");
         res.setHeader("Access-Control-Allow-Headers", "Content-Type,X-Requested-With,Idempotency-Key,X-Correlation-Id");
         res.setHeader("Access-Control-Max-Age", "600");
-        return res.status(204).end();
+        return void res.status(204).end();
       }
     }
     next();

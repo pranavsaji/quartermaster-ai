@@ -38,6 +38,7 @@ export function CopyValue({
       selection?.removeAllRanges();
       selection?.addRange(range);
     }
+    return undefined;
   }, [status]);
 
   async function copy() {
