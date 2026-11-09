@@ -130,15 +130,16 @@ describe("robustness", () => {
     ["letters then spaces", `${"word".repeat(10_000)}${" ".repeat(40_000)}word`],
   ];
 
-  // At 400 KB a linear detector finishes in roughly 100 ms; a quadratic pattern needs many seconds.
-  // The bound leaves an order of magnitude for a slow or busy CI worker, so it cannot flake.
-  it.each(adversarialInputs)("analyses 400 KB of %s in linear time", (_name, text) => {
+  // At 1.6 MB a linear detector takes ~0.1 s; the quadratic regression this guards against took
+  // 350 ms at 100 KB, i.e. ~90 s here. A 15 s bound separates the two by two orders of magnitude,
+  // so it neither flakes on a saturated CI machine nor lets a super-linear pattern through.
+  it.each(adversarialInputs)("analyses 1.6 MB of %s in linear time", (_name, text) => {
     expect(text.length).toBeGreaterThanOrEqual(60_000);
-    const input = text.repeat(Math.ceil(400_000 / text.length)).slice(0, 400_000);
+    const input = text.repeat(Math.ceil(1_600_000 / text.length)).slice(0, 1_600_000);
     detectPromptInjection("warm up the regular expressions");
     const started = performance.now();
     detectPromptInjection(input);
-    expect(performance.now() - started).toBeLessThan(2_500);
+    expect(performance.now() - started).toBeLessThan(15_000);
   });
 
   it("never throws on non-string input", () => {
