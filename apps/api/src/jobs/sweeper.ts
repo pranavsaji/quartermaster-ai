@@ -14,14 +14,16 @@ import {
 } from "@qm/database";
 import type { AppContext } from "../context";
 import { appendAudit } from "../services/audit";
+import { retryOnConflict } from "../services/common";
 import { releaseReservation } from "../services/budget";
-import { reconcilePayment, transitionPayment, voidAbandonedCapture } from "../services/payments";
+import { reconcilePayment, reconcileRefunds, transitionPayment, voidAbandonedCapture } from "../services/payments";
 import { refreshRequestStatus } from "../services/procurement/status";
 
 export interface SweepReport {
   reconciled: number;
   expired: number;
   researchRecovered: number;
+  refundsReconciled: number;
   sessionsPurged: number;
   idempotencyPurged: number;
   errors: number;
@@ -60,7 +62,15 @@ export async function releaseLease(db: Database, name: string, holder = INSTANCE
  *  4. Purge expired sessions and idempotency records.
  */
 export async function sweep(ctx: AppContext): Promise<SweepReport> {
-  const report: SweepReport = { reconciled: 0, expired: 0, researchRecovered: 0, sessionsPurged: 0, idempotencyPurged: 0, errors: 0 };
+  const report: SweepReport = {
+    reconciled: 0,
+    expired: 0,
+    researchRecovered: 0,
+    refundsReconciled: 0,
+    sessionsPurged: 0,
+    idempotencyPurged: 0,
+    errors: 0,
+  };
   if (!(await acquireLease(ctx.db, "sweeper", ctx.now()))) return report;
   try {
     const now = ctx.now();
@@ -102,6 +112,7 @@ export async function sweep(ctx: AppContext): Promise<SweepReport> {
       }
     }
 
+    if (!(await acquireLease(ctx.db, "sweeper", ctx.now()))) return report;
     const expired = await ctx.db
       .select({ cert: intentCertificates, payment: paymentAttempts })
       .from(intentCertificates)
@@ -120,46 +131,64 @@ export async function sweep(ctx: AppContext): Promise<SweepReport> {
           }
           if (status !== "CREATED" && status !== "ORDER_CREATED" && status !== "PAYER_APPROVED") continue;
         }
-        await ctx.db.transaction(async (tx) => {
-          const [fresh] = await tx.select().from(intentCertificates).where(eq(intentCertificates.id, cert.id)).for("update");
-          if (fresh?.status !== "ACTIVE") return;
-          await tx.update(intentCertificates).set({ status: "EXPIRED" }).where(eq(intentCertificates.id, cert.id));
-          await releaseReservation(tx, cert.id, "CERTIFICATE_EXPIRED", now);
-          if (payment) {
-            const [locked] = await tx.select().from(paymentAttempts).where(eq(paymentAttempts.id, payment.id)).for("update");
-            if (locked && (PRE_CAPTURE_PAYMENT_STATUSES as readonly string[]).includes(locked.status)) {
-              await transitionPayment(
-                tx,
-                locked,
-                "VOIDED",
-                { failureCode: "CERTIFICATE_EXPIRED", failureMessage: "The approval expired before payment." },
-                now,
-              );
+        // Lock order everywhere: payment, then certificate. Retried on deadlock (idempotent).
+        const expiredNow = await retryOnConflict(ctx, "certificate.expire", () =>
+          ctx.db.transaction(async (tx) => {
+            if (payment) {
+              const [locked] = await tx.select().from(paymentAttempts).where(eq(paymentAttempts.id, payment.id)).for("update");
+              // A capture may have started since PayPal was checked: never release its reservation.
+              if (locked && !(PRE_CAPTURE_PAYMENT_STATUSES as readonly string[]).includes(locked.status)) return false;
+              const [fresh] = await tx.select().from(intentCertificates).where(eq(intentCertificates.id, cert.id)).for("update");
+              if (fresh?.status !== "ACTIVE") return false;
+              if (locked) {
+                await transitionPayment(
+                  tx,
+                  locked,
+                  "VOIDED",
+                  { failureCode: "CERTIFICATE_EXPIRED", failureMessage: "The approval expired before payment." },
+                  now,
+                );
+              }
+            } else {
+              const [fresh] = await tx.select().from(intentCertificates).where(eq(intentCertificates.id, cert.id)).for("update");
+              if (fresh?.status !== "ACTIVE") return false;
             }
-          }
-          await tx
-            .update(purchaseOrders)
-            .set({ status: "EXPIRED", updatedAt: now })
-            .where(and(eq(purchaseOrders.id, cert.purchaseOrderId), inArray(purchaseOrders.status, [...PAYABLE_PO_STATUSES])));
-          const [po] = await tx
-            .select({ requestId: purchaseOrders.requestId })
-            .from(purchaseOrders)
-            .where(eq(purchaseOrders.id, cert.purchaseOrderId));
-          if (po?.requestId) await refreshRequestStatus(tx, po.requestId, now);
-          await appendAudit(tx, {
-            organizationId: cert.organizationId,
-            action: "certificate.expired",
-            actorType: "SYSTEM",
-            entityType: "intent_certificate",
-            entityId: cert.id,
-            data: { expired_at: cert.expiresAt, reservation_released: true },
-          });
-        });
+            await tx.update(intentCertificates).set({ status: "EXPIRED" }).where(eq(intentCertificates.id, cert.id));
+            await releaseReservation(tx, cert.id, "CERTIFICATE_EXPIRED", now);
+            await tx
+              .update(purchaseOrders)
+              .set({ status: "EXPIRED", updatedAt: now })
+              .where(and(eq(purchaseOrders.id, cert.purchaseOrderId), inArray(purchaseOrders.status, [...PAYABLE_PO_STATUSES])));
+            const [po] = await tx
+              .select({ requestId: purchaseOrders.requestId })
+              .from(purchaseOrders)
+              .where(eq(purchaseOrders.id, cert.purchaseOrderId));
+            if (po?.requestId) await refreshRequestStatus(tx, po.requestId, now);
+            await appendAudit(tx, {
+              organizationId: cert.organizationId,
+              action: "certificate.expired",
+              actorType: "SYSTEM",
+              entityType: "intent_certificate",
+              entityId: cert.id,
+              data: { expired_at: cert.expiresAt, reservation_released: true },
+            });
+            return true;
+          }),
+        );
+        if (!expiredNow) continue;
         report.expired++;
       } catch (err) {
         report.errors++;
         ctx.log.warn({ err, intent_id: cert.id }, "certificate expiry failed");
       }
+    }
+
+    // Long PayPal phases can outlast the lease: renew it, and stop if another runner took over.
+    if (!(await acquireLease(ctx.db, "sweeper", ctx.now()))) return report;
+    if (ctx.paypal.configured) {
+      const refundsReport = await reconcileRefunds(ctx, now);
+      report.refundsReconciled = refundsReport.examined;
+      report.errors += refundsReport.errors;
     }
 
     report.researchRecovered = await recoverAbandonedResearch(ctx, now);
