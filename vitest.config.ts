@@ -13,7 +13,7 @@ export default defineConfig({
       exclude: ["**/cli/**", "apps/api/src/server.ts"],
       reporter: ["text-summary", "json-summary", "html"],
       // Floors at the current measured level; raise them as coverage grows, never lower them.
-      thresholds: { statements: 84, branches: 72, functions: 84, lines: 87 },
+      thresholds: { statements: 94, branches: 86, functions: 92, lines: 95 },
     },
   },
 });
