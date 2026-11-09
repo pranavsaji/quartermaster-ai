@@ -64,8 +64,8 @@ export function DecisionPanel({ decision }: { decision: PolicyDecisionDto }) {
 
       {decision.violations.length > 0 ? (
         <ul className="mt-3 space-y-2" aria-label="Policy violations">
-          {[...blocks, ...reviews].map((v) => (
-            <ViolationItem key={`${v.code}-${v.message}`} violation={v} />
+          {[...blocks, ...reviews].map((v, i) => (
+            <ViolationItem key={`${v.code}-${i}`} violation={v} />
           ))}
         </ul>
       ) : (
