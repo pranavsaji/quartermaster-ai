@@ -354,9 +354,29 @@ export function evaluatePolicy(input: PolicyInput): PolicyResult {
   // --- Quantity sanity ----------------------------------------------------------------
   for (const line of productLines) {
     if (!line.sku) continue;
-    const need = input.needed_units_by_sku[line.sku];
-    const pack = input.pack_quantity_by_sku[line.sku] ?? 1;
+    const need = ownValue(input.needed_units_by_sku, line.sku);
+    const pack = packQuantity(input, line.sku);
+    if (pack === null) {
+      // A zero, negative, fractional or non-finite pack size would make every unit count
+      // meaningless (0 × anything never exceeds the need), so a human must check it.
+      violate({
+        code: "QUANTITY_EXCEEDS_NEED",
+        severity: "REVIEW",
+        message: `Pack size for ${line.sku} is invalid; ordered units cannot be checked against need.`,
+        evidence: { sku: line.sku, reason: "invalid_pack_quantity", pack_quantity: String(ownValue(input.pack_quantity_by_sku, line.sku)) },
+      });
+      continue;
+    }
     if (need === undefined) continue;
+    if (typeof need !== "number" || !Number.isFinite(need) || need < 0) {
+      violate({
+        code: "QUANTITY_EXCEEDS_NEED",
+        severity: "REVIEW",
+        message: `Forecast need for ${line.sku} is invalid; ordered units cannot be checked against need.`,
+        evidence: { sku: line.sku, reason: "invalid_need", need: String(need) },
+      });
+      continue;
+    }
     const units = line.quantity * pack;
     // Allow rounding up to whole packs before applying the multiple.
     const allowed = Math.max(Math.ceil(need / pack) * pack, need * mandate.max_quantity_multiple_of_need);
@@ -390,8 +410,17 @@ export function evaluatePolicy(input: PolicyInput): PolicyResult {
     }
     // The candidate price is derived from the cart line being approved, never from a caller-
     // supplied figure, so the check always gates the price that will actually be charged.
-    const pack = input.pack_quantity_by_sku[line.sku] ?? 1;
-    const candidateUnit = line.unit_price_minor / Math.max(1, pack);
+    const pack = packQuantity(input, line.sku);
+    if (pack === null) {
+      violate({
+        code: "MARKET_REFERENCE_UNAVAILABLE",
+        severity: "REVIEW",
+        message: `Pack size for ${line.sku} is invalid; the unit price cannot be compared with the market.`,
+        evidence: { sku: line.sku, reason: "invalid_pack_quantity" },
+      });
+      continue;
+    }
+    const candidateUnit = line.unit_price_minor / pack;
     const premiumPct = ((candidateUnit - (refPrice as number)) / (refPrice as number)) * 100;
     if (!Number.isFinite(premiumPct)) {
       violate({
@@ -441,6 +470,22 @@ export function evaluatePolicy(input: PolicyInput): PolicyResult {
   }
 
   return finalize(input, violations, checks, mandate);
+}
+
+/** Own-property lookup, so a SKU like "constructor" or "__proto__" never reads Object.prototype. */
+function ownValue<T>(record: Record<string, T>, key: string): T | undefined {
+  return Object.prototype.hasOwnProperty.call(record, key) ? record[key] : undefined;
+}
+
+/**
+ * Pack size for a SKU: absent means 1 (sold individually); present must be a positive safe
+ * integer. Anything else is invalid (null), and both the quantity and market checks treat it
+ * the same way: as a REVIEW violation, never as a silently corrected value.
+ */
+function packQuantity(input: PolicyInput, sku: string): number | null {
+  const raw = ownValue(input.pack_quantity_by_sku, sku);
+  if (raw === undefined) return 1;
+  return Number.isSafeInteger(raw) && raw > 0 ? raw : null;
 }
 
 /**

@@ -22,6 +22,41 @@ describe("policy engine — supplier binding", () => {
   });
 });
 
+describe("policy engine — pack quantities", () => {
+  const big = () => baseInput({ needed_units_by_sku: { "TK-250": 10 } }); // 2 packs × 250 ≫ 10 × 2
+
+  it("flags over-purchase with a valid pack size", () => {
+    expect(codes(evaluatePolicy(big()))).toContain("QUANTITY_EXCEEDS_NEED");
+  });
+
+  it.each([0, -250, Number.NaN, Number.POSITIVE_INFINITY, 2.5])("treats pack size %s as invalid in both the quantity and market checks", (pack) => {
+    const r = evaluatePolicy({ ...big(), pack_quantity_by_sku: { "TK-250": pack } });
+    const qty = r.violations.find((v) => v.code === "QUANTITY_EXCEEDS_NEED");
+    expect(qty).toMatchObject({ severity: "REVIEW", evidence: { reason: "invalid_pack_quantity" } });
+    expect(r.violations.find((v) => v.code === "MARKET_REFERENCE_UNAVAILABLE")).toMatchObject({ evidence: { reason: "invalid_pack_quantity" } });
+    expect(r.decision).toBe("REVIEW_REQUIRED");
+  });
+
+  it("flags an invalid pack size even when no forecast need is known", () => {
+    const r = evaluatePolicy(baseInput({ needed_units_by_sku: {}, pack_quantity_by_sku: { "TK-250": 0 } }));
+    expect(r.violations.find((v) => v.code === "QUANTITY_EXCEEDS_NEED")?.evidence?.reason).toBe("invalid_pack_quantity");
+  });
+
+  it("flags a malformed forecast need for review", () => {
+    const r = evaluatePolicy(baseInput({ needed_units_by_sku: { "TK-250": Number.NaN } }));
+    expect(r.violations.find((v) => v.code === "QUANTITY_EXCEEDS_NEED")?.evidence?.reason).toBe("invalid_need");
+  });
+
+  it("defaults an absent pack size to 1 and ignores inherited properties", () => {
+    const line = product({ sku: "constructor", quantity: 1, unit_price_minor: 8_000, line_total_minor: 8_000 });
+    const input = baseInput({ needed_units_by_sku: {}, pack_quantity_by_sku: {} }, [line, shipping(899), tax(660)]);
+    input.catalog = [{ sku: "constructor", supplier_id: SUPPLIER, category: "food_packaging", unit_price_minor: 8_000, recurring: false, quarantined: false }];
+    input.market = [];
+    const r = evaluatePolicy(input);
+    expect(r.violations.filter((v) => v.code === "QUANTITY_EXCEEDS_NEED")).toEqual([]);
+  });
+});
+
 describe("policy engine — tax rounding", () => {
   it("expects exactly the tax that quote building charges (one shared rounding helper)", () => {
     // 10_806 × 8.25 % = 891.495 → 891 under half-up on the exact product.
