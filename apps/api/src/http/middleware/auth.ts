@@ -1,7 +1,7 @@
 import type { NextFunction, Request, RequestHandler, Response } from "express";
 import type { Role } from "@qm/contracts";
 import { currentScope, type AppContext } from "../../context";
-import { forbidden, unauthorized } from "../../errors";
+import { AppError, unauthorized } from "../../errors";
 import { authenticate, type AuthenticatedUser } from "../../services/auth";
 
 declare global {
@@ -40,7 +40,9 @@ export function sessionAuth(ctx: AppContext): RequestHandler {
 export function requireRole(min: Role): RequestHandler {
   return (req, _res, next) => {
     if (!req.user) return next(unauthorized());
-    if (RANK[req.user.role] < RANK[min]) return next(forbidden(`This action requires the ${min} role.`));
+    if (RANK[req.user.role] < RANK[min]) {
+      return next(new AppError(403, "ROLE_REQUIRED", `This action requires the ${min} role.`, { required_role: min, role: req.user.role }));
+    }
     next();
   };
 }

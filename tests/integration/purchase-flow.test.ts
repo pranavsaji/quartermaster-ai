@@ -128,6 +128,7 @@ describe("end-to-end purchasing journey", () => {
     const manager = await h.agent("manager");
     const res = await approve(req, proposal(req, "Harbor"), manager);
     expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe("ROLE_REQUIRED");
   });
 
   it("approves the exact cart, signs a certificate and reserves budget", async () => {
@@ -410,6 +411,7 @@ describe("failure handling and attacks on the payment path", () => {
     const viewer = await h.agent("viewer");
     const res = await viewer.put("/mandates/current", {});
     expect(res.status).toBe(403);
+    expect(res.body.error).toMatchObject({ code: "ROLE_REQUIRED", details: { required_role: "OWNER", role: "VIEWER" } });
   });
 
   it("requires authentication, CSRF header and idempotency keys", async () => {
