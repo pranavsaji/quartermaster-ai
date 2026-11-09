@@ -86,3 +86,23 @@ Render Postgres provides daily backups on paid plans. `audit_events` is append-o
 UPDATE and DELETE) and hash-chained; verification reports the first altered sequence. Deleting an
 organisation requires `select set_config('qm.allow_audit_purge', 'on', true)` in the same transaction. `.tmp/` and
 `.data/` are disposable local state.
+
+## Error codes worth knowing
+
+Every error response is `{ error: { code, message, details?, correlation_id } }`. Messages are fixed per
+code; provider and database text stays in the logs.
+
+| Code                                               | Status  | Meaning and what to do                                                                   |
+| -------------------------------------------------- | ------- | ---------------------------------------------------------------------------------------- |
+| `ROLE_REQUIRED`                                    | 403     | The signed-in role is too low (`details.required_role`).                                 |
+| `REQUEST_NOT_APPROVABLE`, `RESEARCH_IN_PROGRESS`   | 409     | The request is not ready for review (or research is running). Refresh and retry.         |
+| `PROPOSAL_NOT_OPEN`                                | 409     | That proposal was already approved, rejected or superseded.                              |
+| `AGENT_DEADLINE_EXCEEDED`, `AGENT_BUDGET_EXCEEDED` | 503     | Research ran out of time or tool budget; retry after `Retry-After`.                      |
+| `CAPTURE_REFUSED`                                  | 422     | TrustRail refused the capture; see the finding and the recorded CAPTURE policy decision. |
+| `INSTRUMENT_DECLINED`, `PAYPAL_CAPTURE_REJECTED`   | 422     | PayPal refused; nothing was charged and the buyer can pay again (`details.restart`).     |
+| `PAYPAL_ORDER_MISMATCH`                            | 502     | PayPal's order did not match the approval; the attempt was voided and a finding raised.  |
+| `PAYPAL_REFUND_UNCONFIRMED`                        | 502     | Outcome unknown. Retry with the same Idempotency-Key, or the sweeper resolves it.        |
+| `REFUND_DECLINED` / `REFUND_CLOSED`                | 422/409 | PayPal declined the refund; start a new refund (with a new key).                         |
+| `REFUND_IN_PROGRESS`                               | 409     | Another refund on that payment is unresolved; retry it or wait for the sweeper.          |
+| `WEBHOOK_MALFORMED`, `WEBHOOK_STALE`               | 400     | Rejected before contacting PayPal (bad headers or clock skew beyond ±5 minutes).         |
+| `RATE_LIMITED`                                     | 429     | Per-IP or per-account limit; counters are shared across instances in production.         |
