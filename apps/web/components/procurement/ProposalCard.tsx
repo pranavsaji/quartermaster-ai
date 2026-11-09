@@ -1,6 +1,12 @@
 "use client";
 
-import { SETTLED_PAYMENT_STATUSES, type ApprovalResponse, type CaptureResponse, type PaymentDto, type PurchaseOrderDto } from "@qm/contracts";
+import {
+  SETTLED_PAYMENT_STATUSES,
+  type ApprovalResponse,
+  type CaptureResponse,
+  type PaymentDto,
+  type PurchaseOrderDto,
+} from "@qm/contracts";
 import { PayPalCheckout } from "@/components/payments/PayPalCheckout";
 import { PaymentStatusPanel } from "@/components/payments/PaymentStatusPanel";
 import { useSession } from "@/components/session/SessionProvider";
