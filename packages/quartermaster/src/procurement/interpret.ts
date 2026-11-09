@@ -81,13 +81,23 @@ function parseMultiplier(text: string): number {
   return 1;
 }
 
-function parseBudget(text: string): number | null {
-  const m = /(?:\$\s?(\d{1,3}(?:,\d{3})*|\d+)(?:\.(\d{1,2}))?)|(?:\b(\d{1,6})(?:\.(\d{1,2}))?\s*(?:dollars|usd)\b)/i.exec(text);
+/**
+ * "$1,500", "$1500", "$2500.50", "$2k", "1200 dollars", "2,500 USD". The whole-number
+ * alternation tries comma-grouped thousands first and the trailing negative lookahead stops a
+ * partial match ("$1500" must never be read as "$150"); ambiguous forms ("$1,2345",
+ * "$10.555") are rejected instead of truncated.
+ */
+const BUDGET_RE =
+  /\$\s?(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{1,2}))?(?:\s?([kK])(?![A-Za-z]))?(?![\d,.]?\d)|\b(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{1,2}))?(?![\d,.]?\d)\s*(?:dollars|usd|bucks)\b/i;
+
+export function parseBudget(text: string): number | null {
+  const m = BUDGET_RE.exec(text);
   if (!m) return null;
-  const whole = (m[1] ?? m[3] ?? "0").replace(/,/g, "");
-  const frac = (m[2] ?? m[4] ?? "").padEnd(2, "0").slice(0, 2);
-  const minor = Number(whole) * 100 + Number(frac || "0");
-  return minor > 0 ? minor : null;
+  const whole = (m[1] ?? m[4] ?? "0").replace(/,/g, "");
+  const frac = (m[2] ?? m[5] ?? "").padEnd(2, "0");
+  const thousands = m[3] ? 1000 : 1;
+  const minor = (Number(whole) * 100 + Number(frac || "0")) * thousands;
+  return Number.isSafeInteger(minor) && minor > 0 ? minor : null;
 }
 
 function parseDate(text: string, now: Date): string | null {
