@@ -149,7 +149,7 @@ export const ROUTES: RouteSpec[] = [
   {
     method: "POST",
     path: "/procurement/requests/{id}/reject",
-    summary: "Reject open proposals",
+    summary: "Reject one proposal (purchase_order_id) or every open proposal",
     tag: "Procurement",
     role: "OWNER",
     body: RejectRequest,

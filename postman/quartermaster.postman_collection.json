@@ -630,7 +630,7 @@
           ]
         },
         {
-          "name": "Reject open proposals",
+          "name": "Reject one proposal (purchase_order_id) or every open proposal",
           "request": {
             "method": "POST",
             "header": [

@@ -732,7 +732,7 @@
     },
     "/procurement/requests/{id}/reject": {
       "post": {
-        "summary": "Reject open proposals",
+        "summary": "Reject one proposal (purchase_order_id) or every open proposal",
         "tags": [
           "Procurement"
         ],
