@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { PRODUCT_CATEGORIES } from "./enums";
+import { PO_STATUSES, PRODUCT_CATEGORIES, type PurchaseOrderStatus } from "./enums";
 import { SUPPORTED_CURRENCIES } from "./money";
 
 const minor = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
@@ -163,6 +163,33 @@ export const PaginationQuery = z.object({
   cursor: z.string().max(200).optional(),
 });
 export type PaginationQuery = z.infer<typeof PaginationQuery>;
+
+export const PurchaseOrdersQuery = PaginationQuery.extend({
+  /** Comma-separated statuses to include, e.g. `PROPOSED,APPROVED`. */
+  status: z
+    .string()
+    .max(200)
+    .optional()
+    .transform((v, ctx) => {
+      if (!v) return undefined;
+      const parts = [
+        ...new Set(
+          v
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean),
+        ),
+      ];
+      for (const p of parts) {
+        if (!(PO_STATUSES as readonly string[]).includes(p)) {
+          ctx.addIssue({ code: "custom", message: `Unknown purchase order status: ${p.slice(0, 32)}` });
+          return z.NEVER;
+        }
+      }
+      return parts as PurchaseOrderStatus[];
+    }),
+});
+export type PurchaseOrdersQuery = z.infer<typeof PurchaseOrdersQuery>;
 
 export const SecurityEventsQuery = PaginationQuery.extend({
   severity: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).optional(),

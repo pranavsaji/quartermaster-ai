@@ -3,6 +3,7 @@ import {
   AnalyzeInvoiceRequest,
   DelayDeliveryRequest,
   PaginationQuery,
+  PurchaseOrdersQuery,
   ReceiveDeliveryRequest,
   SecurityEventsQuery,
   SpendMandateInput,
@@ -57,7 +58,7 @@ export function operationsRoutes(ctx: AppContext): Router {
   r.get(
     "/purchase-orders",
     asyncHandler(async (req, res) => {
-      res.json(await listOrders(ctx.db, req.user!.organizationId, parse(PaginationQuery, req.query)));
+      res.json(await listOrders(ctx.db, req.user!.organizationId, parse(PurchaseOrdersQuery, req.query)));
     }),
   );
 

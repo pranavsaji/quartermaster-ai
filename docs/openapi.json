@@ -1296,7 +1296,7 @@
     },
     "/purchase-orders": {
       "get": {
-        "summary": "Order history",
+        "summary": "Order history; optional ?status=PROPOSED,APPROVED (comma-separated)",
         "tags": [
           "Orders"
         ],

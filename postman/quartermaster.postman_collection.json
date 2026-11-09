@@ -1028,7 +1028,7 @@
       "name": "Orders",
       "item": [
         {
-          "name": "Order history",
+          "name": "Order history; optional ?status=PROPOSED,APPROVED (comma-separated)",
           "request": {
             "method": "GET",
             "header": [],

@@ -223,7 +223,13 @@ export const ROUTES: RouteSpec[] = [
     response: "{ received: true, outcome }",
   },
 
-  { method: "GET", path: "/purchase-orders", summary: "Order history", tag: "Orders", response: "Page<PurchaseOrderDto>" },
+  {
+    method: "GET",
+    path: "/purchase-orders",
+    summary: "Order history; optional ?status=PROPOSED,APPROVED (comma-separated)",
+    tag: "Orders",
+    response: "Page<PurchaseOrderDto>",
+  },
   { method: "GET", path: "/purchase-orders/{id}", summary: "One purchase order", tag: "Orders", response: "PurchaseOrderDto" },
   { method: "GET", path: "/deliveries", summary: "Synthetic deliveries", tag: "Orders", response: "{ items: DeliveryDto[] }" },
   {

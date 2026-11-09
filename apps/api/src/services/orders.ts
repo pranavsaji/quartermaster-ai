@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
 import type {
+  PurchaseOrderStatus,
   Page,
   DeliveryDto,
   IntentCertificateDto,
@@ -262,7 +263,7 @@ export async function orderDtos(db: DbOrTx, organizationId: string, pos: Purchas
 export async function listOrders(
   db: DbOrTx,
   organizationId: string,
-  q: { limit: number; cursor?: string },
+  q: { limit: number; cursor?: string; status?: PurchaseOrderStatus[] },
 ): Promise<Page<PurchaseOrderDto>> {
   const rows = await db
     .select()
@@ -270,6 +271,7 @@ export async function listOrders(
     .where(
       and(
         eq(purchaseOrders.organizationId, organizationId),
+        q.status?.length ? inArray(purchaseOrders.status, q.status) : undefined,
         afterCursor(purchaseOrders.createdAt, purchaseOrders.id, decodeCursor(q.cursor)),
       ),
     )

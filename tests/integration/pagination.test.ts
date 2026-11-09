@@ -75,3 +75,23 @@ describe("keyset pagination", () => {
     expect((await owner.get("/purchase-orders?cursor=zzz")).status).toBe(200);
   });
 });
+
+describe("purchase order status filter", () => {
+  it("returns only the requested statuses and rejects unknown ones", async () => {
+    const created = await owner.post("/procurement/requests", {
+      instruction: "Restock takeaway containers and cooking oil without exceeding $300.",
+    });
+    await owner.post(`/procurement/requests/${created.body.id}/research`);
+    const all = (await owner.get("/purchase-orders?limit=200")).body.items as { status: string }[];
+    expect(new Set(all.map((p) => p.status)).size).toBeGreaterThan(1);
+
+    const filtered = await owner.get("/purchase-orders?limit=200&status=PROPOSED,BLOCKED");
+    expect(filtered.status).toBe(200);
+    const statuses = (filtered.body.items as { status: string }[]).map((p) => p.status);
+    expect(statuses.length).toBe(all.filter((p) => p.status === "PROPOSED" || p.status === "BLOCKED").length);
+    expect(statuses.every((s) => s === "PROPOSED" || s === "BLOCKED")).toBe(true);
+
+    const bad = await owner.get("/purchase-orders?status=PROPOSED,LOST");
+    expect(bad.status).toBe(400);
+  });
+});
