@@ -46,7 +46,7 @@ export function intentAndPaymentRoutes(ctx: AppContext): Router {
     requireRole("OWNER"),
     idempotent(ctx, "payments.refund", async (req) => {
       const input = parse(RefundRequest, req.body);
-      return { status: 200, body: { payment: await refundPayment(ctx, actorOf(req), param(req, "id"), input.amount_minor, input.reason) } };
+      return { status: 200, body: { payment: await refundPayment(ctx, actorOf(req), param(req, "id"), input.amount_minor, input.reason, req.get("idempotency-key")!) } };
     }),
   );
 

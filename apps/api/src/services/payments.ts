@@ -1,4 +1,5 @@
-import { and, eq, sql } from "drizzle-orm";
+import { createHash } from "node:crypto";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { minorToDecimalString, type PaymentDto, type PaymentStatus, type PurchaseOrderDto } from "@qm/contracts";
 import {
   deliveries,
@@ -400,43 +401,79 @@ export async function finalizeFromOrder(ctx: AppContext, paymentId: string, orde
 
 /* ============================================================================= Refund */
 
-export async function refundPayment(ctx: AppContext, actor: Actor, paymentId: string, amountMinor: number | undefined, reason: string): Promise<PaymentDto> {
+const APPLIED_REFUND = ["COMPLETED", "PENDING"];
+const IN_FLIGHT_REFUND = ["REQUESTED", "UNKNOWN"];
+
+/**
+ * Owner-authorised refund. Each logical refund has a stable request key derived from the
+ * client's Idempotency-Key, so a retry after a timeout reuses the same PayPal-Request-Id and
+ * PayPal returns the original refund instead of paying out twice. While a refund's outcome is
+ * unknown, no other refund can start for that payment.
+ */
+export async function refundPayment(
+  ctx: AppContext,
+  actor: Actor,
+  paymentId: string,
+  amountMinor: number | undefined,
+  reason: string,
+  idempotencyKey: string,
+): Promise<PaymentDto> {
   requirePayPal(ctx);
-  const refundRow = await ctx.db.transaction(async (tx) => {
+  const requestKey = `${paymentId}:${createHash("sha256").update(idempotencyKey).digest("hex").slice(0, 32)}`;
+  const prepared = await ctx.db.transaction(async (tx) => {
     const p = await loadPayment(tx, actor.organizationId, paymentId, true);
     if (!["COMPLETED", "PARTIALLY_REFUNDED"].includes(p.status) || !p.paypalCaptureId || p.capturedAmountMinor === null) {
       throw conflict("NOT_REFUNDABLE", `Payment is ${p.status}.`);
     }
+    const [existing] = await tx.select().from(refunds).where(eq(refunds.requestKey, requestKey));
+    if (existing && APPLIED_REFUND.includes(existing.status)) return { done: true as const, payment: p };
+    if (existing) return { done: false as const, refund: existing, payment: p, amount: existing.amountMinor };
+
+    const inFlight = await tx
+      .select({ id: refunds.id })
+      .from(refunds)
+      .where(and(eq(refunds.paymentAttemptId, p.id), inArray(refunds.status, IN_FLIGHT_REFUND)));
+    if (inFlight.length > 0) throw conflict("REFUND_IN_PROGRESS", "Another refund for this payment has not completed yet. Retry it first.");
     const refundable = p.capturedAmountMinor - p.refundedAmountMinor;
     const amount = amountMinor ?? refundable;
     if (amount <= 0 || amount > refundable) throw unprocessable("REFUND_AMOUNT_INVALID", `Refund must be between 1 and ${refundable}.`);
-    const [r] = await tx.insert(refunds).values({ organizationId: actor.organizationId, paymentAttemptId: p.id, amountMinor: amount, status: "PENDING", reason, createdBy: actor.id }).returning();
-    return { refund: r!, payment: p, amount };
+    const [r] = await tx
+      .insert(refunds)
+      .values({ organizationId: actor.organizationId, paymentAttemptId: p.id, requestKey, amountMinor: amount, status: "REQUESTED", reason, createdBy: actor.id })
+      .returning();
+    return { done: false as const, refund: r!, payment: p, amount };
   });
+  if (prepared.done) return toPaymentDto(prepared.payment);
 
   let refund;
   try {
     refund = await ctx.paypal.refundCapture(
-      refundRow.payment.paypalCaptureId!,
-      `qm-refund-${refundRow.refund.id}`,
-      { currency_code: refundRow.payment.currency, value: minorToDecimalString(refundRow.amount, refundRow.payment.currency) },
+      prepared.payment.paypalCaptureId!,
+      `qm-refund-${createHash("sha256").update(requestKey).digest("hex").slice(0, 40)}`,
+      { currency_code: prepared.payment.currency, value: minorToDecimalString(prepared.amount, prepared.payment.currency) },
       reason,
     );
   } catch (err) {
-    await ctx.db.update(refunds).set({ status: err instanceof PayPalAmbiguousError ? "UNKNOWN" : "FAILED" }).where(eq(refunds.id, refundRow.refund.id));
-    throw badGateway("PAYPAL_REFUND_FAILED", "PayPal did not complete the refund.", { message: (err as Error).message });
+    await ctx.db.update(refunds).set({ status: err instanceof PayPalAmbiguousError || (err instanceof PayPalApiError && err.retryable) ? "UNKNOWN" : "FAILED" }).where(eq(refunds.id, prepared.refund.id));
+    throw badGateway("PAYPAL_REFUND_FAILED", "PayPal did not confirm the refund. Retry with the same request to resolve it.", { message: (err as Error).message });
   }
 
   return ctx.db.transaction(async (tx) => {
     const p = await loadPayment(tx, actor.organizationId, paymentId, true);
-    await tx.update(refunds).set({ status: refund.status, paypalRefundId: refund.id }).where(eq(refunds.id, refundRow.refund.id));
-    if (refund.status === "COMPLETED" || refund.status === "PENDING") {
-      const refunded = p.refundedAmountMinor + refundRow.amount;
+    // The webhook may already have recorded this refund (and counted it) under PayPal's id.
+    const [recorded] = refund.id ? await tx.select().from(refunds).where(eq(refunds.paypalRefundId, refund.id)) : [];
+    if (recorded && recorded.id !== prepared.refund.id) {
+      await tx.delete(refunds).where(eq(refunds.id, prepared.refund.id));
+      return toPaymentDto(p);
+    }
+    await tx.update(refunds).set({ status: refund.status, paypalRefundId: refund.id }).where(eq(refunds.id, prepared.refund.id));
+    if (APPLIED_REFUND.includes(refund.status)) {
+      const refunded = p.refundedAmountMinor + prepared.amount;
       const status: PaymentStatus = refunded >= (p.capturedAmountMinor ?? 0) ? "REFUNDED" : "PARTIALLY_REFUNDED";
       await tx.update(paymentAttempts).set({ refundedAmountMinor: refunded, status: canTransition(p.status as PaymentStatus, status) ? status : (p.status as PaymentStatus), updatedAt: ctx.now() }).where(eq(paymentAttempts.id, p.id));
-      await reduceSpend(tx, p.intentId, refundRow.amount, ctx.now());
+      await reduceSpend(tx, p.intentId, prepared.amount, ctx.now());
     }
-    await appendAudit(tx, { organizationId: actor.organizationId, action: "payment.refunded", actorType: "USER", actorId: actor.id, entityType: "payment_attempt", entityId: p.id, data: { amount_minor: refundRow.amount, paypal_refund_id: refund.id, status: refund.status, reason } });
+    await appendAudit(tx, { organizationId: actor.organizationId, action: "payment.refunded", actorType: "USER", actorId: actor.id, entityType: "payment_attempt", entityId: p.id, data: { amount_minor: prepared.amount, paypal_refund_id: refund.id, status: refund.status, reason } });
     return toPaymentDto(await loadPayment(tx, actor.organizationId, paymentId));
   });
 }
