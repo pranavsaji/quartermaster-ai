@@ -68,6 +68,13 @@ export interface SecurityEventsFilter extends PageQuery {
   type?: string;
 }
 
+/**
+ * An adjustment, optionally guarded by the on-hand quantity the user saw: the API then refuses with
+ * 409 STOCK_CHANGED (details.on_hand = the current quantity) instead of applying a delta that was
+ * worked out from stale stock.
+ */
+export type InventoryAdjustmentInput = InventoryAdjustmentRequest & { expected_on_hand?: number };
+
 export interface ForecastInput {
   demand_multiplier: number;
   inventory_item_ids?: string[];
@@ -101,7 +108,7 @@ export const api = {
 
   inventory: {
     list: (o?: Signal) => get<ItemsResponse<InventoryItemDto>>("/inventory", o),
-    adjust: (itemId: string, body: InventoryAdjustmentRequest) =>
+    adjust: (itemId: string, body: InventoryAdjustmentInput) =>
       idempotent<InventoryAdjustmentResponse>("POST", `/inventory/${id(itemId)}/adjustments`, body),
     forecast: (body: ForecastInput) => post<ForecastRunDto>("/inventory/forecast", body),
   },
