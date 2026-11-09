@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { analyzeInvoice, invoiceContentHash, normalizeInvoiceNumber, type ExistingInvoiceView, type InvoiceInput, type PurchaseOrderView } from "@qm/quartermaster";
+import { INVOICE_HASH_VERSION, analyzeInvoice, invoiceContentHash, legacyInvoiceContentHash, normalizeInvoiceNumber, type ExistingInvoiceView, type InvoiceInput, type PurchaseOrderView } from "@qm/quartermaster";
 
 const po: PurchaseOrderView = {
   id: "po_1",
@@ -162,6 +162,21 @@ describe("invoice reconciliation", () => {
       expect(invoiceContentHash({ ...base, lines: order })).toBe(h);
     }
     expect(invoiceContentHash({ ...base, lines: [a, a, c] })).not.toBe(h);
+  });
+
+  it("versions the content hash and keeps the legacy algorithm for stored rows", () => {
+    expect(INVOICE_HASH_VERSION).toBe(2);
+    expect(invoiceContentHash(invoice())).toMatch(/^v2:sha256:[a-f0-9]{64}$/);
+    // The legacy hash is exactly the pre-v2 algorithm (fixture pinned before the change).
+    expect(legacyInvoiceContentHash(invoice())).toBe("sha256:e89d8fb816f77f346b00a71695671a5a137195295db37070dafc5f975eb31596");
+  });
+
+  it("still detects a re-numbered resubmission of an invoice stored with the legacy hash", () => {
+    const stored = { ...existingFrom(invoice()), content_hash: legacyInvoiceContentHash(invoice()) };
+    const r = analyzeInvoice(invoice({ invoice_number: "INV-9009" }), po, [stored]);
+    expect(r.status).toBe("DUPLICATE");
+    expect(r.checks.find((c) => c.check === "DUPLICATE_CONTENT")?.passed).toBe(false);
+    expect(r.content_hash.startsWith("v2:")).toBe(true);
   });
 
   it("orders lines by code unit, not locale collation", () => {

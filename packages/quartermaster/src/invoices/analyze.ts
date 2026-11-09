@@ -64,25 +64,52 @@ export function normalizeInvoiceNumber(n: string): string {
   return core.replace(/^(INVOICE|INV)(?=[A-Z0-9])/, "").replace(/^0+(?=\d)/, "");
 }
 
+type HashableInvoice = Pick<InvoiceInput, "supplier_id" | "currency" | "lines" | "total_minor" | "purchase_order_id">;
+
+/** Version of `invoiceContentHash`; its output is prefixed `v2:` so stored hashes are self-describing. */
+export const INVOICE_HASH_VERSION = 2;
+export const INVOICE_HASH_PREFIX = `v${INVOICE_HASH_VERSION}:`;
+
+const hashLine = (l: InvoiceLine) => ({ sku: l.sku ?? null, quantity: l.quantity, unit_price_minor: l.unit_price_minor, line_total_minor: l.line_total_minor });
+
 /**
  * Content fingerprint independent of the invoice number, to catch re-numbered resubmissions.
+ * Output: `v2:sha256:<hex>`.
  *
  * Lines are ordered by their full canonical encoding compared by UTF-16 code unit, so the hash
  * is independent of line order (no sort-key ties) and of the runtime's locale/ICU data, which
  * `localeCompare` is not.
  */
-export function invoiceContentHash(inv: Pick<InvoiceInput, "supplier_id" | "currency" | "lines" | "total_minor" | "purchase_order_id">): string {
+export function invoiceContentHash(inv: HashableInvoice): string {
   const lines = inv.lines
-    .map((l) => ({ sku: l.sku ?? null, quantity: l.quantity, unit_price_minor: l.unit_price_minor, line_total_minor: l.line_total_minor }))
+    .map(hashLine)
     .map((line) => ({ line, key: canonicalize(line) }))
     .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
     .map((x) => x.line);
+  return (
+    INVOICE_HASH_PREFIX +
+    digest({
+      supplier_id: inv.supplier_id,
+      purchase_order_id: inv.purchase_order_id,
+      currency: inv.currency,
+      total_minor: inv.total_minor,
+      lines,
+    })
+  );
+}
+
+/**
+ * The v1 content hash (unprefixed `sha256:<hex>`), byte-for-byte the previous algorithm, kept
+ * so invoices stored before v2 still catch re-numbered resubmissions. Do not use it for new
+ * rows: it depends on line order when SKU and line total tie, and on locale collation.
+ */
+export function legacyInvoiceContentHash(inv: HashableInvoice): string {
   return digest({
     supplier_id: inv.supplier_id,
     purchase_order_id: inv.purchase_order_id,
     currency: inv.currency,
     total_minor: inv.total_minor,
-    lines,
+    lines: inv.lines.map(hashLine).sort((a, b) => `${a.sku}:${a.line_total_minor}`.localeCompare(`${b.sku}:${b.line_total_minor}`)),
   });
 }
 
@@ -113,7 +140,12 @@ export function analyzeInvoice(inv: InvoiceInput, po: PurchaseOrderView | null, 
   const numberDupes = sameSupplier.filter((e) => normalizeInvoiceNumber(e.invoice_number) === normalized);
   add("DUPLICATE_INVOICE_NUMBER", numberDupes.length === 0, "HIGH", numberDupes.length === 0 ? "Invoice number not seen before." : `Invoice number already recorded (${numberDupes.length}).`);
 
-  const contentDupes = sameSupplier.filter((e) => e.content_hash === content_hash && !numberDupes.includes(e));
+  // Rows stored before v2 carry an unprefixed legacy hash; compare those against the legacy
+  // fingerprint of this invoice so the algorithm change does not open a resubmission window.
+  const legacy_hash = sameSupplier.some((e) => !e.content_hash.startsWith(INVOICE_HASH_PREFIX)) ? legacyInvoiceContentHash(inv) : null;
+  const contentDupes = sameSupplier.filter(
+    (e) => (e.content_hash === content_hash || (legacy_hash !== null && e.content_hash === legacy_hash)) && !numberDupes.includes(e),
+  );
   add("DUPLICATE_CONTENT", contentDupes.length === 0, "HIGH", contentDupes.length === 0 ? "No invoice with identical content." : "An invoice with identical lines and total exists under a different number.");
 
   const poDupes = inv.purchase_order_id
