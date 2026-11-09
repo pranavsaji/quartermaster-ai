@@ -30,7 +30,7 @@ import {
   type SupplierRow,
 } from "../suppliers";
 import { AgentBudgetExceeded, AgentRun } from "../agent/runtime";
-import { classifyInjection, explainRecommendation, type ExplanationFacts } from "../agent/llm";
+import { classifyInjection, deterministicExplanation, explainRecommendation, type ExplanationFacts } from "../agent/llm";
 import { getRequestDto } from "./dto";
 import { refreshRequestStatus } from "./status";
 
@@ -60,6 +60,8 @@ interface ResearchContext {
   intent: StoredIntent;
   /** The research's reference time (forecast, market freshness, comparison). */
   now: Date;
+  /** Every proposal this run created, so a failed run can withdraw them (see failResearch). */
+  createdProposalIds: string[];
 }
 
 /** Output of the forecast stage. */
@@ -103,6 +105,7 @@ export async function researchRequest(ctx: AppContext, user: { id: string; organ
   const claimed = await claimRequest(ctx, orgId, requestId, now);
 
   let run: AgentRun | null = null;
+  const createdProposalIds: string[] = [];
   try {
     run = await AgentRun.start(ctx.db, {
       organizationId: orgId,
@@ -126,20 +129,37 @@ export async function researchRequest(ctx: AppContext, user: { id: string; organ
       request: claimed,
       intent: claimed.intent ?? {},
       now,
+      createdProposalIds,
     });
   } catch (err) {
-    ctx.log.error({ err, request_id: requestId }, "research failed");
-    // Client-safe text only: internal error messages stay in the logs.
-    const message = err instanceof AppError ? err.message : "Research failed unexpectedly. Try again.";
-    await ctx.db
-      .update(purchaseRequests)
-      .set({ status: "FAILED", error: message.slice(0, 500), updatedAt: ctx.now() })
-      .where(and(eq(purchaseRequests.id, requestId), eq(purchaseRequests.status, "RESEARCHING")));
-    await run
-      ?.finish("FAILED", message)
-      .catch((e: unknown) => ctx.log.warn({ err: e, request_id: requestId }, "could not close the agent run"));
+    await failResearch(ctx, requestId, run, createdProposalIds, err);
     throw err;
   }
+}
+
+/**
+ * Research is all-or-nothing for the owner. A failed run withdraws the proposals it created
+ * (they become SUPERSEDED evidence, never approvable orders under a FAILED request) and marks
+ * the request FAILED with client-safe text; an AppError's message (e.g. the agent deadline) is
+ * authored for clients, anything else stays in the logs. The request is still RESEARCHING while
+ * its proposals are withdrawn, so approval (which refuses RESEARCHING) cannot interleave.
+ */
+async function failResearch(ctx: AppContext, requestId: string, run: AgentRun | null, createdProposalIds: string[], err: unknown) {
+  ctx.log.error({ err, request_id: requestId }, "research failed");
+  const message = err instanceof AppError ? err.message : "Research failed unexpectedly. Try again.";
+  if (createdProposalIds.length) {
+    await ctx.db
+      .update(purchaseOrders)
+      .set({ status: "SUPERSEDED", updatedAt: ctx.now() })
+      .where(and(inArray(purchaseOrders.id, createdProposalIds), inArray(purchaseOrders.status, ["PROPOSED", "BLOCKED"])));
+  }
+  await ctx.db
+    .update(purchaseRequests)
+    .set({ status: "FAILED", error: message.slice(0, 500), updatedAt: ctx.now() })
+    .where(and(eq(purchaseRequests.id, requestId), eq(purchaseRequests.status, "RESEARCHING")));
+  await run
+    ?.finish("FAILED", message)
+    .catch((e: unknown) => ctx.log.warn({ err: e, request_id: requestId }, "could not close the agent run"));
 }
 
 /**
@@ -179,12 +199,23 @@ async function claimRequest(ctx: AppContext, orgId: string, requestId: string, n
   });
 }
 
+/**
+ * The tail of the deadline held back from the optional, network-bound stages (market search and
+ * the model's second opinion in the threat scan) so planning and TrustRail evaluation, which a
+ * proposal cannot do without, still get time when those stages are slow.
+ */
+export function planningReserveMs(deadlineMs: number): number {
+  return Math.min(15_000, Math.floor(deadlineMs / 3));
+}
+
 async function runResearch(rc: ResearchContext) {
   const demand = await forecastStage(rc);
   if (demand.needed.length === 0) return finishNothingToBuy(rc, demand);
+  rc.run.reserve(planningReserveMs(rc.ctx.config.agent.deadlineMs));
   const market = await marketStage(rc, demand);
   const sourcing = await loadSourcing(rc, demand);
   sourcing.catalog = await threatScanStage(rc, demand, sourcing);
+  rc.run.release();
   const candidatesByItem = await compareStage(rc, demand, sourcing);
   const outcome = await planAndEvaluateStage(rc, demand, sourcing, candidatesByItem);
   return finishResearch(rc, demand, market, outcome);
@@ -250,16 +281,33 @@ const unavailableReference = (inventoryItemId: string): MarketReferenceDto => ({
   quotes: [],
 });
 
+/**
+ * Market evidence is optional: an item whose search would run into the planning reserve, or
+ * that hits a call limit, gets an UNAVAILABLE reference (TrustRail then asks for a human price
+ * review) instead of failing the research.
+ */
 async function marketStage(rc: ResearchContext, demand: Demand): Promise<MarketReferenceDto[]> {
   const market: MarketReferenceDto[] = [];
+  const skipped: string[] = [];
   for (const line of demand.needed) {
     const item = demand.itemRows.get(line.inventory_item_id)!;
+    if (rc.run.budgetMs <= 0) {
+      skipped.push(item.name);
+      market.push(unavailableReference(item.id));
+      continue;
+    }
     try {
       market.push(await researchMarketItem(rc, item));
     } catch (err) {
       if (!(err instanceof AgentBudgetExceeded)) throw err;
       market.push(unavailableReference(item.id));
     }
+  }
+  if (skipped.length) {
+    await rc.run.skip(
+      "market.search",
+      `Time for market research ran out; skipped ${skipped.length} item(s), which need human price review: ${skipped.join(", ")}.`,
+    );
   }
   await rc.ctx.db.update(purchaseRequests).set({ market }).where(eq(purchaseRequests.id, rc.requestId));
   return market;
@@ -556,6 +604,7 @@ async function evaluateCart(rc: ResearchContext, sourcing: Sourcing, planned: Pl
           planAttempt: attempt,
           now: ctx.now(),
         });
+        rc.createdProposalIds.push(po.id);
         const { po: fresh, items } = await loadOrder(tx, rc.orgId, po.id);
         const ev = await evaluateOrder(tx, rc.orgId, fresh, items, {
           stage: "EVALUATE",
@@ -607,6 +656,26 @@ async function evaluateCart(rc: ResearchContext, sourcing: Sourcing, planned: Pl
 
 /* 7. Explanation and completion ------------------------------------------------------- */
 
+/**
+ * The proposals are already evaluated and persisted, so a run out of time or steps still
+ * completes: the explanation falls back to the deterministic one, which needs neither.
+ */
+async function explain(rc: ResearchContext, facts: ExplanationFacts) {
+  const { ctx, run } = rc;
+  try {
+    return await run.tool(
+      "recommendation.explain",
+      { proposals: facts.proposals.length },
+      () => explainRecommendation(ctx.openai, run, facts),
+      (e) => `Explanation (${e.mode === "LLM" ? "model" : "deterministic"}).`,
+    );
+  } catch (err) {
+    if (!(err instanceof AgentBudgetExceeded)) throw err;
+    await run.skip("recommendation.explain", "The agent's time or step budget ran out; the explanation is deterministic.");
+    return { ...deterministicExplanation(facts), mode: "DETERMINISTIC_FALLBACK" as const };
+  }
+}
+
 async function finishResearch(rc: ResearchContext, demand: Demand, market: MarketReferenceDto[], outcome: PlanOutcome) {
   const { ctx, run } = rc;
   const { accepted } = outcome;
@@ -629,12 +698,7 @@ async function finishResearch(rc: ResearchContext, demand: Demand, market: Marke
         `${demand.itemRows.get(m.inventory_item_id)?.name}: market reference ${m.status.toLowerCase()}${m.reference_unit_price_minor !== null ? ` at ${m.reference_unit_price_minor.toFixed(2)}¢/unit` : ""}.`,
     ),
   };
-  const explanation = await run.tool(
-    "recommendation.explain",
-    { proposals: accepted.length },
-    () => explainRecommendation(ctx.openai, run, facts),
-    (e) => `Explanation (${e.mode === "LLM" ? "model" : "deterministic"}).`,
-  );
+  const explanation = await explain(rc, facts);
 
   await ctx.db
     .update(purchaseRequests)
