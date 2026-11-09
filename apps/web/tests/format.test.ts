@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { inputToMinor, minorToInput, todayIso } from "@/lib/format";
+import { addDaysIso, daysBetweenIso, inputToMinor, minorToInput, relativeDay, relativeTime, todayIso } from "@/lib/format";
 
 describe("inputToMinor", () => {
   it("converts typed amounts to integer minor units", () => {
@@ -56,5 +56,33 @@ describe("todayIso", () => {
 
   it("falls back to the browser zone for an unknown zone", () => {
     expect(todayIso("Not/AZone", instant)).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+});
+
+describe("calendar-day helpers", () => {
+  it("moves and compares calendar dates across month, year and DST boundaries", () => {
+    expect(addDaysIso("2026-11-12", 1)).toBe("2026-11-13");
+    expect(addDaysIso("2026-12-31", 1)).toBe("2027-01-01");
+    expect(addDaysIso("2026-03-08", 1)).toBe("2026-03-09");
+    expect(daysBetweenIso("2026-11-09", "2026-11-12")).toBe(3);
+    expect(daysBetweenIso("2026-11-09", "2026-11-01")).toBe(-8);
+  });
+
+  it("describes a date-only value in whole days from the organisation's today", () => {
+    // 23:30 on Nov 9 in New York is already Nov 10 in UTC.
+    const now = Date.parse("2026-11-10T04:30:00Z");
+    expect(relativeDay("2026-11-09", "America/New_York", now)).toBe("today");
+    expect(relativeDay("2026-11-10", "America/New_York", now)).toBe("tomorrow");
+    expect(relativeDay("2026-11-12", "America/New_York", now)).toBe("in 3 days");
+    expect(relativeDay("2026-11-07", "America/New_York", now)).toBe("2 days ago");
+    expect(relativeDay("2026-11-10", "UTC", now)).toBe("today");
+    expect(relativeDay(null)).toBe("—");
+  });
+
+  it("never gives hours for a calendar date", () => {
+    const now = new Date(2026, 10, 9, 15, 0).getTime();
+    expect(relativeTime("2026-11-09", now)).toBe("today");
+    expect(relativeTime("2026-11-08", now)).toBe("yesterday");
+    expect(relativeTime("2026-11-09T12:00:00", now)).toBe("3 hours ago");
   });
 });

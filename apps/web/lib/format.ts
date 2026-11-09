@@ -99,9 +99,11 @@ const dateTimeFmt = new Intl.DateTimeFormat("en-US", {
 });
 const shortDateFmt = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" });
 
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
 function toDate(value: string | Date): Date | null {
   // Bare YYYY-MM-DD dates are calendar dates, not instants: render them in local time.
-  const d = typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T00:00:00`) : new Date(value);
+  const d = typeof value === "string" && DATE_ONLY.test(value) ? new Date(`${value}T00:00:00`) : new Date(value);
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
@@ -126,6 +128,8 @@ export function dateTime(value: string | null | undefined): string {
 const relFmt = new Intl.RelativeTimeFormat("en-US", { numeric: "auto" });
 export function relativeTime(value: string | null | undefined, now = Date.now()): string {
   if (!value) return "—";
+  // A calendar date has no time of day, so "15 hours ago" would be meaningless: count days instead.
+  if (DATE_ONLY.test(value)) return relativeDay(value, undefined, now);
   const d = toDate(value);
   if (!d) return value;
   const seconds = Math.round((d.getTime() - now) / 1000);
@@ -197,7 +201,7 @@ export function daysBetweenIso(fromIso: string, toIso: string): number {
  * "2 days ago". For date-only values (a delivery's expected date), where hours would be meaningless.
  */
 export function relativeDay(isoDate: string | null | undefined, timeZone?: string, now: Date | number = Date.now()): string {
-  if (!isoDate || !/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return isoDate ?? "—";
+  if (!isoDate || !DATE_ONLY.test(isoDate)) return isoDate || "—";
   return relFmt.format(daysBetweenIso(todayIso(timeZone, now), isoDate), "day");
 }
 

@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import type { DeliveryDto, PurchaseOrderDto } from "@qm/contracts";
+import { useSession } from "@/components/session/SessionProvider";
 import { StatusBadge } from "@/components/ui/Badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ResourceView, type ResourceLike } from "@/components/ui/ResourceView";
 import { SkeletonRows } from "@/components/ui/Skeleton";
 import { SourceLabel } from "@/components/ui/SourceLabel";
-import { date, relativeTime } from "@/lib/format";
+import { date, relativeDay } from "@/lib/format";
 import { DELIVERY_STATUS_TONES, OPEN_DELIVERY_STATUSES } from "@/lib/labels";
 
 export function UpcomingDeliveries({
@@ -22,6 +23,8 @@ export function UpcomingDeliveries({
   /** The deliveries' load state, for the loading, error and stale-refresh states. */
   resource: ResourceLike;
 }) {
+  // Expected dates are calendar dates in the restaurant's zone: "today", "in 2 days", never "15 hours ago".
+  const timeZone = useSession().user.organization.timezone;
   const poById = new Map((orders ?? []).map((o) => [o.id, o]));
   const upcoming = deliveries
     ?.filter((d) => OPEN_DELIVERY_STATUSES.has(d.status))
@@ -60,7 +63,7 @@ export function UpcomingDeliveries({
                     </p>
                     <p className="text-[12.5px] text-ink-3">
                       Expected <span className="tnum font-medium text-ink-2">{date(d.expected_date)}</span>{" "}
-                      <span className="text-ink-4">({relativeTime(d.expected_date)})</span>
+                      <span className="text-ink-4">({relativeDay(d.expected_date, timeZone)})</span>
                       {slipped ? <span className="text-review"> · was {date(d.original_expected_date)}</span> : null}
                     </p>
                     {d.delay_reason ? <p className="text-[12px] text-review">{d.delay_reason}</p> : null}
