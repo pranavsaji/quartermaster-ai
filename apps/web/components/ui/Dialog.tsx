@@ -6,6 +6,10 @@ import { cn } from "./cn";
 /**
  * Modal dialog on top of the native <dialog> element, which gives us focus
  * trapping, Escape-to-close and an inert background for free.
+ *
+ * Callers with form state usually mount it only while it is open
+ * (`{editing ? <SomeDialog … /> : null}`) so every opening starts fresh; it
+ * closes itself and hands focus back to the opener when unmounted.
  */
 export function Dialog({
   open,
@@ -30,9 +34,13 @@ export function Dialog({
 
   useEffect(() => {
     const el = ref.current;
-    if (!el) return;
-    if (open && !el.open) el.showModal();
-    if (!open && el.open) el.close();
+    if (!el || !open) return;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (!el.open) el.showModal();
+    return () => {
+      if (el.open) el.close();
+      if (opener?.isConnected) opener.focus();
+    };
   }, [open]);
 
   return (
