@@ -249,7 +249,7 @@ export async function approveProposal(
         expiresAt: new Date(signed.payload.expires_at),
       })
       .returning();
-    const reservation = await reserve(tx, account, { organizationId: actor.organizationId, intentId, purchaseOrderId: po.id, amountMinor: po.totalMinor });
+    const reservation = await reserve(tx, account, { organizationId: actor.organizationId, intentId, purchaseOrderId: po.id, amountMinor: po.totalMinor, now });
 
     await tx.update(purchaseOrders).set({ status: "APPROVED", updatedAt: now }).where(eq(purchaseOrders.id, po.id));
     await tx.update(purchaseRequests).set({ approvedAt: now }).where(eq(purchaseRequests.id, requestId));
