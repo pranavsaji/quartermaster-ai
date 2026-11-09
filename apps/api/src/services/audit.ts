@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, sql } from "drizzle-orm";
 import { auditEvents, type DbOrTx } from "@qm/database";
 import { digest } from "@qm/trustrail";
 import { currentScope } from "../context";
@@ -86,8 +86,10 @@ async function appendInTransaction(tx: DbOrTx, input: AuditInput): Promise<{ id:
     .limit(1);
   const sequence = (last?.sequence ?? 0) + 1;
   const prevHash = last?.hash ?? null;
+  // Audit time is wall-clock time, deliberately not the injectable application clock: the log
+  // records when something actually happened. A JavaScript Date has millisecond precision, so the
+  // value stored in PostgreSQL (microseconds) round-trips exactly and the hash stays verifiable.
   const createdAt = new Date();
-  // Postgres stores microseconds; truncate to milliseconds so the hashed value round-trips.
   const createdIso = createdAt.toISOString();
   const data = (toHashable(input.data ?? {}) ?? {}) as Record<string, unknown>;
   const scope = currentScope();
@@ -127,29 +129,45 @@ async function appendInTransaction(tx: DbOrTx, input: AuditInput): Promise<{ id:
   return { id: row!.id, sequence, hash };
 }
 
+const VERIFY_BATCH = 1_000;
+
+/**
+ * Recomputes the organisation's hash chain from the first event. Reads in fixed-size batches so
+ * memory stays bounded however long the log grows.
+ */
 export async function verifyAuditChain(db: DbOrTx, organizationId: string): Promise<{ valid: boolean; events_checked: number; first_invalid_sequence: number | null }> {
-  const rows = await db.select().from(auditEvents).where(and(eq(auditEvents.organizationId, organizationId))).orderBy(asc(auditEvents.sequence));
   let prev: string | null = null;
   let expectedSeq = 1;
-  for (const r of rows) {
-    const recomputed = auditHash({
-      organizationId: r.organizationId,
-      sequence: r.sequence,
-      action: r.action,
-      actorType: r.actorType,
-      actorId: r.actorId,
-      entityType: r.entityType,
-      entityId: r.entityId,
-      data: r.data,
-      prevHash: r.prevHash,
-      createdAt: r.createdAt.toISOString(),
-      correlationId: r.correlationId,
-    });
-    if (r.sequence !== expectedSeq || r.prevHash !== prev || recomputed !== r.hash) {
-      return { valid: false, events_checked: rows.length, first_invalid_sequence: r.sequence };
+  let checked = 0;
+  for (;;) {
+    const rows = await db
+      .select()
+      .from(auditEvents)
+      .where(and(eq(auditEvents.organizationId, organizationId), gte(auditEvents.sequence, expectedSeq)))
+      .orderBy(asc(auditEvents.sequence))
+      .limit(VERIFY_BATCH);
+    for (const r of rows) {
+      checked++;
+      const recomputed = auditHash({
+        organizationId: r.organizationId,
+        sequence: r.sequence,
+        action: r.action,
+        actorType: r.actorType,
+        actorId: r.actorId,
+        entityType: r.entityType,
+        entityId: r.entityId,
+        data: r.data,
+        prevHash: r.prevHash,
+        createdAt: r.createdAt.toISOString(),
+        correlationId: r.correlationId,
+      });
+      if (r.sequence !== expectedSeq || r.prevHash !== prev || recomputed !== r.hash) {
+        return { valid: false, events_checked: checked, first_invalid_sequence: r.sequence };
+      }
+      prev = r.hash;
+      expectedSeq++;
     }
-    prev = r.hash;
-    expectedSeq++;
+    if (rows.length < VERIFY_BATCH) break;
   }
-  return { valid: true, events_checked: rows.length, first_invalid_sequence: null };
+  return { valid: true, events_checked: checked, first_invalid_sequence: null };
 }
