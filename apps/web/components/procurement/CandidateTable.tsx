@@ -168,7 +168,9 @@ export function CandidateTable({
             rows={rows}
             columns={columns}
             height={Math.min(560, 64 + rows.length * 76)}
-            rowClassRules={{ "opacity-70": (p) => p.data?.eligible === false }}
+            // Ineligible rows get a muted background rather than reduced opacity, which would drop
+            // their text below WCAG AA contrast.
+            rowClassRules={{ "!bg-canvas": (p) => p.data?.eligible === false }}
           />
         )}
       </div>
