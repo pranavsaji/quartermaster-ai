@@ -28,6 +28,12 @@ export class FakePayPal {
   /** Next refund: perform it but drop the response. */
   dropNextRefundResponse = false;
   refundCount = 0;
+  /** Status PayPal reports for new refunds. */
+  refundStatus: "COMPLETED" | "PENDING" = "COMPLETED";
+  /** Next create: report this amount instead of the requested one (provider-side mismatch). */
+  tamperNextCreateAmount: string | null = null;
+  /** Bodies of verify-webhook-signature calls, so tests can assert exactly what was sent. */
+  verificationRequests: Record<string, unknown>[] = [];
   captureStatus: "COMPLETED" | "PENDING" = "COMPLETED";
   /** Applied to GET responses to simulate a provider-side amount discrepancy. */
   tamperAmount: string | null = null;
@@ -67,6 +73,13 @@ export class FakePayPal {
         links: [{ href: `https://www.sandbox.paypal.com/checkoutnow?token=${id}`, rel: "payer-action" }],
       };
       this.orders.set(id, { order, body, requestId: requestId ?? "" });
+      if (this.tamperNextCreateAmount) {
+        const reported = structuredClone(order);
+        reported.purchase_units![0]!.amount!.value = this.tamperNextCreateAmount;
+        this.tamperNextCreateAmount = null;
+        if (requestId) this.requestIds.set(requestId, reported);
+        return json(201, reported);
+      }
       if (requestId) this.requestIds.set(requestId, order);
       return json(201, order);
     }
@@ -113,7 +126,7 @@ export class FakePayPal {
     const refundMatch = /^\/v2\/payments\/captures\/([^/]+)\/refund$/.exec(url.pathname);
     if (refundMatch && method === "POST") {
       const body = JSON.parse(String(init?.body ?? "{}")) as { amount?: { value: string; currency_code: string } };
-      const refund = { id: `REF${++this.seq}`, status: "COMPLETED", amount: body.amount };
+      const refund = { id: `REF${++this.seq}`, status: this.refundStatus, amount: body.amount };
       this.refundCount++;
       if (requestId) this.requestIds.set(requestId, refund);
       if (this.dropNextRefundResponse) {
@@ -124,6 +137,7 @@ export class FakePayPal {
     }
 
     if (url.pathname === "/v1/notifications/verify-webhook-signature") {
+      this.verificationRequests.push(JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>);
       return json(200, { verification_status: this.webhookVerification });
     }
     return json(404, { name: "NOT_FOUND" });
@@ -134,6 +148,37 @@ export class FakePayPal {
     const stored = this.orders.get(orderId);
     if (!stored) throw new Error(`unknown order ${orderId}`);
     stored.order.status = "APPROVED";
+  }
+
+  /**
+   * Simulates a capture that happened at PayPal without our capture call returning (for example a
+   * late capture after we voided the attempt). Returns the capture id.
+   */
+  captureDirectly(orderId: string): string {
+    const stored = this.orders.get(orderId);
+    if (!stored) throw new Error(`unknown order ${orderId}`);
+    this.captureCount++;
+    const id = `CAP${++this.seq}`;
+    stored.order.status = "COMPLETED";
+    stored.order.payer = { payer_id: "FAKEPAYER" };
+    stored.order.purchase_units![0]!.payments = {
+      captures: [{ id, status: "COMPLETED", amount: { ...stored.order.purchase_units![0]!.amount! }, final_capture: true, custom_id: stored.body.purchase_units[0]!.custom_id }],
+    };
+    return id;
+  }
+
+  /** Clears fault flags so one test's setup cannot leak into the next. */
+  reset(): void {
+    this.webhookVerification = "SUCCESS";
+    this.dropNextCaptureResponse = false;
+    this.declineNextCapture = false;
+    this.failNextCaptureBeforeProcessing = false;
+    this.serverErrorAfterNextCapture = false;
+    this.dropNextRefundResponse = false;
+    this.refundStatus = "COMPLETED";
+    this.tamperNextCreateAmount = null;
+    this.tamperAmount = null;
+    this.captureStatus = "COMPLETED";
   }
 
   webhookHeaders(): Record<string, string> {
