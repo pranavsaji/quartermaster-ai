@@ -8,6 +8,7 @@ import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Field, Input } from "@/components/ui/Field";
 import { api } from "@/lib/api";
 import { useAction } from "@/lib/hooks";
+import { safeNext } from "@/lib/redirect";
 
 const DEMO_ACCOUNTS = [
   { role: "Owner", email: "owner@demo.quartermaster.dev" },
@@ -15,23 +16,16 @@ const DEMO_ACCOUNTS = [
   { role: "Viewer", email: "viewer@demo.quartermaster.dev" },
 ];
 
-/** Only allow same-origin relative redirects, never `//evil.example`. */
-function safeNext(value: string | null): string {
-  if (!value || !value.startsWith("/") || value.startsWith("//") || value.startsWith("/login")) return "/";
-  return value;
-}
-
 export function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const next = safeNext(params.get("next"));
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
 
   const login = useAction(async (body: LoginRequest) => {
     await api.auth.login(body);
-    router.replace(next);
+    router.replace(safeNext(params.get("next"), window.location.origin));
   });
 
   function onSubmit(e: FormEvent<HTMLFormElement>) {
