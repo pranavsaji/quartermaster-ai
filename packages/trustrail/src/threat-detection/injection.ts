@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import type { Severity } from "@qm/contracts";
 
 /**
@@ -170,6 +171,14 @@ export function mergeVerdicts(heuristic: InjectionVerdict, classifier: { injecti
  * data and stripped of anything that could close the delimiter.
  */
 export function fenceUntrusted(label: string, text: string, maxLength = 1500): string {
-  const clean = normalizeUntrustedText(text).replace(/<\/?untrusted[^>]*>/gi, "").slice(0, maxLength);
-  return `<untrusted source="${label.replace(/[^\w:.-]/g, "_")}">\n${clean}\n</untrusted>`;
+  // Angle brackets are escaped so the content cannot open or close any tag, and the boundary
+  // carries a random nonce the content cannot predict.
+  const clean = normalizeUntrustedText(text)
+    .slice(0, maxLength)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+  const nonce = randomBytes(8).toString("hex");
+  const source = label.replace(/[^\w:.-]/g, "_");
+  return `<untrusted-${nonce} source="${source}">\n${clean}\n</untrusted-${nonce}>`;
 }
