@@ -45,12 +45,20 @@ export function publicServerErrorDetails(details: unknown): Record<string, boole
   return safe.length ? (Object.fromEntries(safe) as Record<string, boolean | number | null>) : undefined;
 }
 
+/** Seconds a client should wait before retrying a retryable 503. */
+export const RETRY_AFTER_SECONDS = 5;
+
+const isRetryable = (details: unknown): boolean =>
+  typeof details === "object" && details !== null && (details as { retryable?: unknown }).retryable === true;
+
 export function errorHandler(log: Logger): ErrorRequestHandler {
   return (err, req, res, _next) => {
     const correlation_id = req.correlationId;
     if (err instanceof AppError) {
       if (err.status >= 500) {
         log.error({ err, details: err.details, correlation_id }, err.message);
+        // A retryable 503 (e.g. AGENT_DEADLINE_EXCEEDED) tells clients when to try again.
+        if (err.status === 503 && isRetryable(err.details)) res.set("Retry-After", String(RETRY_AFTER_SECONDS));
         return res
           .status(err.status)
           .json({ error: { code: err.code, message: err.message, details: publicServerErrorDetails(err.details), correlation_id } });
