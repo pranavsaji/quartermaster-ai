@@ -30,6 +30,17 @@ function moneyAxis(currency: string) {
   };
 }
 
+/** Count axis that never shows fractional ticks (e.g. "0.2 findings"). */
+function countAxis(position: "left" | "bottom", max: number) {
+  return {
+    type: "number" as const,
+    position,
+    gridLine: { style: [{ stroke: CHART_COLORS.grid, lineDash: [] }] },
+    ...(max <= 10 ? { interval: { step: 1 } } : {}),
+    label: { formatter: ({ value }: { value: number }) => (Number.isInteger(value) ? String(value) : "") },
+  };
+}
+
 function useChartOptions(s: AnalyticsSummaryDto | undefined) {
   return useMemo(() => {
     if (!s) return null;
@@ -90,7 +101,7 @@ function useChartOptions(s: AnalyticsSummaryDto | undefined) {
           label: { enabled: true, placement: "outside-end", color: CHART_COLORS.text },
         },
       ],
-      axes: { x: { type: "category", position: "bottom" }, y: { type: "number", position: "left", gridLine: { style: [{ stroke: CHART_COLORS.grid, lineDash: [] }] } } },
+      axes: { x: { type: "category", position: "bottom" }, y: countAxis("left", Math.max(0, ...decisions.map((d) => d.count))) },
       legend: { enabled: false },
     };
 
@@ -99,7 +110,7 @@ function useChartOptions(s: AnalyticsSummaryDto | undefined) {
       series: [
         { type: "bar", direction: "horizontal", xKey: "type", yKey: "count", yName: "Findings", fill: CHART_COLORS.series1, cornerRadius: 4, label: { enabled: true, placement: "outside-end", color: CHART_COLORS.text } },
       ],
-      axes: { x: { type: "category", position: "left" }, y: { type: "number", position: "bottom", gridLine: { style: [{ stroke: CHART_COLORS.grid, lineDash: [] }] } } },
+      axes: { x: { type: "category", position: "left" }, y: countAxis("bottom", Math.max(0, ...findings.map((f) => f.count))) },
       legend: { enabled: false },
     };
 
