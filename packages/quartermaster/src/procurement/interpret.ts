@@ -1,4 +1,4 @@
-import { isCalendarDate } from "@qm/contracts";
+import { DEMAND_MULTIPLIER_MAX, DEMAND_MULTIPLIER_MIN, isCalendarDate } from "@qm/contracts";
 
 /**
  * Turns a natural-language procurement instruction into a structured intent.
@@ -25,8 +25,9 @@ export interface InterpretedIntent {
   unsupported_requests: string[];
 }
 
-export const MULTIPLIER_MIN = 0.5;
-export const MULTIPLIER_MAX = 3;
+/** The interpreter clamps to exactly the range the request schemas accept (see @qm/contracts). */
+export const MULTIPLIER_MIN = DEMAND_MULTIPLIER_MIN;
+export const MULTIPLIER_MAX = DEMAND_MULTIPLIER_MAX;
 
 /** JSON schema for model structured output. Kept in sync with `InterpretedIntent`. */
 export const INTENT_JSON_SCHEMA = {
@@ -79,20 +80,59 @@ export function sanitizeIntent(raw: unknown, inventory: InventoryRef[]): Interpr
   };
 }
 
-const BUSY_PATTERNS: [RegExp, number][] = [
-  [/\b(\d{1,3})\s*%\s*(more|busier|higher|increase|extra)\b/i, NaN],
-  [/\b(double|twice)\b/i, 2],
-  [/\b(very|extremely|really)\s+busy\b|\bslammed\b|\bholiday rush\b/i, 1.5],
-  [/\bbusy\b|\brush\b|\bpacked\b|\bbig event\b|\bcatering\b/i, 1.25],
-  [/\bquiet\b|\bslow\b/i, 0.8],
+/**
+ * Demand words count only when they describe a period of trade, never a product: "busy weekend",
+ * "a quiet week", "we're slammed tonight", "business is slow" — not "slow cooker liners",
+ * "double-wall cups", "catering trays" or a "rush order". A negated statement ("we are not busy
+ * this week") is no signal at all rather than its opposite.
+ */
+const PERIOD = String.raw`(?:week(?:end)?s?|service|services|business|period|tonight|today|tomorrow|night|nights|shift|shifts|days?|season|month|lunch|dinner|brunch|holidays?|monday|tuesday|wednesday|thursday|friday|saturday|sunday|trade|stretch|spell)`;
+const SUBJECT = String.raw`(?:we're|we\s+are|we'll\s+be|we\s+will\s+be|we've\s+been|we\s+expect\s+to\s+be|it's|it\s+is|it'll\s+be|it\s+will\s+be|things\s+are|business\s+is|business\s+will\s+be|trade\s+is)`;
+const INTENSIFIER = String.raw`(?:very|extremely|really|super|incredibly|unusually)`;
+/** A demand word next to a period ("busy weekend", "this week is quiet") or after a subject ("we're busy"). */
+const inContext = (words: string) =>
+  new RegExp(
+    String.raw`\b(?:${INTENSIFIER}\s+)?(?:${words})\b(?=(?:[\s,]+(?:this|next|the|a|an|coming|upcoming|whole|entire|all|for|over|on|of|weekend|week)){0,3}[\s,]+${PERIOD}\b)|\b${PERIOD}\b(?:\s+\w+){0,3}?\s+(?:is|are|will\s+be|looks|looking|should\s+be|was|seems)\s+(?:${INTENSIFIER}\s+)?(?:${words})\b|\b${SUBJECT}\s+(?:\w+\s+)?(?:${words})\b`,
+    "i",
+  );
+
+const DEMAND_PATTERNS: { re: RegExp; value: (m: RegExpExecArray) => number }[] = [
+  { re: /\b(\d{1,3})\s*%\s*(?:more|busier|higher|increase|extra|up)\b/i, value: (m) => 1 + Number(m[1]) / 100 },
+  { re: /\b(\d{1,3})\s*%\s*(?:fewer|less|quieter|slower|lower|decrease|down)\b/i, value: (m) => 1 - Number(m[1]) / 100 },
+  {
+    re: /\b(?:double|twice)\s+(?:the\s+)?(?:usual|normal|demand|covers|traffic|volume|business|amount|orders)\b|\btwice\s+as\s+(?:busy|many)\b|\bdoubl(?:e|ing)\s+(?:our|the)\s+(?:covers|orders|demand|volume)\b/i,
+    value: () => 2,
+  },
+  {
+    re: new RegExp(
+      String.raw`${inContext(String.raw`${INTENSIFIER}\s+busy|slammed|swamped`).source}|\b${SUBJECT}\s+(?:\w+\s+)?packed\b|\bholiday\s+rush\b`,
+      "i",
+    ),
+    value: () => 1.5,
+  },
+  {
+    re: new RegExp(
+      String.raw`${inContext("busy|busier|hectic").source}|\b(?:lunch|dinner|brunch|weekend|morning|evening|breakfast)\s+rush\b|\b(?:big|large|private)\s+(?:event|party|booking)s?\b|\bcatering\s+(?:job|event|gig|order|booking)s?\b`,
+      "i",
+    ),
+    value: () => 1.25,
+  },
+  { re: inContext("quiet|quieter|slow|slower|dead"), value: () => 0.8 },
 ];
 
+/** "not", "n't", "never", "hardly" just before the phrase negates it. */
+const NEGATION = /\b(?:not|never|hardly|barely|no\s+longer|isn't|aren't|won't|wasn't|weren't|don't|doesn't)\s+(?:\w+\s+)?$/i;
+
 function parseMultiplier(text: string): number {
-  for (const [re, value] of BUSY_PATTERNS) {
-    const m = re.exec(text);
-    if (!m) continue;
-    if (Number.isNaN(value)) return 1 + Number(m[1]) / 100;
-    return value;
+  for (const { re, value } of DEMAND_PATTERNS) {
+    const g = new RegExp(re.source, "gi");
+    for (const m of text.matchAll(g)) {
+      const before = text.slice(Math.max(0, m.index - 30), m.index);
+      // "We are not busy" negates the subject form too: look inside the match up to the demand word.
+      const lead = m[0].replace(/\s*\b(?:busy|busier|hectic|slammed|swamped|packed|quiet|quieter|slow|slower|dead)\b[\s\S]*$/i, " ");
+      if (NEGATION.test(before) || NEGATION.test(`${before}${lead}`)) continue;
+      return value(m);
+    }
   }
   return 1;
 }
@@ -108,14 +148,44 @@ function parseMultiplier(text: string): number {
 const BUDGET_RE =
   /\$\s?(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{1,2}))?(?:\s?([kK])(?![\p{L}\p{N}_-]))?(?![\d,.]?\d)|\b(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{1,2}))?(?![\d,.]?\d)\s*(?:dollars|usd|bucks)\b/iu;
 
-export function parseBudget(text: string): number | null {
-  const m = BUDGET_RE.exec(text);
-  if (!m) return null;
+const BUDGET_RE_GLOBAL = new RegExp(BUDGET_RE.source, "giu");
+
+/**
+ * Words that mark an amount as a spending cap: "under $500", "keep it below $1,200", "budget of
+ * $300", "cap it at $2k", "without exceeding $900" — or, after it, "$500 max", "2,500 USD tops".
+ * The cue must be in the same clause: at most a few words, no sentence end, between it and the
+ * amount.
+ */
+const CUE_BEFORE =
+  /\b(?:under|below|beneath|less\s+than|at\s+most|no\s+more\s+than|not\s+more\s+than|max(?:imum)?|budget(?:ed)?|cap(?:ped)?|ceiling|without\s+(?:exceeding|going\s+over)|(?:not|never)\s+(?:to\s+)?(?:exceed|go\s+over)|up\s+to|limit(?:ed)?|within|spend(?:ing)?)\b[^$\d.;!?]{0,16}$/i;
+const CUE_AFTER = /^[^\w$]{0,3}(?:max(?:imum)?|tops|limit|budget|cap|ceiling|or\s+less|at\s+most)\b/i;
+
+function amountOf(m: RegExpExecArray): number | null {
   const whole = (m[1] ?? m[4] ?? "0").replace(/,/g, "");
   const frac = (m[2] ?? m[5] ?? "").padEnd(2, "0");
   const thousands = m[3] ? 1000 : 1;
   const minor = (Number(whole) * 100 + Number(frac || "0")) * thousands;
   return Number.isSafeInteger(minor) && minor > 0 ? minor : null;
+}
+
+/**
+ * The spending cap stated in an instruction, in minor units, or null.
+ *
+ * A lone amount is the cap ("spend $2k on oil"). With several amounts, only the ones a budget
+ * cue marks count ("Restock 2 cases of the $30 gloves, keep it under $500" → $500, not the
+ * gloves' price); several cued amounts yield the smallest, and several amounts none of which is
+ * cued yield null rather than a guess.
+ */
+export function parseBudget(text: string): number | null {
+  const s = String(text ?? "");
+  const found = [...s.matchAll(BUDGET_RE_GLOBAL)];
+  if (found.length === 0) return null;
+  if (found.length === 1) return amountOf(found[0]!);
+  const cued = found
+    .filter((m) => CUE_BEFORE.test(s.slice(Math.max(0, m.index - 40), m.index)) || CUE_AFTER.test(s.slice(m.index + m[0].length)))
+    .map(amountOf)
+    .filter((v): v is number => v !== null);
+  return cued.length > 0 ? Math.min(...cued) : null;
 }
 
 /**

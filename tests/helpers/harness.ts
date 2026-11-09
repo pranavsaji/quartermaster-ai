@@ -8,6 +8,8 @@ import type { AppContext } from "../../apps/api/src/context";
 import { FakePayPal } from "./fake-paypal";
 
 export const PASSWORD = "integration-test-password";
+/** The harness clock's starting instant (Wednesday 11 March 2026, 10:00 UTC). */
+export const HARNESS_EPOCH = "2026-03-11T10:00:00.000Z";
 
 export interface Harness {
   ctx: AppContext;
@@ -29,7 +31,9 @@ export async function createHarness(
   opts: { channel3Fetch?: typeof fetch; openaiFetch?: typeof fetch; extraEnv?: Record<string, string> } = {},
 ): Promise<Harness> {
   const paypal = new FakePayPal();
-  const clock = { now: new Date() };
+  // A fixed instant, so no test depends on the day or hour it runs: a Wednesday mid-morning UTC,
+  // clear of week, month and DST boundaries. Tests that need time to pass move this clock.
+  const clock = { now: new Date(HARNESS_EPOCH) };
   paypal.clock = clock;
   // A unique key id per harness: on a shared PostgreSQL database every test file registers its own
   // key, and TrustRail refuses to rebind an existing id to a different key.
@@ -66,7 +70,7 @@ export async function createHarness(
   const app = createApp(ctx);
 
   async function agent(role: keyof typeof DEMO_CREDENTIALS = "owner"): Promise<Client> {
-    const a = request.agent(app);
+    const a = clockedAgent(app, clock);
     const res = await a
       .post("/api/v1/auth/login")
       .set("X-Requested-With", "quartermaster")
@@ -85,6 +89,31 @@ export async function createHarness(
   }
 
   return { ctx, app, paypal, clock, agent, close: () => ctx.database.close() };
+}
+
+/**
+ * A supertest agent whose cookie jar judges cookie expiry by the harness clock. The API sets
+ * `Expires` from its injected clock, but the jar compares it with the wall clock, so with a fixed
+ * clock a session cookie could look expired (or immortal) to the client. Each `Expires` is moved
+ * into the wall-clock frame by the same offset, so a cookie lives exactly as long, measured on the
+ * clock the server used. The response the test sees is not changed.
+ */
+function clockedAgent(app: ReturnType<typeof createApp>, clock: { now: Date }) {
+  const a = request.agent(app);
+  const internals = a as unknown as { _saveCookies(res: { headers: Record<string, unknown> }): void };
+  const save = internals._saveCookies.bind(a);
+  internals._saveCookies = (res) => {
+    const raw = res.headers["set-cookie"];
+    if (!raw) return save(res);
+    const cookies = (Array.isArray(raw) ? raw : [raw]).map((c: string) =>
+      c.replace(/(;\s*expires=)([^;]+)/i, (whole: string, attr: string, date: string) => {
+        const at = Date.parse(date);
+        return Number.isNaN(at) ? whole : `${attr}${new Date(Date.now() + (at - clock.now.getTime())).toUTCString()}`;
+      }),
+    );
+    save({ ...res, headers: { ...res.headers, "set-cookie": cookies } });
+  };
+  return a;
 }
 
 export const DEMO_INSTRUCTION = "We're expecting a busy weekend. Restock takeaway containers and cooking oil without exceeding $300.";

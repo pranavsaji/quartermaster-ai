@@ -55,8 +55,69 @@ describe("budget extraction", () => {
     }
   });
 
+  it.each([
+    ["Restock 2 cases of the $30 gloves, keep it under $500", 50_000],
+    ["Get the $12 liners and the $45 oil; budget $300", 30_000],
+    ["Order the $8.50 cups, $600 max", 60_000],
+    ["Two $25 sanitizer jugs without exceeding $90 total", 9_000],
+    ["Under $400 for the $35 boxes, and no more than $350 overall", 35_000],
+  ])("prefers the amount a budget cue marks: %s", (text, minor) => {
+    expect(parseBudget(text)).toBe(minor);
+  });
+
+  it.each(["Buy the $30 gloves and the $45 oil", "Restock 2 cases of the $30 gloves. The $12 liners too."])(
+    "returns null for several amounts none of which is a cap: %s",
+    (text) => {
+      expect(parseBudget(text)).toBeNull();
+    },
+  );
+
+  it("does not read a cue across a sentence end", () => {
+    expect(parseBudget("Keep it under control. Buy the $30 gloves and the $45 oil.")).toBeNull();
+  });
+
   it("feeds the deterministic interpreter", () => {
+    expect(interpretDeterministically("Restock 2 cases of the $30 gloves, keep it under $500", inventory, now).budget_limit_minor).toBe(
+      50_000,
+    );
     expect(interpretDeterministically("Restock oil, stay under $1500", inventory, now).budget_limit_minor).toBe(150_000);
+  });
+});
+
+describe("demand multiplier", () => {
+  const demand = (text: string) => interpretDeterministically(text, inventory, now).demand_multiplier;
+
+  it.each([
+    ["Busy weekend! Restock takeout boxes", 1.25],
+    ["We're busy this week, restock oil", 1.25],
+    ["Expecting a very busy Saturday", 1.5],
+    ["We'll be slammed tonight", 1.5],
+    ["We're packed every night", 1.5],
+    ["Holiday rush is coming", 1.5],
+    ["Lunch rush every day now", 1.25],
+    ["Big event on Friday", 1.25],
+    ["We have a catering job tomorrow", 1.25],
+    ["Quiet week ahead, just the basics", 0.8],
+    ["Business is slow this month", 0.8],
+    ["We expect 40% more covers", 1.4],
+    ["About 20% fewer covers this week", 0.8],
+    ["Twice the usual covers for the festival", 2],
+  ])("reads %s as %d", (text, multiplier) => {
+    expect(demand(text)).toBe(multiplier);
+  });
+
+  it.each([
+    "Restock slow cooker liners",
+    "Order double-wall cups and catering trays",
+    "Rush order of nitrile gloves",
+    "Packed lunch boxes, 200 count",
+    "Quiet-close hinged containers",
+    "We are not busy this week",
+    "It isn't slow at all this week",
+    "We're not very busy tonight",
+    "Never busy on Mondays, but restock oil",
+  ])("reads %s as normal demand", (text) => {
+    expect(demand(text)).toBe(1);
   });
 });
 

@@ -1,10 +1,13 @@
-import { sign, verify } from "node:crypto";
+import { createHash, sign, verify } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   canonicalize,
+  fingerprint,
   generateSigningKey,
   issueCertificate,
+  keyFingerprint,
   keyIdMatchesKey,
+  legacyPemFingerprint,
   loadSigningKey,
   signingInput,
   verifyCertificate,
@@ -143,6 +146,28 @@ describe("Intent Certificates", () => {
       const r = verifyCertificate(c, ctx(c, { resolve_public_key: (id) => (id === a.key_id ? b.public_key : null) }));
       expect(r.status).toBe("UNKNOWN_KEY");
       expect(r.checks.find((x) => x.code === "KEY_KNOWN")?.detail).toMatch(/not the fingerprint/);
+    });
+
+    it("fingerprints the DER key bytes, not the PEM text, and still accepts v1 (PEM) ids", () => {
+      const k = generateSigningKey();
+      const der = k.public_key.export({ type: "spki", format: "der" });
+      expect(k.key_id).toBe(`trk_${createHash("sha256").update(der).digest("hex").slice(0, 16)}`);
+      expect(keyFingerprint(k.public_key)).toBe(k.key_id);
+      // Reformatting the PEM (CRLF line endings, surrounding whitespace) does not change it.
+      expect(fingerprint(`\n${k.public_key_pem.replace(/\n/g, "\r\n")}  `)).toBe(k.key_id);
+      // A key issued before v2 keeps its PEM-derived id: it loads and verifies under it.
+      const v1 = `trk_${createHash("sha256").update(k.public_key_pem.trim()).digest("hex").slice(0, 16)}`;
+      expect(legacyPemFingerprint(k.public_key)).toBe(v1);
+      expect(v1).not.toBe(k.key_id);
+      expect(keyIdMatchesKey(v1, k.public_key)).toBe(true);
+      expect(loadSigningKey(k.private_key_pem, v1).key_id).toBe(v1);
+      const legacy = loadSigningKey(k.private_key_pem, v1);
+      const c = issueCertificate({ ...issue().payload, approved_at: approvedAt, ttl_minutes: 15 }, legacy);
+      expect(verifyCertificate(c, ctx(c, { resolve_public_key: (id) => (id === v1 ? k.public_key : null) })).status).toBe("VALID");
+      // Neither derivation of another key's fingerprint is accepted.
+      const other = generateSigningKey();
+      expect(keyIdMatchesKey(legacyPemFingerprint(other.public_key), k.public_key)).toBe(false);
+      expect(() => loadSigningKey(k.private_key_pem, legacyPemFingerprint(other.public_key))).toThrow(/fingerprint/);
     });
 
     it("refuses to load a key under another key's fingerprint", () => {

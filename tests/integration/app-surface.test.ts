@@ -225,6 +225,9 @@ describe("sessions", () => {
         .map((s) => s.lastSeenAt.getTime())
         .sort((a, b) => b - a)[0]!;
     const start = h.clock.now;
+    // A new session's last_seen_at comes from the database clock, not the API's injected clock
+    // (apps follow-up); put it on the harness clock so the test does not depend on wall time.
+    await h.ctx.db.update(sessions).set({ lastSeenAt: start }).where(eq(sessions.userId, userId));
     try {
       const before = await lastSeen();
       await viewer.get("/inventory");

@@ -1,3 +1,4 @@
+import { CreateProcurementRequest, DEMAND_MULTIPLIER_MAX, DEMAND_MULTIPLIER_MIN } from "@qm/contracts";
 import { describe, expect, it } from "vitest";
 import {
   averageDailyUsage,
@@ -8,6 +9,8 @@ import {
   forecastItem,
   interpretDeterministically,
   median,
+  MULTIPLIER_MAX,
+  MULTIPLIER_MIN,
   packsFor,
   parsePackQuantity,
   parseVolumeLitres,
@@ -238,12 +241,13 @@ describe("supplier comparison", () => {
         "USD",
       ),
       lines: [
-        { offer: offer(), packs: 2, units: 500, inventory_item_id: "inv_tk" },
+        { offer: offer(), packs: 2, units: 500, inventory_item_id: "inv_tk", inventory_item_ids: ["inv_tk"] },
         {
           offer: offer({ id: "g", sku: "GLV", inventory_item_id: "inv_g", unit_price_minor: 6_400, pack_quantity: 1000 }),
           packs: 1,
           units: 1000,
           inventory_item_id: "inv_g",
+          inventory_item_ids: ["inv_g"],
         },
       ],
       candidate_ids: ["c1", "c2"],
@@ -260,6 +264,71 @@ describe("supplier comparison", () => {
     );
     expect(fitted!.lines.map((l) => l.inventory_item_id)).toEqual(["inv_tk"]);
     expect(fitToBudget(planned, 100, new Map(), "USD", [])).toBeNull();
+  });
+
+  describe("items that share their best offer", () => {
+    const candidatesFor = (needed: number, id: string) =>
+      compareOffers({
+        needed_units: needed,
+        currency: "USD",
+        now: new Date("2026-11-10T18:00:00Z"),
+        offers: [{ offer: offer(), supplier: harbor, storefront_lines: [], quarantined: false }],
+      }).map((e) => ({ ...e, id }));
+    const plan = () =>
+      planCarts({
+        candidates_by_item: new Map([
+          ["inv_tk", candidatesFor(400, "cand_tk")],
+          ["inv_tk_backup", candidatesFor(900, "cand_backup")],
+        ]),
+        currency: "USD",
+        storefront_lines_by_supplier: new Map(),
+        excluded_supplier_ids: new Set(),
+        excluded_candidate_ids: new Set(),
+      });
+
+    it("carry the product once, in the largest quantity either needs (never the sum)", () => {
+      const { carts } = plan();
+      expect(carts).toHaveLength(1);
+      const products = carts[0]!.cart.lines.filter((l) => l.kind === "PRODUCT");
+      expect(products.map((l) => l.sku)).toEqual(["TK-250"]);
+      expect(products[0]!.quantity).toBe(4); // 900 units in packs of 250, not 2 + 4
+      expect(carts[0]!.lines).toHaveLength(1);
+      expect(carts[0]!.lines[0]).toMatchObject({ inventory_item_id: "inv_tk_backup", packs: 4 });
+      expect(carts[0]!.lines[0]!.inventory_item_ids).toEqual(["inv_tk", "inv_tk_backup"]);
+      expect(carts[0]!.candidate_ids).toEqual(["cand_backup"]);
+    });
+
+    it("keep candidate ids aligned with lines when trimmed by identity", () => {
+      const glv = offer({ id: "g", sku: "GLV", inventory_item_id: "inv_g", unit_price_minor: 6_400, pack_quantity: 1000 });
+      const tkA = { offer: offer(), packs: 1, units: 250, inventory_item_id: "inv_a", inventory_item_ids: ["inv_a"] };
+      const tkB = { offer: offer(), packs: 1, units: 250, inventory_item_id: "inv_b", inventory_item_ids: ["inv_b"] };
+      const g = { offer: glv, packs: 1, units: 1000, inventory_item_id: "inv_g", inventory_item_ids: ["inv_g"] };
+      // Two lines with the same SKU (as a hand-built or older plan might have): dropping one must
+      // not keep the other's candidate id by SKU.
+      const planned = {
+        supplier: harbor,
+        cart: buildSupplierQuote(
+          harbor,
+          [tkA, g, tkB].map((l) => ({ offer: l.offer, packs: l.packs })),
+          "USD",
+        ),
+        lines: [tkA, g, tkB],
+        candidate_ids: ["c_a", "c_g", "c_b"],
+      };
+      const fitted = fitToBudget(
+        planned,
+        17_000,
+        new Map([
+          ["inv_a", 1],
+          ["inv_g", 2],
+          ["inv_b", 9],
+        ]),
+        "USD",
+        [],
+      )!;
+      expect(fitted.lines.map((l) => l.inventory_item_id)).toEqual(["inv_a", "inv_g"]);
+      expect(fitted.candidate_ids).toEqual(["c_a", "c_g"]);
+    });
   });
 
   it("never orders zero packs for a positive need", () => {
@@ -313,12 +382,22 @@ describe("intent interpretation", () => {
     );
     expect(s).toEqual({
       inventory_item_ids: ["inv_tk"],
-      demand_multiplier: 3,
+      demand_multiplier: 4,
       budget_limit_minor: null,
       required_by: null,
       notes: "x",
       unsupported_requests: ["wine"],
     });
     expect(sanitizeIntent(null, inventory)).toBeNull();
+  });
+
+  it("clamps demand to exactly the range the request schemas accept", () => {
+    expect([MULTIPLIER_MIN, MULTIPLIER_MAX]).toEqual([DEMAND_MULTIPLIER_MIN, DEMAND_MULTIPLIER_MAX]);
+    for (const m of [DEMAND_MULTIPLIER_MIN, 0.3, 3.5, DEMAND_MULTIPLIER_MAX]) {
+      expect(CreateProcurementRequest.safeParse({ instruction: "restock", demand_multiplier: m }).success).toBe(true);
+      expect(sanitizeIntent({ demand_multiplier: m }, inventory)?.demand_multiplier).toBe(m);
+    }
+    expect(sanitizeIntent({ demand_multiplier: 0.1 }, inventory)?.demand_multiplier).toBe(DEMAND_MULTIPLIER_MIN);
+    expect(CreateProcurementRequest.safeParse({ instruction: "restock", demand_multiplier: 4.5 }).success).toBe(false);
   });
 });

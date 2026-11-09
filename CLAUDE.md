@@ -6,7 +6,7 @@ pnpm monorepo, TypeScript (strict, ESM, `moduleResolution: Bundler`). Node ≥ 2
 
 - `pnpm dev` — API (:4000, tsx watch) + web (:3000). Needs `.env` (see `.env.example`); `pnpm keys:generate` for the signing key.
 - `pnpm db:seed` — migrate + seed demo org (needs `DEMO_USER_PASSWORD`). Embedded PGlite under `.data/` unless `DATABASE_URL` is set.
-- `pnpm test` — Vitest (unit, adversarial, integration on PGlite + `tests/helpers/fake-paypal.ts`). `TEST_DATABASE_URL` / `HARNESS_DATABASE_URL` add real-Postgres runs.
+- `pnpm test` — Vitest (unit, adversarial, integration on PGlite + `tests/helpers/fake-paypal.ts`; the harness clock starts at the fixed `HARNESS_EPOCH`). `TEST_DATABASE_URL` / `HARNESS_DATABASE_URL` add real-Postgres runs. Injection recall: `tests/adversarial/heldout-recall.test.ts` (never tune rules against fresh rounds; write a new one).
 - `pnpm typecheck` (packages + tests/scripts), `pnpm lint` (ESLint, typed rules; web has its own config), `pnpm format` / `format:check` (Prettier, width 140), `pnpm test:coverage` (floors in `vitest.config.ts`), `pnpm test:web`, `pnpm build`.
 - `pnpm test:e2e` — Playwright + axe; starts the built stack itself (`pnpm build` first, `E2E_PASSWORD`).
 - `pnpm docs:api` regenerates `docs/openapi.json` + Postman from `scripts/api-routes.ts` (CI fails on drift).

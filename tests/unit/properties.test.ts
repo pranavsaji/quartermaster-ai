@@ -6,6 +6,7 @@ import {
   buildCart,
   canonicalize,
   checkCartArithmetic,
+  cleanUntrustedText,
   detectPromptInjection,
   evaluatePolicy,
   fenceUntrusted,
@@ -268,6 +269,122 @@ describe("property: policy evaluation is total", () => {
     );
   });
 
+  // Type confusion. Every leaf and container of a compliant input (which is ALLOWed) is replaced
+  // by a value of a type the field does not have: "false" for false, "100000" for 100000, a
+  // string for an array, an array for an object, null or a missing field. None of them may turn
+  // into an ALLOW, except on the few fields that provably do not take part in the decision.
+  const NEUTRAL = new Set([
+    "mandate.id",
+    "mandate.organization_id",
+    "mandate.version",
+    "mandate.certificate_ttl_minutes",
+    "market.0.candidate_unit_price_minor",
+    // Pack sizes are read only for SKUs on the cart; these two are catalog entries not ordered.
+    "pack_quantity_by_sku.WINE-12",
+    "pack_quantity_by_sku.DESCALE-SUB",
+  ]);
+  /** Types a field may legitimately have, where the base value does not show them all. */
+  const ALLOWED_TYPES: Record<string, string[]> = {
+    request_budget_limit_minor: ["null", "number"],
+    market_reference_max_age_hours: ["undefined", "number"],
+    "supplier.fee_terms.0.waived_over_minor": ["null", "number"],
+    "market.0.reference_unit_price_minor": ["null", "number"],
+    "market.0.observed_at": ["null", "string"],
+    "cart.lines.0.recurring": ["undefined", "boolean"],
+  };
+  const typeOf = (v: unknown) => (v === null ? "null" : Array.isArray(v) ? "array" : v instanceof Date ? "date" : typeof v);
+  const allowedTypes = (path: string, base: unknown) =>
+    ALLOWED_TYPES[path] ?? (/^cart\.lines\.\d+\.(?:sku|category)$/.test(path) ? ["null", "string"] : [typeOf(base)]);
+
+  /** Every path of the base input, leaves and containers alike, plus optional fields it omits. */
+  function pathsOf(value: unknown, prefix = ""): [string, unknown][] {
+    const out: [string, unknown][] = prefix ? [[prefix, value]] : [];
+    if (value && typeof value === "object" && !(value instanceof Date)) {
+      for (const [k, v] of Object.entries(value)) out.push(...pathsOf(v, prefix ? `${prefix}.${k}` : k));
+    }
+    return out;
+  }
+
+  /** Values of other types than the field allows, each one a plausible coercion mistake. */
+  function confusions(base: unknown, allowed: string[]): unknown[] {
+    const candidates: unknown[] = [
+      String(base instanceof Date ? base.toISOString() : typeof base === "object" ? JSON.stringify(base) : base),
+      "",
+      "true",
+      "false",
+      typeof base === "number" ? -base : 1,
+      0,
+      true,
+      false,
+      null,
+      undefined,
+      [],
+      [base],
+      {},
+      base instanceof Date ? base.getTime() : new Date(NOW_ISO),
+    ];
+    return candidates.filter((c) => !allowed.includes(typeOf(c)));
+  }
+  const NOW_ISO = "2026-11-10T18:00:00Z";
+
+  function mutated(path: string, value: unknown): PolicyInput {
+    const input = structuredClone(baseInput()) as unknown as Record<string, unknown>;
+    const parts = path.split(".");
+    let cur: Record<string, unknown> = input;
+    for (const p of parts.slice(0, -1)) cur = cur[p] as Record<string, unknown>;
+    if (value === undefined) delete cur[parts.at(-1)!];
+    else cur[parts.at(-1)!] = value;
+    return input as unknown as PolicyInput;
+  }
+
+  const CONFUSABLE = [
+    ...pathsOf(baseInput()),
+    ["market_reference_max_age_hours", 72] as [string, unknown],
+    ["cart.lines.0.recurring", false] as [string, unknown],
+  ].filter(([path]) => !NEUTRAL.has(path));
+
+  it("never ALLOWs a cart whose facts have the wrong type (exhaustive over every field)", () => {
+    expect(evaluatePolicy(baseInput()).decision).toBe("ALLOW");
+    const allowed: string[] = [];
+    let cases = 0;
+    for (const [path, base] of CONFUSABLE) {
+      for (const value of confusions(base, allowedTypes(path, base))) {
+        cases++;
+        const r = evaluatePolicy(mutated(path, value));
+        if (r.decision === "ALLOW") allowed.push(`${path} = ${JSON.stringify(value) ?? "undefined"}`);
+      }
+    }
+    expect(cases).toBeGreaterThan(500);
+    expect(allowed).toEqual([]);
+  });
+
+  it("never ALLOWs under several simultaneous type confusions", () => {
+    const mutation = fc
+      .constantFrom(...CONFUSABLE)
+      .chain(([path, base]) => fc.constantFrom(...confusions(base, allowedTypes(path, base))).map((value) => [path, value] as const));
+    fc.assert(
+      fc.property(fc.array(mutation, { minLength: 1, maxLength: 3 }), (mutations) => {
+        let input = baseInput();
+        for (const [path, value] of mutations) {
+          const next = structuredClone(input) as unknown as Record<string, unknown>;
+          const parts = path.split(".");
+          let cur: Record<string, unknown> | undefined = next;
+          for (const p of parts.slice(0, -1)) {
+            const child: unknown = cur?.[p];
+            cur = child && typeof child === "object" ? (child as Record<string, unknown>) : undefined;
+          }
+          if (cur) {
+            if (value === undefined) delete cur[parts.at(-1)!];
+            else cur[parts.at(-1)!] = value;
+          }
+          input = next as unknown as PolicyInput;
+        }
+        expect(evaluatePolicy(input).decision).not.toBe("ALLOW");
+      }),
+      RUNS,
+    );
+  });
+
   it("is deterministic for any input", () => {
     fc.assert(
       fc.property(fc.array(fc.tuple(fc.constantFrom(...PATHS), weird), { maxLength: 3 }), (mutations) => {
@@ -303,6 +420,22 @@ describe("property: untrusted text", () => {
         const once = normalizeUntrustedText(text);
         expect(/\p{Cf}/u.test(once)).toBe(false);
         expect(normalizeUntrustedText(once)).toBe(once);
+      }),
+      RUNS,
+    );
+  });
+
+  it("cleanUntrustedText is idempotent on entity-free text, keeps letters and strips format characters", () => {
+    fc.assert(
+      fc.property(unicode, (text) => {
+        const clean = cleanUntrustedText(text);
+        expect(/\p{Cf}/u.test(clean)).toBe(false);
+        if (!clean.includes("&")) expect(cleanUntrustedText(clean)).toBe(clean);
+        // Only NFKC, whitespace and invisible characters change: no homoglyph folding.
+        // Hangul fillers are letters that render as nothing; they are stripped as invisible.
+        const letters = (s: string) =>
+          [...s.normalize("NFKD")].filter((c) => /\p{L}/u.test(c) && !/[\u115F\u1160\u3164\uFFA0]/.test(c)).join("");
+        if (!text.includes("&")) expect(letters(clean)).toBe(letters(text));
       }),
       RUNS,
     );
@@ -379,6 +512,10 @@ describe("property: listings and invoices", () => {
             "INV",
             "INVOICE",
             "inv",
+            "No.",
+            "NUMBER",
+            "nr",
+            "NOVA",
             "#",
             "-",
             "/",
