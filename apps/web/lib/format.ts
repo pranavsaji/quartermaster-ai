@@ -82,10 +82,6 @@ export function num(value: number | null | undefined, digits?: number): string {
   return numberFmt.format(value);
 }
 
-export function pct(value: number, digits = 0): string {
-  return `${(value * 100).toFixed(digits)}%`;
-}
-
 /** "Forecast assumes 25% busier than normal" style phrasing for a demand multiplier. */
 export function describeDemandMultiplier(multiplier: number): string {
   const delta = Math.round((multiplier - 1) * 100);
@@ -167,6 +163,11 @@ export function countdown(untilIso: string, now = Date.now()): string | null {
 export function truncateMiddle(value: string, head = 14, tail = 8): string {
   if (value.length <= head + tail + 1) return value;
   return `${value.slice(0, head)}…${value.slice(-tail)}`;
+}
+
+/** "1 product", "3 products". English-only, like the rest of the console. */
+export function plural(count: number, singular: string, pluralForm = `${singular}s`): string {
+  return `${num(count)} ${count === 1 ? singular : pluralForm}`;
 }
 
 /** SCREAMING_SNAKE -> "Screaming snake". */

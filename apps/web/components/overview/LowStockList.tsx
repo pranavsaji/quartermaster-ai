@@ -11,14 +11,12 @@ import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { SkeletonRows } from "@/components/ui/Skeleton";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import { num } from "@/lib/format";
-import { STOCK_LABELS, STOCK_TONES } from "@/lib/labels";
-
-const SEVERITY_ORDER: Record<InventoryItemDto["status"], number> = { OUT: 0, CRITICAL: 1, LOW: 2, OK: 3 };
+import { STOCK_LABELS, STOCK_TONES, stockSeverity } from "@/lib/labels";
 
 export function sortByUrgency(items: InventoryItemDto[]): InventoryItemDto[] {
   return [...items].sort(
     (a, b) =>
-      SEVERITY_ORDER[a.status] - SEVERITY_ORDER[b.status] ||
+      stockSeverity(a.status) - stockSeverity(b.status) ||
       (a.days_of_cover ?? Number.POSITIVE_INFINITY) - (b.days_of_cover ?? Number.POSITIVE_INFINITY),
   );
 }

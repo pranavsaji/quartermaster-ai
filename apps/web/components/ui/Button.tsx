@@ -2,7 +2,7 @@ import { forwardRef, type ButtonHTMLAttributes } from "react";
 import { cn } from "./cn";
 import { Spinner } from "./Spinner";
 
-export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger" | "success";
+export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 export type ButtonSize = "sm" | "md" | "lg";
 
 const VARIANTS: Record<ButtonVariant, string> = {
@@ -10,7 +10,6 @@ const VARIANTS: Record<ButtonVariant, string> = {
   secondary: "bg-surface text-ink-2 border border-line-strong shadow-sm hover:bg-canvas hover:text-ink disabled:text-ink-4",
   ghost: "bg-transparent text-ink-2 border border-transparent hover:bg-ink/5 hover:text-ink disabled:text-ink-4",
   danger: "bg-surface text-block border border-block-line shadow-sm hover:bg-block-soft disabled:opacity-50",
-  success: "bg-allow text-white border border-transparent shadow-sm hover:bg-allow/90 disabled:bg-allow/50",
 };
 
 const SIZES: Record<ButtonSize, string> = {

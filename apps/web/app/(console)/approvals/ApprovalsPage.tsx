@@ -17,7 +17,7 @@ import { RefreshErrorNotice } from "@/components/ui/RefreshErrorNotice";
 import { SkeletonRows } from "@/components/ui/Skeleton";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import { api } from "@/lib/api";
-import { countdown, money, relativeTime } from "@/lib/format";
+import { countdown, money, plural, relativeTime } from "@/lib/format";
 import { useNow, usePagedResource } from "@/lib/hooks";
 import { PO_STATUS_TONES } from "@/lib/labels";
 
@@ -35,7 +35,7 @@ function stageOf(po: PurchaseOrderDto): Stage {
 function nextAction(po: PurchaseOrderDto): string {
   if (po.status === "PROPOSED") {
     const reviews = po.policy_decision?.violations.filter((v) => v.severity === "REVIEW").length ?? 0;
-    return reviews > 0 ? `Review & approve (${reviews} item${reviews === 1 ? "" : "s"} to acknowledge)` : "Review & approve";
+    return reviews > 0 ? `Review & approve (${plural(reviews, "item")} to acknowledge)` : "Review & approve";
   }
   if (po.payment?.status === "CAPTURE_PENDING") return "Payment settling with PayPal";
   return "Pay with PayPal";
@@ -55,7 +55,7 @@ function ApprovalRow({ po, now }: { po: PurchaseOrderDto; now: number }) {
         </div>
         <p className="mt-1 flex flex-wrap items-center gap-2 text-[12.5px] text-ink-3">
           <span className="font-mono">{po.number}</span>
-          <span>· {po.items.filter((i) => i.kind === "PRODUCT").length} products</span>
+          <span>· {plural(po.items.filter((i) => i.kind === "PRODUCT").length, "product")}</span>
           <span>· proposed {relativeTime(po.created_at)}</span>
           {po.certificate ? (
             <span className={certLeft ? "text-ink-2" : "text-block"}>· certificate {certLeft ? `expires in ${certLeft}` : "expired"}</span>

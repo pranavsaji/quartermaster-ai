@@ -9,7 +9,7 @@ import { DataGrid } from "@/components/grid/DataGrid";
 import { numberColumn, statusColumn, rightCell } from "@/components/grid/columns";
 import { Button } from "@/components/ui/Button";
 import { num } from "@/lib/format";
-import { categoryLabel, STOCK_LABELS, STOCK_TONES } from "@/lib/labels";
+import { categoryLabel, STOCK_LABELS, STOCK_TONES, stockSeverity } from "@/lib/labels";
 
 export function InventoryGrid({
   items,
@@ -38,7 +38,7 @@ export function InventoryGrid({
       },
       statusColumn<InventoryItemDto, InventoryItemDto["status"]>("status", "Status", STOCK_TONES, STOCK_LABELS, {
         minWidth: 130,
-        comparator: (a: string, b: string) => ["OUT", "CRITICAL", "LOW", "OK"].indexOf(a) - ["OUT", "CRITICAL", "LOW", "OK"].indexOf(b),
+        comparator: (a: string, b: string) => stockSeverity(a) - stockSeverity(b),
       }),
       {
         field: "category",

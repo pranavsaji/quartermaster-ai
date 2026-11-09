@@ -5,14 +5,12 @@ export function EmptyState({
   title,
   description,
   action,
-  icon,
   className,
   compact = false,
 }: {
   title: string;
   description?: ReactNode;
   action?: ReactNode;
-  icon?: ReactNode;
   className?: string;
   compact?: boolean;
 }) {
@@ -24,7 +22,6 @@ export function EmptyState({
         className,
       )}
     >
-      {icon ? <div className="mb-3 text-ink-4">{icon}</div> : null}
       <p className="text-sm font-medium text-ink-2">{title}</p>
       {description ? <p className="mt-1 max-w-md text-[13px] text-ink-3">{description}</p> : null}
       {action ? <div className="mt-4">{action}</div> : null}

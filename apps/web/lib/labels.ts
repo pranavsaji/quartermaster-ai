@@ -41,7 +41,7 @@ export const CATEGORY_LABELS: Record<ProductCategory, string> = {
 
 export function categoryLabel(category: string | null | undefined): string {
   if (!category) return "—";
-  return CATEGORY_LABELS[category as ProductCategory] ?? category;
+  return lookup(CATEGORY_LABELS, category, category);
 }
 
 export const DATA_SOURCE_LABELS: Record<DataSource, string> = {
@@ -68,6 +68,14 @@ export const STOCK_TONES: Record<InventoryItemDto["status"], Tone> = {
   CRITICAL: "block",
   OUT: "block",
 };
+
+/** Most urgent first: sort keys for stock status, shared by every list and grid. */
+export const STOCK_SEVERITY_ORDER: Record<InventoryItemDto["status"], number> = { OUT: 0, CRITICAL: 1, LOW: 2, OK: 3 };
+
+/** Unknown statuses sort after every known one. */
+export function stockSeverity(status: string): number {
+  return lookup(STOCK_SEVERITY_ORDER, status, Number.MAX_SAFE_INTEGER);
+}
 
 export const STOCK_LABELS: Record<InventoryItemDto["status"], string> = {
   OK: "OK",
@@ -114,6 +122,9 @@ export const PAYMENT_STATUS_TONES: Record<PaymentStatus, Tone> = {
   REFUNDED: "neutral",
   PARTIALLY_REFUNDED: "review",
 };
+
+/** Deliveries still on their way (not delivered or cancelled). */
+export const OPEN_DELIVERY_STATUSES: ReadonlySet<DeliveryStatus> = new Set(["SCHEDULED", "IN_TRANSIT", "DELAYED"]);
 
 export const DELIVERY_STATUS_TONES: Record<DeliveryStatus, Tone> = {
   SCHEDULED: "info",
@@ -171,5 +182,5 @@ export const FINDING_LABELS: Record<FindingType, string> = {
 };
 
 export function findingLabel(type: string): string {
-  return FINDING_LABELS[type as FindingType] ?? type;
+  return lookup(FINDING_LABELS, type, type);
 }
