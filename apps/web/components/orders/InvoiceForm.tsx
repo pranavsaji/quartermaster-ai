@@ -1,7 +1,7 @@
 "use client";
 
 import { AnalyzeInvoiceRequest, type InvoiceDto, type PurchaseOrderDto, type SupplierDto } from "@qm/contracts";
-import { forwardRef, useImperativeHandle, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardFooter, CardHeader } from "@/components/ui/Card";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
@@ -23,8 +23,10 @@ interface LineDraft {
 let lineSeq = 0;
 const blankLine = (): LineDraft => ({ key: `l${(lineSeq += 1)}`, sku: "", description: "", quantity: "1", unitPrice: "" });
 
-export interface InvoiceFormHandle {
-  prefillFrom: (po: PurchaseOrderDto) => void;
+/** A request to fill the form from a purchase order; a new `seq` re-applies it even for the same PO. */
+export interface InvoicePrefill {
+  po: PurchaseOrderDto;
+  seq: number;
 }
 
 function lineTotal(line: LineDraft, currency: string): number | null {
@@ -39,15 +41,20 @@ function lineTotal(line: LineDraft, currency: string): number | null {
  * receipts and prior invoices (duplicates) and decides whether settlement may
  * proceed. Supplier notes are untrusted and are scanned for prompt injection.
  */
-export const InvoiceForm = forwardRef<
-  InvoiceFormHandle,
-  {
-    suppliers: SupplierDto[];
-    orders: PurchaseOrderDto[];
-    currency: string;
-    onAnalyzed: (invoice: InvoiceDto) => void;
-  }
->(function InvoiceForm({ suppliers, orders, currency, onAnalyzed }, ref) {
+export function InvoiceForm({
+  suppliers,
+  orders,
+  currency,
+  prefill,
+  onAnalyzed,
+}: {
+  suppliers: SupplierDto[];
+  orders: PurchaseOrderDto[];
+  currency: string;
+  /** Set by the orders grid's "Invoice" action. */
+  prefill: InvoicePrefill | null;
+  onAnalyzed: (invoice: InvoiceDto) => void;
+}) {
   const [supplierId, setSupplierId] = useState("");
   const [poId, setPoId] = useState("");
   const [number, setNumber] = useState("");
@@ -89,7 +96,13 @@ export const InvoiceForm = forwardRef<
     analyze.reset();
   }
 
-  useImperativeHandle(ref, () => ({ prefillFrom }));
+  // Apply a new prefill request while rendering (React's "adjust state when a prop changes"
+  // pattern) instead of exposing an imperative handle.
+  const [appliedPrefill, setAppliedPrefill] = useState<number | null>(null);
+  if (prefill && prefill.seq !== appliedPrefill) {
+    setAppliedPrefill(prefill.seq);
+    prefillFrom(prefill.po);
+  }
 
   const computedTotal = lines.reduce<number | null>((sum, l) => {
     const t = lineTotal(l, currency);
@@ -284,4 +297,4 @@ export const InvoiceForm = forwardRef<
       </form>
     </Card>
   );
-});
+}

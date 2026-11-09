@@ -3,7 +3,7 @@
 import type { DeliveryDto, InvoiceDto, PurchaseOrderDto } from "@qm/contracts";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { DelayDialog, ReceiveDialog, type DeliveryTarget } from "@/components/orders/DeliveryDialogs";
-import { InvoiceForm, type InvoiceFormHandle } from "@/components/orders/InvoiceForm";
+import { InvoiceForm, type InvoicePrefill } from "@/components/orders/InvoiceForm";
 import { InvoicesGrid } from "@/components/orders/InvoicesGrid";
 import { OrdersGrid, type OrderRow } from "@/components/orders/OrdersGrid";
 import { useSession } from "@/components/session/SessionProvider";
@@ -31,7 +31,7 @@ export function OrdersPage() {
   const [receiving, setReceiving] = useState<DeliveryTarget | null>(null);
   const [delaying, setDelaying] = useState<DeliveryTarget | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const invoiceForm = useRef<InvoiceFormHandle>(null);
+  const [invoicePrefill, setInvoicePrefill] = useState<InvoicePrefill | null>(null);
   const invoiceSection = useRef<HTMLDivElement>(null);
 
   const placedOrders = useMemo(() => orders.data?.filter((po) => !NOT_ORDERS.has(po.status)), [orders.data]);
@@ -45,7 +45,7 @@ export function OrdersPage() {
   const onReceive = useCallback((row: OrderRow) => setReceiving(targetOf(row)), []);
   const onDelay = useCallback((row: OrderRow) => setDelaying(targetOf(row)), []);
   const onInvoice = useCallback((row: OrderRow) => {
-    invoiceForm.current?.prefillFrom(row);
+    setInvoicePrefill((prev) => ({ po: row, seq: (prev?.seq ?? 0) + 1 }));
     invoiceSection.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, []);
 
@@ -125,10 +125,10 @@ export function OrdersPage() {
           {can("analyzeInvoices") ? (
             suppliers.data && placedOrders ? (
               <InvoiceForm
-                ref={invoiceForm}
                 suppliers={suppliers.data.items}
                 orders={placedOrders}
                 currency={user.organization.currency}
+                prefill={invoicePrefill}
                 onAnalyzed={onAnalyzed}
               />
             ) : suppliers.error ? (
