@@ -1,3 +1,4 @@
+import { isIP } from "node:net";
 import { z } from "zod";
 
 const bool = (def: boolean) =>
@@ -13,7 +14,12 @@ const EnvSchema = z.object({
   APP_BASE_URL: z.string().url().default("http://localhost:3000"),
   /** Comma-separated origins allowed to call the API cross-origin (the web app normally proxies). */
   CORS_ORIGINS: z.string().default(""),
-  TRUST_PROXY: z.coerce.number().int().min(0).max(5).default(0),
+  /**
+   * Reverse proxies in front of the API, as Express's `trust proxy`: a hop count (0–5), or a
+   * comma-separated list of trusted proxy addresses/CIDRs (and loopback|linklocal|uniquelocal).
+   * Set it so `req.ip` is the browser's address, or per-IP rate limits are shared by everyone.
+   */
+  TRUST_PROXY: z.string().default("0"),
 
   DATABASE_URL: z.string().min(1).optional(),
   DATABASE_SSL: z.enum(["require", "disable"]).default("disable"),
@@ -59,7 +65,8 @@ export interface AppConfig {
   logLevel: Env["LOG_LEVEL"];
   appBaseUrl: string;
   corsOrigins: string[];
-  trustProxy: number;
+  /** Hop count, or trusted proxy addresses/subnets. */
+  trustProxy: number | string[];
   database: { url: string; ssl: boolean; ca?: string; poolMax: number };
   session: { ttlHours: number; cookieSecure: boolean; cookieName: string };
   signing: { privateKey: string | null; keyId: string | undefined };
@@ -77,6 +84,34 @@ export interface AppConfig {
   agent: { maxResearchCalls: number; deadlineMs: number; tokenBudget: number; marketReferenceMaxAgeHours: number };
   sweeperIntervalSeconds: number;
   allowSyntheticDeliveryActions: boolean;
+}
+
+const NAMED_PROXY_RANGES = new Set(["loopback", "linklocal", "uniquelocal"]);
+
+function isTrustedProxyEntry(entry: string): boolean {
+  if (NAMED_PROXY_RANGES.has(entry)) return true;
+  const [addr, prefix, ...rest] = entry.split("/");
+  const family = isIP(addr ?? "");
+  if (!family || rest.length) return false;
+  if (prefix === undefined) return true;
+  if (!/^\d{1,3}$/.test(prefix)) return false;
+  return Number(prefix) <= (family === 4 ? 32 : 128);
+}
+
+/** Parses TRUST_PROXY into Express's `trust proxy` setting. `true` (trust everything) is refused. */
+export function parseTrustProxy(raw: string): number | string[] {
+  const value = raw.trim();
+  if (/^\d+$/.test(value)) {
+    const hops = Number(value);
+    if (hops > 5) throw new Error("Invalid configuration: TRUST_PROXY hop count must be between 0 and 5");
+    return hops;
+  }
+  const entries = value.split(",").map((v) => v.trim()).filter(Boolean);
+  const bad = entries.filter((v) => !isTrustedProxyEntry(v));
+  if (!entries.length || bad.length) {
+    throw new Error(`Invalid configuration: TRUST_PROXY must be a hop count or a list of proxy addresses/CIDRs (invalid: ${bad.join(", ") || "empty"})`);
+  }
+  return entries;
 }
 
 export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -107,7 +142,7 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
     logLevel: e.LOG_LEVEL,
     appBaseUrl: e.APP_BASE_URL,
     corsOrigins: e.CORS_ORIGINS.split(",").map((o) => o.trim()).filter(Boolean),
-    trustProxy: e.TRUST_PROXY,
+    trustProxy: parseTrustProxy(e.TRUST_PROXY),
     database: { url: e.DATABASE_URL ?? "pglite://./.data/pglite", ssl: e.DATABASE_SSL === "require", ca: e.DATABASE_CA_CERT, poolMax: e.DATABASE_POOL_MAX },
     session: { ttlHours: e.SESSION_TTL_HOURS, cookieSecure: production || e.COOKIE_SECURE, cookieName: production ? "__Host-qm_session" : "qm_session" },
     signing: { privateKey: e.TRUSTRAIL_SIGNING_KEY ?? null, keyId: e.TRUSTRAIL_SIGNING_KEY_ID },
