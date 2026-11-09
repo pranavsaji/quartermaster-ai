@@ -9,9 +9,7 @@ import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { SkeletonRows } from "@/components/ui/Skeleton";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import { date, relativeTime } from "@/lib/format";
-import { DELIVERY_STATUS_TONES } from "@/lib/labels";
-
-const OPEN = new Set<DeliveryDto["status"]>(["SCHEDULED", "IN_TRANSIT", "DELAYED"]);
+import { DELIVERY_STATUS_TONES, OPEN_DELIVERY_STATUSES } from "@/lib/labels";
 
 export function UpcomingDeliveries({
   deliveries,
@@ -27,7 +25,7 @@ export function UpcomingDeliveries({
 }) {
   const poById = new Map((orders ?? []).map((o) => [o.id, o]));
   const upcoming = deliveries
-    ?.filter((d) => OPEN.has(d.status))
+    ?.filter((d) => OPEN_DELIVERY_STATUSES.has(d.status))
     .sort((a, b) => a.expected_date.localeCompare(b.expected_date))
     .slice(0, 6);
 

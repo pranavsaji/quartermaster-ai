@@ -31,7 +31,10 @@ export interface ResourceState<T> {
   /** When `data` was last loaded or replaced (epoch ms), for "showing data from …" notices. */
   updatedAt: number | undefined;
   reload: () => void;
-  /** Replace the cached value, e.g. with a mutation response. */
+  /**
+   * Replace the cached value, e.g. with a mutation response. A reload already in
+   * flight is ignored when it lands, since it may predate the mutation.
+   */
   setData: (next: T | ((prev: T | undefined) => T)) => void;
 }
 
@@ -41,12 +44,17 @@ interface Loaded<T> {
   at: number | undefined;
 }
 
+export interface FetchContext {
+  /** True when this request was started by `reload()` (e.g. a Refresh button), so caches should be bypassed. */
+  refresh: boolean;
+}
+
 /**
  * Fetches a resource on mount and whenever `deps` change. Requests are aborted
  * when superseded or on unmount, so out-of-order responses can't clobber state.
  */
 export function useResource<T>(
-  fetcher: (signal: AbortSignal) => Promise<T>,
+  fetcher: (signal: AbortSignal, context: FetchContext) => Promise<T>,
   deps: DependencyList,
   options: { enabled?: boolean } = {},
 ): ResourceState<T> {
@@ -60,29 +68,41 @@ export function useResource<T>(
   const [settledKey, setSettledKey] = useState<string | null>(null);
   const inFlight = enabled && settledKey !== requestKey;
   const fetchLatest = useEffectEvent(fetcher);
+  // Bumped by `setData`. A response to a request started before a local write is older than
+  // that write (e.g. Refresh, then save an adjustment), so it must not overwrite it.
+  const writes = useRef(0);
+  // The (deps version, reload count) of the previous request, to tell a reload from a deps change.
+  const previousRequest = useRef<{ deps: number; reloads: number } | null>(null);
 
   useEffect(() => {
     if (!enabled) return;
     const controller = new AbortController();
-    fetchLatest(controller.signal)
+    const writesAtStart = writes.current;
+    const superseded = () => controller.signal.aborted || writes.current !== writesAtStart;
+    const prev = previousRequest.current;
+    const refresh = prev !== null && prev.deps === depsVersion && prev.reloads !== reloads;
+    previousRequest.current = { deps: depsVersion, reloads };
+    fetchLatest(controller.signal, { refresh })
       .then((result) => {
-        if (controller.signal.aborted) return;
+        if (superseded()) return;
         setLoaded({ value: result, version: depsVersion, at: Date.now() });
         setFailure(null);
       })
       .catch((err: unknown) => {
-        if (controller.signal.aborted || isAbortError(err)) return;
+        if (superseded() || isAbortError(err)) return;
         setFailure({ error: err, version: depsVersion });
       })
       .finally(() => {
         if (!controller.signal.aborted) setSettledKey(requestKey);
       });
     return () => controller.abort();
-  }, [enabled, requestKey, depsVersion]);
+  }, [enabled, requestKey, depsVersion, reloads]);
 
   const reload = useCallback(() => setReloads((n) => n + 1), []);
   const setData = useCallback(
     (next: T | ((prev: T | undefined) => T)) => {
+      writes.current += 1;
+      setFailure(null);
       setLoaded((prev) => ({
         value: typeof next === "function" ? (next as (p: T | undefined) => T)(prev.value) : next,
         version: depsVersion,
@@ -294,6 +314,8 @@ export function usePagedResource<T>(
   fetchPage: (cursor: string | null, signal?: AbortSignal) => Promise<Page<T>>,
   deps: DependencyList,
 ): PagedState<T> {
+  // `deps` are the caller's, and the caller's call is what the exhaustive-deps rule checks.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const first = useResource((signal) => fetchPage(null, signal), deps);
   const base = first.data;
   const [extra, setExtra] = useState<{ base: Page<T>; items: T[]; cursor: string | null } | null>(null);

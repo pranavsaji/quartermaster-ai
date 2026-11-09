@@ -83,6 +83,49 @@ describe("useResource", () => {
     await waitFor(() => expect(result.current.error).toBeInstanceOf(Error));
     expect(result.current.data).toBe("rows");
   });
+
+  it("does not let a reload that started before setData overwrite the local value", async () => {
+    const pending: Deferred<string>[] = [];
+    const { result } = renderHook(() =>
+      useResource(() => {
+        const d = deferred<string>();
+        pending.push(d);
+        return d.promise;
+      }, []),
+    );
+    await act(async () => pending[0]!.resolve("v1"));
+    expect(result.current.data).toBe("v1");
+
+    // Refresh, then save a mutation whose response lands before the (older) GET.
+    act(() => result.current.reload());
+    expect(result.current.refreshing).toBe(true);
+    act(() => result.current.setData("saved"));
+    await act(async () => pending[1]!.resolve("v1 from the old GET"));
+
+    expect(result.current.data).toBe("saved");
+    expect(result.current.refreshing).toBe(false);
+
+    // The next reload is newer than the write and applies normally.
+    act(() => result.current.reload());
+    await act(async () => pending[2]!.resolve("v2"));
+    expect(result.current.data).toBe("v2");
+  });
+
+  it("ignores a failure from a reload that predates setData", async () => {
+    const pending: Deferred<string>[] = [];
+    const { result } = renderHook(() =>
+      useResource(() => {
+        const d = deferred<string>();
+        pending.push(d);
+        return d.promise;
+      }, []),
+    );
+    await act(async () => pending[0]!.resolve("v1"));
+    act(() => result.current.reload());
+    act(() => result.current.setData("saved"));
+    await act(async () => pending[1]!.reject(new Error("stale failure")));
+    expect(result.current).toMatchObject({ data: "saved", error: undefined });
+  });
 });
 
 type Page = { items: string[]; next_cursor: string | null };

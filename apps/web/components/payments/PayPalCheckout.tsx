@@ -201,12 +201,13 @@ export function PayPalCheckout({
   const busy = phase !== "idle";
   return (
     <div className="space-y-3">
-      <div className="relative">
-        {/* The SDK's web component renders its own accessible, keyboard-operable button;
-            its click events bubble to the host element. */}
+      {/* The SDK's web component renders its own accessible, keyboard-operable button inside its
+          shadow root, so aria-disabled on the host wouldn't reach it. While busy the wrapper is
+          `inert`: the button can't be focused or activated and leaves the accessibility tree, and
+          the status line below says why. Its click events bubble to the host element. */}
+      <div className="relative" inert={busy} data-busy={busy || undefined}>
         <paypal-button
           type="pay"
-          aria-disabled={busy || undefined}
           onClick={busy ? undefined : startCheckout}
           className={busy ? "pointer-events-none opacity-60" : undefined}
         />

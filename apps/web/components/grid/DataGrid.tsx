@@ -15,6 +15,7 @@ import {
 } from "ag-grid-community";
 import { AgGridReact, type AgGridReactProps } from "ag-grid-react";
 import { useCallback, useMemo } from "react";
+import { cssColor } from "@/lib/theme";
 
 // Only the features our grids use (AllCommunityModule was a 1.4 MB chunk). In development the
 // ValidationModule warns in the console if a grid uses a feature whose module isn't listed here.
@@ -30,23 +31,24 @@ ModuleRegistry.registerModules([
 
 /**
  * Quartermaster grid theme via the AG Grid Theming API. Inherits the app font
- * (instead of letting Quartz fetch a Google font) and uses our ink/line tokens.
+ * (instead of letting Quartz fetch a Google font) and points every colour at the
+ * design tokens in globals.css (AG Grid emits params as CSS, so `var()` works).
  */
 export const gridTheme = themeQuartz.withParams({
   fontFamily: "inherit",
   fontSize: 13,
   headerFontSize: 12,
   headerFontWeight: 500,
-  foregroundColor: "#101828",
-  textColor: "#101828",
-  headerTextColor: "#475467",
-  backgroundColor: "#ffffff",
-  headerBackgroundColor: "#f9fafb",
-  borderColor: "#e4e7ec",
-  rowBorder: { color: "#eef0f3" },
-  accentColor: "#2453d8",
-  rowHoverColor: "#f5f8ff",
-  selectedRowBackgroundColor: "#eef3ff",
+  foregroundColor: cssColor("ink"),
+  textColor: cssColor("ink"),
+  headerTextColor: cssColor("ink-2"),
+  backgroundColor: cssColor("surface"),
+  headerBackgroundColor: cssColor("canvas"),
+  borderColor: cssColor("line"),
+  rowBorder: { color: cssColor("line") },
+  accentColor: cssColor("accent"),
+  rowHoverColor: `color-mix(in srgb, ${cssColor("accent-soft")} 60%, ${cssColor("surface")})`,
+  selectedRowBackgroundColor: cssColor("accent-soft"),
   wrapperBorderRadius: 12,
   borderRadius: 6,
   spacing: 7,

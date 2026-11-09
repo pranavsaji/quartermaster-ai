@@ -7,8 +7,11 @@
  * - Errors are normalised into `ApiRequestError`, which always carries the API's
  *   `message` and (when present) `correlation_id` for support/debugging.
  * - A 401 redirects to `/login` unless the caller opts out (e.g. the login form).
+ * - A successful response must be JSON (or empty); anything else is an ambiguous
+ *   `UNEXPECTED_RESPONSE` error rather than a string handed to a component.
  */
 import type { ApiError } from "@qm/contracts";
+import { clearSharedCache } from "./shared-cache";
 
 export const API_BASE = "/api/v1";
 
@@ -87,6 +90,13 @@ function buildUrl(path: string, query?: Record<string, QueryValue>): string {
   return qs ? `${url}?${qs}` : url;
 }
 
+/** Browser navigation used for the 401 redirect; a seam so tests can observe it (jsdom can't navigate). */
+export const navigation = {
+  replace(url: string): void {
+    window.location.replace(url);
+  },
+};
+
 let redirecting = false;
 
 function redirectToLogin(): void {
@@ -95,22 +105,38 @@ function redirectToLogin(): void {
   redirecting = true;
   const next = `${window.location.pathname}${window.location.search}`;
   // A full page load: the session is gone, so drop all client state with it.
-  window.location.replace(`/login?next=${encodeURIComponent(next)}`);
+  navigation.replace(`/login?next=${encodeURIComponent(next)}`);
 }
 
-async function readBody(response: Response): Promise<unknown> {
-  if (response.status === 204 || response.status === 205) return undefined;
+type Body = { kind: "empty" } | { kind: "json"; value: unknown } | { kind: "other"; text: string };
+
+async function readBody(response: Response): Promise<Body> {
+  if (response.status === 204 || response.status === 205) return { kind: "empty" };
   const text = await response.text();
-  if (!text) return undefined;
+  if (!text) return { kind: "empty" };
   const type = response.headers.get("content-type") ?? "";
-  if (type.includes("application/json")) {
+  if (/\bapplication\/(?:[\w.+-]+\+)?json\b/i.test(type)) {
     try {
-      return JSON.parse(text) as unknown;
+      return { kind: "json", value: JSON.parse(text) as unknown };
     } catch {
-      return text;
+      return { kind: "other", text };
     }
   }
-  return text;
+  return { kind: "other", text };
+}
+
+/**
+ * A 2xx whose body isn't JSON (e.g. an HTML page from a misconfigured proxy or
+ * rewrite) never reaches components as a string. The request may or may not have
+ * reached the API, so it is reported as ambiguous, like a gateway error.
+ */
+function unexpectedResponse(response: Response): ApiRequestError {
+  return new ApiRequestError({
+    status: 502,
+    code: "UNEXPECTED_RESPONSE",
+    message: "Quartermaster sent a response the console couldn't read. The API may be unreachable or misconfigured; try again shortly.",
+    correlationId: response.headers.get("x-correlation-id") ?? response.headers.get("x-request-id"),
+  });
 }
 
 function errorFromResponse(response: Response, body: unknown): ApiRequestError {
@@ -171,12 +197,15 @@ export async function request<T>(method: HttpMethod, path: string, options: Requ
   const body = await readBody(response);
 
   if (!response.ok) {
-    const error = errorFromResponse(response, body);
+    const error = errorFromResponse(response, body.kind === "json" ? body.value : undefined);
     if (error.isUnauthorized && options.redirectOnUnauthorized !== false) redirectToLogin();
     throw error;
   }
 
-  return body as T;
+  if (body.kind === "other") throw unexpectedResponse(response);
+  // A successful write can change any cached read (e.g. the analytics summary).
+  if (mutating) clearSharedCache();
+  return (body.kind === "json" ? body.value : undefined) as T;
 }
 
 export function isAbortError(error: unknown): boolean {

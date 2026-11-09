@@ -11,11 +11,9 @@ import { dateTimeColumn, moneyColumn, statusColumn } from "@/components/grid/col
 import { StatusBadge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { date } from "@/lib/format";
-import { DELIVERY_STATUS_TONES, PAYMENT_STATUS_TONES, PO_STATUS_TONES } from "@/lib/labels";
+import { DELIVERY_STATUS_TONES, OPEN_DELIVERY_STATUSES, PAYMENT_STATUS_TONES, PO_STATUS_TONES } from "@/lib/labels";
 
 export type OrderRow = PurchaseOrderDto & { delivery_view: DeliveryDto | null };
-
-const OPEN_DELIVERY = new Set<DeliveryDto["status"]>(["SCHEDULED", "IN_TRANSIT", "DELAYED"]);
 
 export function OrdersGrid({
   rows,
@@ -101,7 +99,7 @@ export function OrdersGrid({
         cellRenderer: (p: CustomCellRendererProps<OrderRow>) => {
           const row = p.data;
           if (!row) return null;
-          const open = row.delivery_view !== null && OPEN_DELIVERY.has(row.delivery_view.status);
+          const open = row.delivery_view !== null && OPEN_DELIVERY_STATUSES.has(row.delivery_view.status);
           return (
             <ActionCell eGridCell={p.eGridCell}>
               {canManage && open ? (

@@ -1,15 +1,17 @@
 "use client";
 
 import { AnalyzeInvoiceRequest, type InvoiceDto, type PurchaseOrderDto, type SupplierDto } from "@qm/contracts";
-import { useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardFooter, CardHeader } from "@/components/ui/Card";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Field, Input, MoneyInput, Select, Textarea } from "@/components/ui/Field";
+import { ErrorSummary, useErrorFocus } from "@/components/ui/FormErrors";
 import { Notice } from "@/components/ui/Notice";
 import { api } from "@/lib/api";
 import { inputToMinor, minorToInput, money, todayIso } from "@/lib/format";
 import { useAction } from "@/lib/hooks";
+import { checkNumber } from "@/lib/numbers";
 import { InvoiceResult } from "./InvoiceResult";
 
 interface LineDraft {
@@ -29,12 +31,111 @@ export interface InvoicePrefill {
   seq: number;
 }
 
+const QUANTITY_RULE = { integer: true, min: 1, max: 1_000_000 } as const;
+
 function lineTotal(line: LineDraft, currency: string): number | null {
-  const qty = Number(line.quantity);
+  // Digits only: `Number()` would read "1e2" as 100 and "0x10" as 16.
+  const qty = checkNumber(line.quantity, QUANTITY_RULE);
   const unit = inputToMinor(line.unitPrice, currency);
-  if (!Number.isInteger(qty) || qty <= 0 || unit === null) return null;
-  return qty * unit;
+  if (!qty.ok || unit === null) return null;
+  const total = qty.value * unit;
+  return Number.isSafeInteger(total) ? total : null;
 }
+
+type LineErrors = Partial<Record<"description" | "quantity" | "unitPrice", string>>;
+
+export interface InvoiceErrors {
+  supplier?: string;
+  number?: string;
+  date?: string;
+  total?: string;
+  /** Per line, keyed by the line's draft key. */
+  lines: Record<string, LineErrors>;
+}
+
+export interface InvoiceDraft {
+  supplierId: string;
+  poId: string;
+  number: string;
+  invoiceDate: string;
+  lines: LineDraft[];
+  totalOverride: string;
+  notes: string;
+}
+
+/** Turns the form into an API body, or messages attached to the specific fields that need fixing. */
+export function validateInvoiceForm(
+  draft: InvoiceDraft,
+  currency: string,
+): { body: AnalyzeInvoiceRequest; errors: null } | { body: null; errors: InvoiceErrors } {
+  const errors: InvoiceErrors = { lines: {} };
+  if (!draft.supplierId) errors.supplier = "Choose a supplier.";
+  if (!draft.number.trim()) errors.number = "Enter the invoice number.";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(draft.invoiceDate)) errors.date = "Enter the invoice date.";
+
+  const lines = draft.lines.map((l) => {
+    const lineErrors: LineErrors = {};
+    if (!l.description.trim()) lineErrors.description = "Enter a description.";
+    const qty = checkNumber(l.quantity, QUANTITY_RULE);
+    if (!qty.ok) lineErrors.quantity = qty.error;
+    const unit = inputToMinor(l.unitPrice, currency);
+    if (unit === null) lineErrors.unitPrice = l.unitPrice.trim() ? `Enter a price in ${currency}, like 12.50.` : "Enter the unit price.";
+    if (Object.keys(lineErrors).length > 0) errors.lines[l.key] = lineErrors;
+    return {
+      sku: l.sku.trim() || null,
+      description: l.description.trim(),
+      quantity: qty.ok ? qty.value : -1,
+      unit_price_minor: unit ?? -1,
+      line_total_minor: lineTotal(l, currency) ?? -1,
+    };
+  });
+
+  const computed = lines.every((l) => l.line_total_minor >= 0) ? lines.reduce((sum, l) => sum + l.line_total_minor, 0) : null;
+  const total = draft.totalOverride.trim() ? inputToMinor(draft.totalOverride, currency) : computed;
+  if (draft.totalOverride.trim() && total === null) errors.total = `Enter a total in ${currency}, like 1,250.00.`;
+
+  const hasErrors = Boolean(errors.supplier || errors.number || errors.date || errors.total) || Object.keys(errors.lines).length > 0;
+  if (hasErrors) return { body: null, errors };
+  const parsed = AnalyzeInvoiceRequest.safeParse({
+    supplier_id: draft.supplierId,
+    purchase_order_id: draft.poId || null,
+    invoice_number: draft.number.trim(),
+    invoice_date: draft.invoiceDate,
+    currency,
+    lines,
+    total_minor: total ?? -1,
+    notes: draft.notes.trim() || undefined,
+  });
+  if (!parsed.success) {
+    // Anything the field checks above don't cover (e.g. a total too large to represent).
+    const where = parsed.error.issues[0]?.path[0];
+    if (where === "supplier_id") errors.supplier = "Choose a supplier.";
+    else if (where === "invoice_number") errors.number = "Use at most 64 characters.";
+    else errors.total = "Enter a valid invoice total.";
+    return { body: null, errors };
+  }
+  return { body: parsed.data, errors: null };
+}
+
+/** Every message in reading order, for the error summary. */
+function errorMessages(errors: InvoiceErrors, lines: LineDraft[]): string[] {
+  const out = [errors.supplier, errors.number, errors.date];
+  lines.forEach((l, i) => {
+    const e = errors.lines[l.key];
+    if (!e) return;
+    for (const [field, label] of [
+      ["description", "description"],
+      ["quantity", "quantity"],
+      ["unitPrice", "unit price"],
+    ] as const) {
+      if (e[field]) out.push(`Line ${i + 1} ${label}: ${e[field]}`);
+    }
+  });
+  out.push(errors.total);
+  return out.filter((m): m is string => Boolean(m));
+}
+
+const NO_ERRORS: InvoiceErrors = { lines: {} };
 
 /**
  * Supplier invoice analysis: the API matches the invoice against the PO,
@@ -45,12 +146,15 @@ export function InvoiceForm({
   suppliers,
   orders,
   currency,
+  timeZone,
   prefill,
   onAnalyzed,
 }: {
   suppliers: SupplierDto[];
   orders: PurchaseOrderDto[];
   currency: string;
+  /** The organisation's IANA zone, for the default invoice date. */
+  timeZone?: string;
   /** Set by the orders grid's "Invoice" action. */
   prefill: InvoicePrefill | null;
   onAnalyzed: (invoice: InvoiceDto) => void;
@@ -58,11 +162,13 @@ export function InvoiceForm({
   const [supplierId, setSupplierId] = useState("");
   const [poId, setPoId] = useState("");
   const [number, setNumber] = useState("");
-  const [invoiceDate, setInvoiceDate] = useState(todayIso());
+  const [invoiceDate, setInvoiceDate] = useState(() => todayIso(timeZone));
   const [lines, setLines] = useState<LineDraft[]>([blankLine()]);
   const [notes, setNotes] = useState("");
   const [totalOverride, setTotalOverride] = useState("");
-  const [formError, setFormError] = useState<string | null>(null);
+  const [errors, setErrors] = useState<InvoiceErrors>(NO_ERRORS);
+  const idBase = useId();
+  const { containerRef, focusFirstError, attempt } = useErrorFocus<HTMLFormElement>();
   const [result, setResult] = useState<InvoiceDto | null>(null);
   const [lastSubmitted, setLastSubmitted] = useState<AnalyzeInvoiceRequest | null>(null);
   const [lastWasDuplicateSim, setLastWasDuplicateSim] = useState(false);
@@ -79,7 +185,7 @@ export function InvoiceForm({
     setSupplierId(po.supplier_id);
     setPoId(po.id);
     setNumber(`INV-${po.number.replace(/^PO-?/i, "")}`);
-    setInvoiceDate(todayIso());
+    setInvoiceDate(todayIso(timeZone));
     setLines(
       po.items.map((item) => ({
         key: `l${(lineSeq += 1)}`,
@@ -92,7 +198,7 @@ export function InvoiceForm({
     setTotalOverride("");
     setNotes("");
     setResult(null);
-    setFormError(null);
+    setErrors(NO_ERRORS);
     analyze.reset();
   }
 
@@ -103,6 +209,17 @@ export function InvoiceForm({
     setAppliedPrefill(prefill.seq);
     prefillFrom(prefill.po);
   }
+
+  // A prefill comes from the orders grid's "Invoice" action: bring the form into view and move
+  // focus to it, so keyboard and screen-reader users land where the work continues.
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    const heading = headingRef.current;
+    if (appliedPrefill === null || !heading) return;
+    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+    heading.scrollIntoView?.({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+    heading.focus({ preventScroll: true });
+  }, [appliedPrefill]);
 
   const computedTotal = lines.reduce<number | null>((sum, l) => {
     const t = lineTotal(l, currency);
@@ -115,42 +232,13 @@ export function InvoiceForm({
 
   function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const total = totalOverride.trim() ? inputToMinor(totalOverride, currency) : computedTotal;
-    const builtLines = lines.map((l) => ({
-      sku: l.sku.trim() || null,
-      description: l.description.trim(),
-      quantity: Number(l.quantity),
-      unit_price_minor: inputToMinor(l.unitPrice, currency) ?? -1,
-      line_total_minor: lineTotal(l, currency) ?? -1,
-    }));
-    const parsed = AnalyzeInvoiceRequest.safeParse({
-      supplier_id: supplierId,
-      purchase_order_id: poId || null,
-      invoice_number: number.trim(),
-      invoice_date: invoiceDate,
-      currency,
-      lines: builtLines,
-      total_minor: total ?? -1,
-      notes: notes.trim() || undefined,
-    });
-    if (!parsed.success) {
-      const first = parsed.error.issues[0];
-      const where = first?.path.join(".") ?? "form";
-      setFormError(
-        where.startsWith("supplier_id")
-          ? "Choose a supplier."
-          : where.startsWith("lines")
-            ? "Every line needs a description, a whole quantity and a valid unit price."
-            : where.startsWith("invoice_number")
-              ? "Enter the invoice number."
-              : where.startsWith("total_minor")
-                ? "Enter a valid invoice total."
-                : (first?.message ?? "Check the form."),
-      );
+    const result = validateInvoiceForm({ supplierId, poId, number, invoiceDate, lines, totalOverride, notes }, currency);
+    setErrors(result.errors ?? NO_ERRORS);
+    if (!result.body) {
+      focusFirstError();
       return;
     }
-    setFormError(null);
-    void analyze.run(parsed.data, false);
+    void analyze.run(result.body, false);
   }
 
   function simulateDuplicate() {
@@ -162,16 +250,17 @@ export function InvoiceForm({
   const supplierOrders = supplierId ? orders.filter((o) => o.supplier_id === supplierId) : orders;
 
   return (
-    <Card aria-labelledby="invoice-form-title">
-      <form onSubmit={submit} noValidate>
+    <Card aria-labelledby="invoice-form-title" className="scroll-mt-20">
+      <form ref={containerRef} onSubmit={submit} noValidate>
         <CardHeader
           id="invoice-form-title"
+          headingRef={headingRef}
           title="Analyze a supplier invoice"
           description="Matches the invoice against the purchase order and previous invoices before anything is settled."
         />
         <CardBody className="space-y-4">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <Field label="Supplier" required>
+            <Field label="Supplier" required error={errors.supplier}>
               {(control) => (
                 <Select
                   {...control}
@@ -210,12 +299,12 @@ export function InvoiceForm({
                 </Select>
               )}
             </Field>
-            <Field label="Invoice number" required>
+            <Field label="Invoice number" required error={errors.number}>
               {(control) => (
                 <Input {...control} value={number} onChange={(e) => setNumber(e.target.value)} maxLength={64} className="font-mono" />
               )}
             </Field>
-            <Field label="Invoice date" required>
+            <Field label="Invoice date" required error={errors.date}>
               {(control) => (
                 <Input {...control} type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} className="tnum" />
               )}
@@ -251,8 +340,19 @@ export function InvoiceForm({
                 <tbody>
                   {lines.map((l, i) => {
                     const t = lineTotal(l, currency);
+                    const lineErrors = errors.lines[l.key] ?? {};
+                    const errorProps = (field: keyof LineErrors) => ({
+                      "aria-invalid": lineErrors[field] ? (true as const) : undefined,
+                      "aria-describedby": lineErrors[field] ? `${idBase}-${l.key}-${field}` : undefined,
+                    });
+                    const errorText = (field: keyof LineErrors) =>
+                      lineErrors[field] ? (
+                        <p id={`${idBase}-${l.key}-${field}`} className="mt-1 text-[12px] font-medium text-block">
+                          {lineErrors[field]}
+                        </p>
+                      ) : null;
                     return (
-                      <tr key={l.key}>
+                      <tr key={l.key} className="align-top">
                         <td className="py-1">
                           <Input
                             aria-label={`Line ${i + 1} SKU`}
@@ -264,28 +364,37 @@ export function InvoiceForm({
                         <td className="py-1 pl-2">
                           <Input
                             aria-label={`Line ${i + 1} description`}
+                            aria-required
+                            {...errorProps("description")}
                             value={l.description}
                             onChange={(e) => updateLine(l.key, { description: e.target.value })}
                           />
+                          {errorText("description")}
                         </td>
                         <td className="py-1 pl-2">
                           <Input
                             aria-label={`Line ${i + 1} quantity`}
+                            aria-required
+                            {...errorProps("quantity")}
                             inputMode="numeric"
                             value={l.quantity}
                             onChange={(e) => updateLine(l.key, { quantity: e.target.value })}
                             className="tnum"
                           />
+                          {errorText("quantity")}
                         </td>
                         <td className="py-1 pl-2">
                           <MoneyInput
                             currency={currency}
                             aria-label={`Line ${i + 1} unit price`}
+                            aria-required
+                            {...errorProps("unitPrice")}
                             value={l.unitPrice}
                             onChange={(e) => updateLine(l.key, { unitPrice: e.target.value })}
                           />
+                          {errorText("unitPrice")}
                         </td>
-                        <td className="tnum py-1 pl-2 text-right text-ink-2">{t !== null ? money(t, currency) : "—"}</td>
+                        <td className="tnum py-1 pl-2 text-right leading-9 text-ink-2">{t !== null ? money(t, currency) : "—"}</td>
                         <td className="py-1 pl-1 text-right">
                           <button
                             type="button"
@@ -311,6 +420,7 @@ export function InvoiceForm({
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <Field
               label="Invoice total"
+              error={errors.total}
               hint={`Sum of lines: ${computedTotal !== null ? money(computedTotal, currency) : "—"}. Override to test a mismatched total.`}
             >
               {(control) => (
@@ -337,11 +447,7 @@ export function InvoiceForm({
             </Field>
           </div>
 
-          {formError ? (
-            <p className="text-[12.5px] font-medium text-block" role="alert">
-              {formError}
-            </p>
-          ) : null}
+          <ErrorSummary key={attempt} messages={errorMessages(errors, lines)} />
           <ErrorNotice error={analyze.error} title="Invoice analysis failed" />
           {result ? (
             <div className="space-y-2">

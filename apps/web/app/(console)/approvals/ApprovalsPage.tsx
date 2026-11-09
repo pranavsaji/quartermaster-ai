@@ -1,6 +1,6 @@
 "use client";
 
-import type { PurchaseOrderDto } from "@qm/contracts";
+import { SETTLED_PAYMENT_STATUSES, type PurchaseOrderDto } from "@qm/contracts";
 import { useMemo } from "react";
 import { useSession } from "@/components/session/SessionProvider";
 import { DecisionBadge } from "@/components/trustrail/DecisionBadge";
@@ -9,18 +9,21 @@ import { Button } from "@/components/ui/Button";
 import { ButtonLink } from "@/components/ui/ButtonLink";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { LoadMore } from "@/components/ui/LoadMore";
 import { Notice } from "@/components/ui/Notice";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { RefreshErrorNotice } from "@/components/ui/RefreshErrorNotice";
+import { ResourceView } from "@/components/ui/ResourceView";
 import { SkeletonRows } from "@/components/ui/Skeleton";
 import { SourceLabel } from "@/components/ui/SourceLabel";
-import { api, fetchAllPages } from "@/lib/api";
-import { countdown, money, relativeTime } from "@/lib/format";
-import { useNow, useResource } from "@/lib/hooks";
+import { api } from "@/lib/api";
+import { countdown, money, plural, relativeTime } from "@/lib/format";
+import { useNow, usePagedResource } from "@/lib/hooks";
 import { PO_STATUS_TONES } from "@/lib/labels";
 
-const AWAITING = new Set<PurchaseOrderDto["status"]>(["PROPOSED", "APPROVED", "PAYMENT_PENDING"]);
+/** Statuses that wait on the owner; the API filters by them so older items are never crowded out. */
+const AWAITING_STATUSES = ["PROPOSED", "APPROVED", "PAYMENT_PENDING"] as const satisfies readonly PurchaseOrderDto["status"][];
+const AWAITING = new Set<PurchaseOrderDto["status"]>(AWAITING_STATUSES);
+const SETTLED = new Set<string>(SETTLED_PAYMENT_STATUSES);
 
 type Stage = "review" | "pay";
 
@@ -31,7 +34,7 @@ function stageOf(po: PurchaseOrderDto): Stage {
 function nextAction(po: PurchaseOrderDto): string {
   if (po.status === "PROPOSED") {
     const reviews = po.policy_decision?.violations.filter((v) => v.severity === "REVIEW").length ?? 0;
-    return reviews > 0 ? `Review & approve (${reviews} item${reviews === 1 ? "" : "s"} to acknowledge)` : "Review & approve";
+    return reviews > 0 ? `Review & approve (${plural(reviews, "item")} to acknowledge)` : "Review & approve";
   }
   if (po.payment?.status === "CAPTURE_PENDING") return "Payment settling with PayPal";
   return "Pay with PayPal";
@@ -51,7 +54,7 @@ function ApprovalRow({ po, now }: { po: PurchaseOrderDto; now: number }) {
         </div>
         <p className="mt-1 flex flex-wrap items-center gap-2 text-[12.5px] text-ink-3">
           <span className="font-mono">{po.number}</span>
-          <span>· {po.items.filter((i) => i.kind === "PRODUCT").length} products</span>
+          <span>· {plural(po.items.filter((i) => i.kind === "PRODUCT").length, "product")}</span>
           <span>· proposed {relativeTime(po.created_at)}</span>
           {po.certificate ? (
             <span className={certLeft ? "text-ink-2" : "text-block"}>· certificate {certLeft ? `expires in ${certLeft}` : "expired"}</span>
@@ -78,15 +81,18 @@ function ApprovalRow({ po, now }: { po: PurchaseOrderDto; now: number }) {
 export function ApprovalsPage() {
   const { can } = useSession();
   const now = useNow(5000);
-  const orders = useResource((signal) => fetchAllPages((cursor) => api.purchaseOrders.list({ limit: 100, cursor }, { signal })), []);
+  const orders = usePagedResource(
+    (cursor, signal) => api.purchaseOrders.list({ limit: 100, cursor, statuses: AWAITING_STATUSES }, { signal }),
+    [],
+  );
 
   const awaiting = useMemo(
     () =>
-      (orders.data ?? [])
+      (orders.items ?? [])
         .filter((po) => AWAITING.has(po.status))
-        .filter((po) => !(po.payment && ["COMPLETED", "REFUNDED", "PARTIALLY_REFUNDED"].includes(po.payment.status)))
+        .filter((po) => !(po.payment && SETTLED.has(po.payment.status)))
         .sort((a, b) => a.created_at.localeCompare(b.created_at)),
-    [orders.data],
+    [orders.items],
   );
   const groups: Record<Stage, PurchaseOrderDto[]> = { review: [], pay: [] };
   for (const po of awaiting) groups[stageOf(po)].push(po);
@@ -109,14 +115,7 @@ export function ApprovalsPage() {
         </Notice>
       ) : null}
 
-      {orders.error && !orders.data ? <ErrorNotice error={orders.error} onRetry={orders.reload} /> : null}
-      <RefreshErrorNotice
-        error={orders.error}
-        hasData={Boolean(orders.data)}
-        updatedAt={orders.updatedAt}
-        onRetry={orders.reload}
-        className="mb-6"
-      />
+      <ResourceView resource={orders} hasData={Boolean(orders.items)} className="mb-6" />
 
       <div className="space-y-6">
         {(
@@ -130,9 +129,9 @@ export function ApprovalsPage() {
               id={`stage-${stage}`}
               title={title}
               description={description}
-              actions={orders.data ? <Badge tone={groups[stage].length > 0 ? "accent" : "neutral"}>{groups[stage].length}</Badge> : null}
+              actions={orders.items ? <Badge tone={groups[stage].length > 0 ? "accent" : "neutral"}>{groups[stage].length}</Badge> : null}
             />
-            {!orders.data && !orders.error ? (
+            {!orders.items && !orders.error ? (
               <div className="p-5">
                 <SkeletonRows rows={2} />
               </div>
@@ -151,6 +150,7 @@ export function ApprovalsPage() {
             )}
           </Card>
         ))}
+        <LoadMore state={orders} noun="proposals awaiting you (newest first)" />
       </div>
     </>
   );

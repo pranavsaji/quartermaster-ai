@@ -8,16 +8,16 @@ import { UpcomingDeliveries } from "@/components/overview/UpcomingDeliveries";
 import { useSession } from "@/components/session/SessionProvider";
 import { ButtonLink } from "@/components/ui/ButtonLink";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
-import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Notice } from "@/components/ui/Notice";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { ResourceView } from "@/components/ui/ResourceView";
 import { SkeletonRows } from "@/components/ui/Skeleton";
 import { api } from "@/lib/api";
 import { useResource } from "@/lib/hooks";
 
 export function OverviewPage() {
   const { user, config, can } = useSession();
-  const summary = useResource((signal) => api.analytics.summary({ signal }), []);
+  const summary = useResource((signal, { refresh }) => api.analytics.summary({ signal, fresh: refresh }), []);
   const inventory = useResource((signal) => api.inventory.list({ signal }), []);
   const deliveries = useResource((signal) => api.deliveries.list({ signal }), []);
   const orders = useResource((signal) => api.purchaseOrders.list({ limit: 100 }, { signal }), []);
@@ -67,13 +67,9 @@ export function OverviewPage() {
               }
             />
             <CardBody>
-              {findings.error && !findings.data ? (
-                <ErrorNotice error={findings.error} onRetry={findings.reload} />
-              ) : !findings.data ? (
-                <SkeletonRows rows={3} />
-              ) : (
-                <FindingsList findings={findings.data.items} />
-              )}
+              <ResourceView resource={findings} hasData={Boolean(findings.data)} loading={<SkeletonRows rows={3} />}>
+                <FindingsList findings={findings.data?.items ?? []} />
+              </ResourceView>
             </CardBody>
           </Card>
         </div>

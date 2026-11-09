@@ -3,40 +3,38 @@
 import type { AnalyticsSummaryDto, PolicyDecisionKind } from "@qm/contracts";
 import type { AgChartOptions } from "ag-charts-community";
 import { useMemo } from "react";
-import { CHART_COLORS, ChartCard } from "@/components/charts/ChartCard";
+import { ChartCard } from "@/components/charts/ChartCard";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
-import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { RefreshErrorNotice } from "@/components/ui/RefreshErrorNotice";
+import { ResourceView } from "@/components/ui/ResourceView";
 import { SkeletonCard } from "@/components/ui/Skeleton";
 import { StatTile } from "@/components/ui/StatTile";
 import { api } from "@/lib/api";
 import { duration, minorToMajor, money, moneyTick, num, shortDate } from "@/lib/format";
 import { useResource } from "@/lib/hooks";
 import { categoryLabel, DECISION_LABELS, findingLabel, lookup } from "@/lib/labels";
+import type { ChartColors } from "@/lib/theme";
 
-const DECISION_COLORS: Record<PolicyDecisionKind, string> = {
-  ALLOW: CHART_COLORS.allow,
-  REVIEW_REQUIRED: CHART_COLORS.review,
-  BLOCK: CHART_COLORS.block,
-};
+function decisionColors(c: ChartColors): Record<PolicyDecisionKind, string> {
+  return { ALLOW: c.allow, REVIEW_REQUIRED: c.review, BLOCK: c.block };
+}
 
-function moneyAxis(currency: string) {
+function moneyAxis(currency: string, c: ChartColors) {
   return {
     type: "number" as const,
     position: "left" as const,
-    gridLine: { style: [{ stroke: CHART_COLORS.grid, lineDash: [] }] },
+    gridLine: { style: [{ stroke: c.grid, lineDash: [] }] },
     label: { formatter: ({ value }: { value: number }) => moneyTick(value, currency) },
   };
 }
 
 /** Count axis that never shows fractional ticks (e.g. "0.2 findings"). */
-function countAxis(position: "left" | "bottom", max: number) {
+function countAxis(position: "left" | "bottom", max: number, c: ChartColors) {
   return {
     type: "number" as const,
     position,
-    gridLine: { style: [{ stroke: CHART_COLORS.grid, lineDash: [] }] },
+    gridLine: { style: [{ stroke: c.grid, lineDash: [] }] },
     ...(max <= 10 ? { interval: { step: 1 } } : {}),
     label: { formatter: ({ value }: { value: number }) => (Number.isInteger(value) ? String(value) : "") },
   };
@@ -75,7 +73,7 @@ function useChartOptions(s: AnalyticsSummaryDto | undefined) {
       }),
     });
 
-    const spendByWeek: AgChartOptions = {
+    const spendByWeek = (c: ChartColors): AgChartOptions => ({
       data: weekly,
       series: [
         {
@@ -84,7 +82,7 @@ function useChartOptions(s: AnalyticsSummaryDto | undefined) {
           yKey: "captured",
           yName: "Captured",
           stacked: true,
-          fill: CHART_COLORS.series1,
+          fill: c.series1,
           cornerRadius: 4,
           tooltip: tooltipMoney("Captured"),
         },
@@ -94,16 +92,16 @@ function useChartOptions(s: AnalyticsSummaryDto | undefined) {
           yKey: "reserved",
           yName: "Reserved",
           stacked: true,
-          fill: CHART_COLORS.series2,
+          fill: c.series2,
           cornerRadius: 4,
           tooltip: tooltipMoney("Reserved"),
         },
       ],
-      axes: { x: { type: "category", position: "bottom" }, y: moneyAxis(cur) },
+      axes: { x: { type: "category", position: "bottom" }, y: moneyAxis(cur, c) },
       legend: { position: "top", enabled: true },
-    };
+    });
 
-    const spendByCategory: AgChartOptions = {
+    const spendByCategory = (c: ChartColors): AgChartOptions => ({
       data: byCategory,
       series: [
         {
@@ -112,16 +110,16 @@ function useChartOptions(s: AnalyticsSummaryDto | undefined) {
           xKey: "category",
           yKey: "captured",
           yName: "Captured spend",
-          fill: CHART_COLORS.series1,
+          fill: c.series1,
           cornerRadius: 4,
           tooltip: tooltipMoney("Captured"),
         },
       ],
-      axes: { x: { type: "category", position: "left" }, y: { ...moneyAxis(cur), position: "bottom" } },
+      axes: { x: { type: "category", position: "left" }, y: { ...moneyAxis(cur, c), position: "bottom" } },
       legend: { enabled: false },
-    };
+    });
 
-    const decisionsByKind: AgChartOptions = {
+    const decisionsByKind = (c: ChartColors): AgChartOptions => ({
       data: decisions,
       series: [
         {
@@ -131,16 +129,16 @@ function useChartOptions(s: AnalyticsSummaryDto | undefined) {
           yName: "Decisions",
           cornerRadius: 4,
           itemStyler: ({ datum }: { datum: { kind: PolicyDecisionKind } }) => ({
-            fill: lookup(DECISION_COLORS, datum.kind, CHART_COLORS.muted),
+            fill: lookup(decisionColors(c), datum.kind, c.muted),
           }),
-          label: { enabled: true, placement: "outside-end", color: CHART_COLORS.text },
+          label: { enabled: true, placement: "outside-end", color: c.text },
         },
       ],
-      axes: { x: { type: "category", position: "bottom" }, y: countAxis("left", Math.max(0, ...decisions.map((d) => d.count))) },
+      axes: { x: { type: "category", position: "bottom" }, y: countAxis("left", Math.max(0, ...decisions.map((d) => d.count)), c) },
       legend: { enabled: false },
-    };
+    });
 
-    const findingsByType: AgChartOptions = {
+    const findingsByType = (c: ChartColors): AgChartOptions => ({
       data: findings,
       series: [
         {
@@ -149,21 +147,21 @@ function useChartOptions(s: AnalyticsSummaryDto | undefined) {
           xKey: "type",
           yKey: "count",
           yName: "Findings",
-          fill: CHART_COLORS.series1,
+          fill: c.series1,
           cornerRadius: 4,
-          label: { enabled: true, placement: "outside-end", color: CHART_COLORS.text },
+          label: { enabled: true, placement: "outside-end", color: c.text },
         },
       ],
-      axes: { x: { type: "category", position: "left" }, y: countAxis("bottom", Math.max(0, ...findings.map((f) => f.count))) },
+      axes: { x: { type: "category", position: "left" }, y: countAxis("bottom", Math.max(0, ...findings.map((f) => f.count)), c) },
       legend: { enabled: false },
-    };
+    });
 
     return { weekly, byCategory, decisions, findings, spendByWeek, spendByCategory, decisionsByKind, findingsByType };
   }, [s]);
 }
 
 export function AnalyticsPage() {
-  const summary = useResource((signal) => api.analytics.summary({ signal }), []);
+  const summary = useResource((signal, { refresh }) => api.analytics.summary({ signal, fresh: refresh }), []);
   const s = summary.data;
   const charts = useChartOptions(s);
   const cur = s?.currency ?? "USD";
@@ -180,21 +178,17 @@ export function AnalyticsPage() {
         }
       />
 
-      {summary.error && !s ? <ErrorNotice error={summary.error} onRetry={summary.reload} /> : null}
-      <RefreshErrorNotice
-        error={summary.error}
+      <ResourceView
+        resource={summary}
         hasData={Boolean(s)}
-        updatedAt={summary.updatedAt}
-        onRetry={summary.reload}
         className="mb-6"
+        loading={
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <SkeletonCard lines={6} />
+            <SkeletonCard lines={6} />
+          </div>
+        }
       />
-
-      {!s && !summary.error ? (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <SkeletonCard lines={6} />
-          <SkeletonCard lines={6} />
-        </div>
-      ) : null}
 
       {s && charts ? (
         <div className="space-y-6">

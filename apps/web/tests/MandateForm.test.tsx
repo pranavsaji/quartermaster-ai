@@ -66,15 +66,41 @@ describe("MandateForm validation", () => {
   it("explains out-of-range and non-numeric values in words", () => {
     mockFetch({});
     const { save } = renderForm();
-    fireEvent.change(screen.getByRole("textbox", { name: "Duplicate window (hours)" }), { target: { value: "1000" } });
-    fireEvent.change(screen.getByRole("textbox", { name: "Max quantity × need" }), { target: { value: "lots" } });
-    fireEvent.change(screen.getByRole("textbox", { name: /Weekly budget/ }), { target: { value: "12.345" } });
+    const dupHours = screen.getByRole("textbox", { name: "Duplicate window (hours)" });
+    const qty = screen.getByRole("textbox", { name: "Max quantity × need" });
+    const weekly = screen.getByRole("textbox", { name: /Weekly budget/ });
+    fireEvent.change(dupHours, { target: { value: "1000" } });
+    fireEvent.change(qty, { target: { value: "lots" } });
+    fireEvent.change(weekly, { target: { value: "12.345" } });
     save();
 
-    expect(screen.getByText("Enter a value from 0 to 720.")).toBeInTheDocument();
-    expect(screen.getByText("Enter a number using digits, like 12 or 1.5.")).toBeInTheDocument();
-    expect(screen.getByText("Enter an amount in USD using digits only.")).toBeInTheDocument();
+    expect(dupHours).toHaveAccessibleDescription(expect.stringContaining("Enter a value from 0 to 720."));
+    expect(qty).toHaveAccessibleDescription(expect.stringContaining("Enter a number using digits, like 12 or 1.5."));
+    expect(weekly).toHaveAccessibleDescription(expect.stringContaining("Enter an amount in USD using digits only."));
     expect(screen.queryByText(/expected number|Too (big|small)/i)).not.toBeInTheDocument();
+  });
+
+  it("announces a summary of the problems and moves focus to the first invalid field", async () => {
+    mockFetch({});
+    const { save } = renderForm();
+    fireEvent.change(screen.getByRole("textbox", { name: "Certificate lifetime (minutes)" }), { target: { value: "" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Max premium over market (%)" }), { target: { value: "abc" } });
+    save();
+
+    const summary = screen.getByRole("alert");
+    expect(summary).toHaveTextContent("There are 2 problems to fix");
+    expect(summary).toHaveTextContent("This field is required.");
+    // Focus lands on the first invalid control in document order, not the last one edited.
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Max premium over market (%)" })).toHaveFocus());
+  });
+
+  it("focuses the summary when the only problem is a group of checkboxes", async () => {
+    mockFetch({});
+    const { save } = renderForm();
+    for (const name of ["Food packaging", "Cooking ingredients"]) fireEvent.click(screen.getByRole("checkbox", { name }));
+    save();
+    await waitFor(() => expect(screen.getByRole("alert").parentElement).toHaveFocus());
+    expect(screen.getByRole("alert")).toHaveTextContent("Select at least one category.");
   });
 
   it("reports cross-field limits and empty category groups on the group itself", () => {
@@ -84,7 +110,9 @@ describe("MandateForm validation", () => {
     for (const name of ["Food packaging", "Cooking ingredients"]) fireEvent.click(screen.getByRole("checkbox", { name }));
     save();
 
-    expect(screen.getByText("Per-order limit cannot exceed the weekly budget.")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: /Per-order limit/ })).toHaveAccessibleDescription(
+      expect.stringContaining("Per-order limit cannot exceed the weekly budget."),
+    );
     const group = screen.getByRole("group", { name: "Allowed categories" });
     expect(group).toHaveAccessibleDescription(expect.stringContaining("Select at least one category."));
   });

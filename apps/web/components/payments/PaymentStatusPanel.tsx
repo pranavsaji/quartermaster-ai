@@ -9,6 +9,7 @@ import { CopyValue } from "@/components/ui/CopyValue";
 import { Dialog } from "@/components/ui/Dialog";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Field, MoneyInput, Textarea } from "@/components/ui/Field";
+import { ErrorSummary, useErrorFocus } from "@/components/ui/FormErrors";
 import { Notice } from "@/components/ui/Notice";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import { Spinner } from "@/components/ui/Spinner";
@@ -185,6 +186,7 @@ function RefundDialog({
   const [amount, setAmount] = useState(() => minorToInput(maxMinor, payment.currency));
   const [reason, setReason] = useState("");
   const [errors, setErrors] = useState<{ amount?: string; reason?: string }>({});
+  const { containerRef, focusFirstError, attempt } = useErrorFocus();
   const refund = useAction(async (amountMinor: number | undefined) => {
     const res = await api.payments.refund(payment.id, { amount_minor: amountMinor, reason: reason.trim() });
     onPayment(res.payment);
@@ -199,7 +201,10 @@ function RefundDialog({
     }
     if (!reason.trim()) next.reason = "Say why you're refunding.";
     setErrors(next);
-    if (minor === null || Object.keys(next).length > 0) return;
+    if (minor === null || Object.keys(next).length > 0) {
+      focusFirstError();
+      return;
+    }
     void refund.run(minor === maxMinor ? undefined : minor);
   }
 
@@ -221,7 +226,7 @@ function RefundDialog({
         </>
       }
     >
-      <div className="space-y-4">
+      <div ref={containerRef} className="space-y-4">
         <Field label="Amount" required error={errors.amount}>
           {(control) => <MoneyInput {...control} currency={payment.currency} value={amount} onChange={(e) => setAmount(e.target.value)} />}
         </Field>
@@ -230,6 +235,7 @@ function RefundDialog({
             <Textarea {...control} value={reason} onChange={(e) => setReason(e.target.value)} maxLength={255} className="min-h-16" />
           )}
         </Field>
+        <ErrorSummary key={attempt} messages={[errors.amount, errors.reason]} />
         <ErrorNotice error={refund.error} />
       </div>
     </Dialog>

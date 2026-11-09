@@ -7,19 +7,19 @@ import { RequestList } from "@/components/procurement/RequestList";
 import { useSession } from "@/components/session/SessionProvider";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
-import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { LoadMore } from "@/components/ui/LoadMore";
 import { Notice } from "@/components/ui/Notice";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { RefreshErrorNotice } from "@/components/ui/RefreshErrorNotice";
+import { ResourceView } from "@/components/ui/ResourceView";
 import { api } from "@/lib/api";
-import { useResource } from "@/lib/hooks";
+import { usePagedResource } from "@/lib/hooks";
 
 function ProcurementContent() {
   const { user, config, can } = useSession();
   const router = useRouter();
   const params = useSearchParams();
   const composing = params.get("compose") === "1" && can("createRequest");
-  const requests = useResource((signal) => api.procurement.list({ limit: 100 }, { signal }), []);
+  const requests = usePagedResource((cursor, signal) => api.procurement.list({ limit: 100, cursor }, { signal }), []);
 
   return (
     <>
@@ -50,7 +50,11 @@ function ProcurementContent() {
 
       {composing ? (
         <div className="mt-4 mb-6">
-          <RequestComposer currency={user.organization.currency} onCancel={() => router.push("/procurement")} />
+          <RequestComposer
+            currency={user.organization.currency}
+            timeZone={user.organization.timezone}
+            onCancel={() => router.push("/procurement")}
+          />
         </div>
       ) : null}
 
@@ -65,18 +69,10 @@ function ProcurementContent() {
           }
         />
         <div className="p-3">
-          <RefreshErrorNotice
-            error={requests.error}
-            hasData={Boolean(requests.data)}
-            updatedAt={requests.updatedAt}
-            onRetry={requests.reload}
-            className="mb-3"
-          />
-          {requests.error && !requests.data ? (
-            <ErrorNotice error={requests.error} onRetry={requests.reload} />
-          ) : (
-            <RequestList requests={requests.data?.items} />
-          )}
+          <ResourceView resource={requests} hasData={Boolean(requests.items)}>
+            <RequestList requests={requests.items} />
+            <LoadMore state={requests} noun="requests" />
+          </ResourceView>
         </div>
       </Card>
     </>

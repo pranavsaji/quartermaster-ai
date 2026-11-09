@@ -1,4 +1,4 @@
-import type { HTMLAttributes, ReactNode } from "react";
+import type { HTMLAttributes, ReactNode, Ref } from "react";
 import { cn } from "./cn";
 
 export function Card({ className, children, ...rest }: HTMLAttributes<HTMLElement>) {
@@ -16,6 +16,7 @@ export function CardHeader({
   eyebrow,
   className,
   id,
+  headingRef,
 }: {
   title: ReactNode;
   description?: ReactNode;
@@ -24,12 +25,19 @@ export function CardHeader({
   className?: string;
   /** Used for aria-labelledby on the parent section. */
   id?: string;
+  /** Makes the heading a programmatic focus target (tabIndex -1), e.g. after "jump to this form". */
+  headingRef?: Ref<HTMLHeadingElement>;
 }) {
   return (
     <header className={cn("flex flex-wrap items-start justify-between gap-x-4 gap-y-2 border-b border-line px-5 py-4", className)}>
       <div className="min-w-0">
         {eyebrow ? <div className="mb-1">{eyebrow}</div> : null}
-        <h2 id={id} className="text-[15px] font-semibold tracking-[-0.01em] text-ink">
+        <h2
+          ref={headingRef}
+          id={id}
+          tabIndex={headingRef ? -1 : undefined}
+          className="text-[15px] font-semibold tracking-[-0.01em] text-ink"
+        >
           {title}
         </h2>
         {description ? <p className="mt-0.5 text-[13px] text-ink-3">{description}</p> : null}

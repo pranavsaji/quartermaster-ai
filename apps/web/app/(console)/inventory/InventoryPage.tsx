@@ -9,10 +9,9 @@ import { useSession } from "@/components/session/SessionProvider";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
-import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Notice } from "@/components/ui/Notice";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { RefreshErrorNotice } from "@/components/ui/RefreshErrorNotice";
+import { ResourceView } from "@/components/ui/ResourceView";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import { api } from "@/lib/api";
 import { useResource } from "@/lib/hooks";
@@ -88,18 +87,9 @@ export function InventoryPage() {
             }
           />
           <div className="p-3">
-            <RefreshErrorNotice
-              error={inventory.error}
-              hasData={Boolean(items)}
-              updatedAt={inventory.updatedAt}
-              onRetry={inventory.reload}
-              className="mb-3"
-            />
-            {inventory.error && !items ? (
-              <ErrorNotice error={inventory.error} onRetry={inventory.reload} />
-            ) : (
+            <ResourceView resource={inventory} hasData={Boolean(items)}>
               <InventoryGrid items={items} canAdjust={can("adjustInventory")} onAdjust={onAdjust} />
-            )}
+            </ResourceView>
           </div>
         </Card>
 

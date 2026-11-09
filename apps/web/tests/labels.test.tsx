@@ -4,7 +4,28 @@ import { describe, expect, it } from "vitest";
 import { AgentTimeline } from "@/components/procurement/AgentTimeline";
 import { MarketEvidence } from "@/components/procurement/MarketEvidence";
 import { StatusBadge } from "@/components/ui/Badge";
-import { lookup, PO_STATUS_TONES } from "@/lib/labels";
+import { plural } from "@/lib/format";
+import { categoryLabel, findingLabel, lookup, PO_STATUS_TONES, stockSeverity } from "@/lib/labels";
+
+describe("label helpers", () => {
+  it("never return an inherited property for prototype keys", () => {
+    expect(categoryLabel("constructor")).toBe("constructor");
+    expect(findingLabel("toString")).toBe("toString");
+    expect(categoryLabel("food_packaging")).toBe("Food packaging");
+    expect(findingLabel("PROMPT_INJECTION")).toBe("Prompt injection");
+  });
+
+  it("orders stock status most urgent first, unknown statuses last", () => {
+    const sorted = ["OK", "MYSTERY", "LOW", "OUT", "CRITICAL"].sort((a, b) => stockSeverity(a) - stockSeverity(b));
+    expect(sorted).toEqual(["OUT", "CRITICAL", "LOW", "OK", "MYSTERY"]);
+  });
+
+  it("pluralises counts", () => {
+    expect(plural(1, "product")).toBe("1 product");
+    expect(plural(3, "product")).toBe("3 products");
+    expect(plural(1200, "item")).toBe("1,200 items");
+  });
+});
 
 describe("lookup", () => {
   it("returns the mapped value or the fallback, never an inherited property", () => {

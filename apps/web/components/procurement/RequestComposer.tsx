@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardFooter, CardHeader } from "@/components/ui/Card";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Checkbox, Field, Input, MoneyInput, Textarea } from "@/components/ui/Field";
+import { ErrorSummary, useErrorFocus } from "@/components/ui/FormErrors";
 import { api } from "@/lib/api";
 import { inputToMinor, todayIso } from "@/lib/format";
 import { useAction } from "@/lib/hooks";
@@ -15,7 +16,17 @@ import { useAction } from "@/lib/hooks";
 /** An example, shown as a placeholder: the owner's request starts empty rather than pre-written. */
 const EXAMPLE_INSTRUCTION = "e.g. We're expecting a busy weekend. Restock takeaway containers and cooking oil without exceeding $300.";
 
-export function RequestComposer({ currency, onCancel }: { currency: string; onCancel?: () => void }) {
+export function RequestComposer({
+  currency,
+  timeZone,
+  onCancel,
+}: {
+  currency: string;
+  /** The organisation's IANA zone: "today" is the restaurant's today. */
+  timeZone?: string;
+  onCancel?: () => void;
+}) {
+  const today = todayIso(timeZone);
   const router = useRouter();
   const [instruction, setInstruction] = useState("");
   const [budget, setBudget] = useState("");
@@ -24,6 +35,7 @@ export function RequestComposer({ currency, onCancel }: { currency: string; onCa
   const [multiplier, setMultiplier] = useState(1.25);
   const [allowAlternatives, setAllowAlternatives] = useState(true);
   const [errors, setErrors] = useState<{ instruction?: string; budget?: string; requiredBy?: string }>({});
+  const { containerRef, focusFirstError, attempt } = useErrorFocus<HTMLFormElement>();
 
   const create = useAction(async (body: CreateProcurementRequest) => {
     const created = await api.procurement.create(body);
@@ -35,7 +47,7 @@ export function RequestComposer({ currency, onCancel }: { currency: string; onCa
     const next: typeof errors = {};
     const budgetMinor = budget.trim() === "" ? undefined : inputToMinor(budget, currency);
     if (budgetMinor === null) next.budget = "Enter an amount like 300 or 299.99.";
-    if (requiredBy && requiredBy < todayIso()) next.requiredBy = "Pick today or a future date.";
+    if (requiredBy && requiredBy < today) next.requiredBy = "Pick today or a future date.";
 
     const parsed = CreateProcurementRequest.safeParse({
       instruction: instruction.trim(),
@@ -54,13 +66,16 @@ export function RequestComposer({ currency, onCancel }: { currency: string; onCa
       }
     }
     setErrors(next);
-    if (Object.keys(next).length > 0 || !parsed.success) return;
+    if (Object.keys(next).length > 0 || !parsed.success) {
+      focusFirstError();
+      return;
+    }
     void create.run(parsed.data);
   }
 
   return (
     <Card aria-labelledby="composer-title">
-      <form onSubmit={submit} noValidate>
+      <form ref={containerRef} onSubmit={submit} noValidate>
         <CardHeader
           id="composer-title"
           title="New procurement request"
@@ -76,7 +91,7 @@ export function RequestComposer({ currency, onCancel }: { currency: string; onCa
                 placeholder={EXAMPLE_INSTRUCTION}
                 maxLength={2000}
                 rows={3}
-                className="text-[14px]"
+                className="text-[14px] leading-relaxed"
               />
             )}
           </Field>
@@ -98,7 +113,7 @@ export function RequestComposer({ currency, onCancel }: { currency: string; onCa
                 <Input
                   {...control}
                   type="date"
-                  min={todayIso()}
+                  min={today}
                   value={requiredBy}
                   onChange={(e) => setRequiredBy(e.target.value)}
                   className="tnum"
@@ -128,6 +143,7 @@ export function RequestComposer({ currency, onCancel }: { currency: string; onCa
             onChange={(e) => setAllowAlternatives(e.target.checked)}
           />
 
+          <ErrorSummary key={attempt} messages={[errors.instruction, errors.budget, errors.requiredBy]} />
           <ErrorNotice error={create.error} />
         </CardBody>
         <CardFooter className="justify-end">

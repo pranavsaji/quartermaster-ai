@@ -16,17 +16,22 @@ export function minorToInput(minor: number, currency = "USD"): string {
   return (minor / 10 ** exp).toFixed(exp);
 }
 
+/** Digits with optional thousands separators in the right places ("1,234,567"), then optional decimals. */
+const GROUPED_AMOUNT = /^(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d*))?$/;
+
 /**
  * Dollars typed by a user -> integer minor units. Returns null for invalid input
- * (negative, non-numeric, or more decimals than the currency allows).
+ * (negative, non-numeric, or more decimals than the currency allows). Commas are
+ * accepted only as thousands separators: "1,234.50" is fine, but "12,50" (a
+ * decimal comma) is rejected rather than read as 1,250.
  */
 export function inputToMinor(value: string, currency = "USD"): number | null {
   const exp = safeExponent(currency);
-  const trimmed = value.trim().replace(/[$,\s]/g, "");
+  const trimmed = value.trim().replace(/^\$\s*/, "");
   if (trimmed === "") return null;
-  const match = /^(\d+)(?:\.(\d*))?$/.exec(trimmed);
+  const match = GROUPED_AMOUNT.exec(trimmed);
   if (!match) return null;
-  const whole = match[1] ?? "0";
+  const whole = (match[1] ?? "0").replace(/,/g, "");
   const frac = match[2] ?? "";
   if (frac.length > exp) return null;
   const minor = Number(`${whole}${frac.padEnd(exp, "0")}`);
@@ -75,10 +80,6 @@ export function num(value: number | null | undefined, digits?: number): string {
     return new Intl.NumberFormat("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(value);
   }
   return numberFmt.format(value);
-}
-
-export function pct(value: number, digits = 0): string {
-  return `${(value * 100).toFixed(digits)}%`;
 }
 
 /** "Forecast assumes 25% busier than normal" style phrasing for a demand multiplier. */
@@ -164,17 +165,30 @@ export function truncateMiddle(value: string, head = 14, tail = 8): string {
   return `${value.slice(0, head)}…${value.slice(-tail)}`;
 }
 
+/** "1 product", "3 products". English-only, like the rest of the console. */
+export function plural(count: number, singular: string, pluralForm = `${singular}s`): string {
+  return `${num(count)} ${count === 1 ? singular : pluralForm}`;
+}
+
 /** SCREAMING_SNAKE -> "Screaming snake". */
 export function humanize(code: string): string {
   const s = code.replace(/[_-]+/g, " ").trim().toLowerCase();
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-export function todayIso(offsetDays = 0): string {
-  const d = new Date();
-  d.setDate(d.getDate() + offsetDays);
-  const y = d.getFullYear();
-  const m = (d.getMonth() + 1).toString().padStart(2, "0");
-  const day = d.getDate().toString().padStart(2, "0");
-  return `${y}-${m}-${day}`;
+/**
+ * Today's calendar date (YYYY-MM-DD) in `timeZone` — the organisation's, so a
+ * manager in another zone (or a laptop on UTC) sees the restaurant's "today" for
+ * date pickers and "not in the past" checks. Falls back to the browser's zone
+ * when none (or an unknown one) is given.
+ */
+export function todayIso(timeZone?: string, now: Date | number = Date.now()): string {
+  let parts: Intl.DateTimeFormatPart[];
+  try {
+    parts = new Intl.DateTimeFormat("en-US", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(now);
+  } catch {
+    parts = new Intl.DateTimeFormat("en-US", { year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(now);
+  }
+  const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
 }

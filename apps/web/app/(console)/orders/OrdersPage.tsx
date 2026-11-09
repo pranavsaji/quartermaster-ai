@@ -1,7 +1,7 @@
 "use client";
 
-import type { DeliveryDto, InvoiceDto, PurchaseOrderDto } from "@qm/contracts";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { PO_STATUSES, type DeliveryDto, type InvoiceDto, type PurchaseOrderDto } from "@qm/contracts";
+import { useCallback, useMemo, useState } from "react";
 import { DelayDialog, ReceiveDialog, type DeliveryTarget } from "@/components/orders/DeliveryDialogs";
 import { InvoiceForm, type InvoicePrefill } from "@/components/orders/InvoiceForm";
 import { InvoicesGrid } from "@/components/orders/InvoicesGrid";
@@ -10,21 +10,27 @@ import { useSession } from "@/components/session/SessionProvider";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { LoadMore } from "@/components/ui/LoadMore";
 import { Notice } from "@/components/ui/Notice";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { RefreshErrorNotice } from "@/components/ui/RefreshErrorNotice";
+import { ResourceView } from "@/components/ui/ResourceView";
 import { SkeletonCard } from "@/components/ui/Skeleton";
 import { SourceLabel } from "@/components/ui/SourceLabel";
-import { api, fetchAllPages } from "@/lib/api";
+import { api } from "@/lib/api";
 import { date, humanize } from "@/lib/format";
-import { useResource } from "@/lib/hooks";
+import { usePagedResource, useResource } from "@/lib/hooks";
 
 /** Proposals that never became orders; they live on the procurement pages. */
 const NOT_ORDERS = new Set<PurchaseOrderDto["status"]>(["PROPOSED", "BLOCKED", "SUPERSEDED"]);
+/** Every other status, asked of the API so proposals never take up a page of orders. */
+const ORDER_STATUSES = PO_STATUSES.filter((s) => !NOT_ORDERS.has(s));
 
 export function OrdersPage() {
   const { user, can } = useSession();
-  const orders = useResource((signal) => fetchAllPages((cursor) => api.purchaseOrders.list({ limit: 100, cursor }, { signal })), []);
+  const orders = usePagedResource(
+    (cursor, signal) => api.purchaseOrders.list({ limit: 100, cursor, statuses: ORDER_STATUSES }, { signal }),
+    [],
+  );
   const deliveries = useResource((signal) => api.deliveries.list({ signal }), []);
   const invoices = useResource((signal) => api.invoices.list({ signal }), []);
   const suppliers = useResource((signal) => api.suppliers.list({ signal }), []);
@@ -32,9 +38,8 @@ export function OrdersPage() {
   const [delaying, setDelaying] = useState<DeliveryTarget | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [invoicePrefill, setInvoicePrefill] = useState<InvoicePrefill | null>(null);
-  const invoiceSection = useRef<HTMLDivElement>(null);
 
-  const placedOrders = useMemo(() => orders.data?.filter((po) => !NOT_ORDERS.has(po.status)), [orders.data]);
+  const placedOrders = useMemo(() => orders.items?.filter((po) => !NOT_ORDERS.has(po.status)), [orders.items]);
   const rows = useMemo<OrderRow[] | undefined>(() => {
     if (!placedOrders) return undefined;
     const byPo = new Map((deliveries.data?.items ?? []).map((d) => [d.purchase_order_id, d]));
@@ -44,10 +49,8 @@ export function OrdersPage() {
   const targetOf = (row: OrderRow): DeliveryTarget | null => (row.delivery_view ? { po: row, delivery: row.delivery_view } : null);
   const onReceive = useCallback((row: OrderRow) => setReceiving(targetOf(row)), []);
   const onDelay = useCallback((row: OrderRow) => setDelaying(targetOf(row)), []);
-  const onInvoice = useCallback((row: OrderRow) => {
-    setInvoicePrefill((prev) => ({ po: row, seq: (prev?.seq ?? 0) + 1 }));
-    invoiceSection.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, []);
+  // InvoiceForm scrolls itself into view (respecting reduced motion) and takes focus.
+  const onInvoice = useCallback((row: OrderRow) => setInvoicePrefill((prev) => ({ po: row, seq: (prev?.seq ?? 0) + 1 })), []);
 
   const setDeliveries = deliveries.setData;
   const reloadOrders = orders.reload;
@@ -70,7 +73,7 @@ export function OrdersPage() {
   );
 
   const supplierNames = useMemo(() => new Map((suppliers.data?.items ?? []).map((s) => [s.id, s.name])), [suppliers.data]);
-  const poNumbers = useMemo(() => new Map((orders.data ?? []).map((o) => [o.id, o.number])), [orders.data]);
+  const poNumbers = useMemo(() => new Map((orders.items ?? []).map((o) => [o.id, o.number])), [orders.items]);
 
   return (
     <>
@@ -111,23 +114,9 @@ export function OrdersPage() {
             }
           />
           <div className="p-3">
-            <RefreshErrorNotice
-              error={orders.error}
-              hasData={Boolean(orders.data)}
-              updatedAt={orders.updatedAt}
-              onRetry={orders.reload}
-              className="mb-3"
-            />
-            <RefreshErrorNotice
-              error={deliveries.error}
-              hasData={Boolean(deliveries.data)}
-              updatedAt={deliveries.updatedAt}
-              onRetry={deliveries.reload}
-              className="mb-3"
-            />
-            {orders.error && !orders.data ? (
-              <ErrorNotice error={orders.error} onRetry={orders.reload} />
-            ) : (
+            {/* Deliveries only decorate the orders: their failure is reported without hiding the grid. */}
+            <ResourceView resource={deliveries} hasData={Boolean(deliveries.data)} errorTitle="Couldn't load deliveries" />
+            <ResourceView resource={orders} hasData={Boolean(orders.items)}>
               <OrdersGrid
                 rows={rows}
                 canManage={can("manageDeliveries")}
@@ -136,20 +125,19 @@ export function OrdersPage() {
                 onDelay={onDelay}
                 onInvoice={onInvoice}
               />
-            )}
-            {deliveries.error && !deliveries.data ? (
-              <ErrorNotice error={deliveries.error} onRetry={deliveries.reload} title="Couldn't load deliveries" className="mt-3" />
-            ) : null}
+              <LoadMore state={orders} noun="orders" />
+            </ResourceView>
           </div>
         </Card>
 
-        <div ref={invoiceSection} className="scroll-mt-20">
+        <div>
           {can("analyzeInvoices") ? (
             suppliers.data && placedOrders ? (
               <InvoiceForm
                 suppliers={suppliers.data.items}
                 orders={placedOrders}
                 currency={user.organization.currency}
+                timeZone={user.organization.timezone}
                 prefill={invoicePrefill}
                 onAnalyzed={onAnalyzed}
               />
@@ -166,24 +154,17 @@ export function OrdersPage() {
         <Card aria-labelledby="invoices-title">
           <CardHeader id="invoices-title" title="Invoices" description="Every analyzed invoice, with its match result." />
           <div className="p-3">
-            <RefreshErrorNotice
-              error={invoices.error}
-              hasData={Boolean(invoices.data)}
-              updatedAt={invoices.updatedAt}
-              onRetry={invoices.reload}
-              className="mb-3"
-            />
-            {invoices.error && !invoices.data ? (
-              <ErrorNotice error={invoices.error} onRetry={invoices.reload} />
-            ) : (
+            <ResourceView resource={invoices} hasData={Boolean(invoices.data)}>
               <InvoicesGrid invoices={invoices.data?.items} supplierNames={supplierNames} poNumbers={poNumbers} />
-            )}
+            </ResourceView>
           </div>
         </Card>
       </div>
 
       {receiving ? <ReceiveDialog target={receiving} onClose={() => setReceiving(null)} onDone={onDeliveryUpdated} /> : null}
-      {delaying ? <DelayDialog target={delaying} onClose={() => setDelaying(null)} onDone={onDeliveryUpdated} /> : null}
+      {delaying ? (
+        <DelayDialog target={delaying} timeZone={user.organization.timezone} onClose={() => setDelaying(null)} onDone={onDeliveryUpdated} />
+      ) : null}
     </>
   );
 }

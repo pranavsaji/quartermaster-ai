@@ -7,10 +7,10 @@ import { DecisionsGrid } from "@/components/security/DecisionsGrid";
 import { FindingsGrid } from "@/components/security/FindingsGrid";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Select } from "@/components/ui/Field";
+import { LoadMore } from "@/components/ui/LoadMore";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { RefreshErrorNotice } from "@/components/ui/RefreshErrorNotice";
+import { ResourceView } from "@/components/ui/ResourceView";
 import { StatTile } from "@/components/ui/StatTile";
 import { tabPanelProps, Tabs } from "@/components/ui/Tabs";
 import { api } from "@/lib/api";
@@ -18,20 +18,6 @@ import { num } from "@/lib/format";
 import { usePagedResource, useResource, type PagedState } from "@/lib/hooks";
 
 type Tab = "findings" | "decisions" | "audit";
-
-function LoadMore<T>({ state }: { state: PagedState<T> }) {
-  if (!state.hasMore && !state.moreError) return null;
-  return (
-    <div className="mt-3 flex flex-col items-center gap-2">
-      {state.moreError ? <ErrorNotice error={state.moreError} title="Couldn't load more" className="w-full" /> : null}
-      {state.hasMore ? (
-        <Button variant="secondary" size="sm" onClick={state.loadMore} loading={state.loadingMore}>
-          {state.moreError ? "Try loading more again" : "Load more"}
-        </Button>
-      ) : null}
-    </div>
-  );
-}
 
 /**
  * Rows currently loaded. The API returns no totals for these lists, so when
@@ -46,7 +32,7 @@ export function SecurityPage() {
   const idBase = useId();
   const [tab, setTab] = useState<Tab>("findings");
   const [severity, setSeverity] = useState<Severity | "">("");
-  const summary = useResource((signal) => api.analytics.summary({ signal }), []);
+  const summary = useResource((signal, { refresh }) => api.analytics.summary({ signal, fresh: refresh }), []);
   const findings = usePagedResource(
     (cursor, signal) => api.security.events({ limit: 100, cursor, severity: severity || undefined }, { signal }),
     [severity],
@@ -143,21 +129,10 @@ export function SecurityPage() {
               </div>
             </div>
           ) : null}
-          <RefreshErrorNotice
-            error={active.state.error}
-            hasData={Boolean(active.state.items) && !active.state.stale}
-            updatedAt={active.state.updatedAt}
-            onRetry={active.state.reload}
-            className="mb-3"
-          />
-          {active.state.error && (!active.state.items || active.state.stale) ? (
-            <ErrorNotice error={active.state.error} onRetry={active.state.reload} />
-          ) : (
-            <>
-              {active.node}
-              {active.state.stale ? null : <LoadMore state={active.state} />}
-            </>
-          )}
+          <ResourceView resource={active.state} hasData={Boolean(active.state.items) && !active.state.stale}>
+            {active.node}
+            <LoadMore state={active.state} noun={tab === "audit" ? "events" : tab === "decisions" ? "decisions" : "findings"} />
+          </ResourceView>
         </div>
       </Card>
     </>

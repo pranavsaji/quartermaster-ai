@@ -5,6 +5,7 @@ import type { CustomCellRendererProps } from "ag-grid-react";
 import type { AuditChainVerificationDto, AuditEventDto } from "@qm/contracts";
 import { useMemo, useState } from "react";
 import { DataGrid } from "@/components/grid/DataGrid";
+import { useSession } from "@/components/session/SessionProvider";
 import { dateTimeColumn, rightCell } from "@/components/grid/columns";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -22,6 +23,8 @@ const ACTOR_TONES = { USER: "accent", SYSTEM: "neutral", AGENT: "info", PAYPAL: 
  * previous event's hash, so any edit or deletion breaks verification.
  */
 export function AuditLog({ events }: { events: AuditEventDto[] | undefined }) {
+  const { can } = useSession();
+  const canVerify = can("verifyAudit");
   const [result, setResult] = useState<{ verification: AuditChainVerificationDto; at: string } | null>(null);
   const verify = useAction(async () => {
     const verification = await api.security.verifyAudit();
@@ -86,12 +89,18 @@ export function AuditLog({ events }: { events: AuditEventDto[] | undefined }) {
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-3">
-        <Button variant="primary" onClick={() => void verify.run()} loading={verify.pending}>
-          Verify audit chain
-        </Button>
-        <span className="text-[12.5px] text-ink-3">Recomputes every hash on the server and checks each link to its predecessor.</span>
-      </div>
+      {canVerify ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <Button variant="primary" onClick={() => void verify.run()} loading={verify.pending}>
+            Verify audit chain
+          </Button>
+          <span className="text-[12.5px] text-ink-3">Recomputes every hash on the server and checks each link to its predecessor.</span>
+        </div>
+      ) : (
+        <p className="text-[12.5px] text-ink-3">
+          Managers and owners can re-verify the audit chain. You can still read every event and its hash below.
+        </p>
+      )}
       <ErrorNotice error={verify.error} title="Verification failed to run" />
       {result ? (
         result.verification.valid ? (

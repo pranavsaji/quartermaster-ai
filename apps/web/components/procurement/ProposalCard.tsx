@@ -7,6 +7,7 @@ import {
   type PaymentDto,
   type PurchaseOrderDto,
 } from "@qm/contracts";
+import { useEffect, useRef, useState } from "react";
 import { PayPalCheckout } from "@/components/payments/PayPalCheckout";
 import { PaymentStatusPanel } from "@/components/payments/PaymentStatusPanel";
 import { useSession } from "@/components/session/SessionProvider";
@@ -24,6 +25,7 @@ import { useNow } from "@/lib/hooks";
 import { PO_STATUS_TONES } from "@/lib/labels";
 import { ApprovalForm } from "./ApprovalForm";
 import { ProposalLines } from "./ProposalLines";
+import { RejectDialog } from "./RejectDialog";
 
 const SETTLED_OR_SETTLING = new Set<PaymentDto["status"]>([...SETTLED_PAYMENT_STATUSES, "CAPTURE_PENDING"]);
 
@@ -53,6 +55,18 @@ export function ProposalCard({
   const approvable = isApprovable(po);
   const cert = po.certificate;
   const certUsable = cert !== null && cert.status === "ACTIVE" && countdown(cert.expires_at, now) !== null;
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const [rejectOpen, setRejectOpen] = useState(false);
+
+  // Approving or rejecting removes the approval form, and with it the focused button. Put focus
+  // on this card's title instead of letting it fall back to the top of the page.
+  const wasApprovable = useRef(approvable);
+  useEffect(() => {
+    const lostFocus = !document.activeElement || document.activeElement === document.body;
+    if (wasApprovable.current && !approvable && lostFocus) titleRef.current?.focus();
+    wasApprovable.current = approvable;
+  }, [approvable]);
+
   const payable =
     cert !== null &&
     (po.status === "APPROVED" || po.status === "PAYMENT_PENDING") &&
@@ -89,7 +103,7 @@ export function ProposalCard({
       <header className="flex flex-wrap items-start justify-between gap-3 border-b border-line px-5 py-4">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 id={`po-${po.id}-title`} className="text-[15px] font-semibold text-ink">
+            <h3 ref={titleRef} id={`po-${po.id}-title`} tabIndex={-1} className="text-[15px] font-semibold text-ink">
               {po.supplier_name}
             </h3>
             <StatusBadge status={po.status} tones={PO_STATUS_TONES} kind="Proposal" />
@@ -130,7 +144,7 @@ export function ProposalCard({
         )}
 
         {approvable && can("approve") ? (
-          <ApprovalForm requestId={requestId} po={po} onApproved={handleApproved} onRejected={onRejected} />
+          <ApprovalForm key={decision?.id} requestId={requestId} po={po} onApproved={handleApproved} onReject={() => setRejectOpen(true)} />
         ) : null}
         {approvable && !can("approve") ? (
           <Notice tone="info" title="Awaiting owner approval">
@@ -163,6 +177,18 @@ export function ProposalCard({
 
         {po.payment ? <PaymentStatusPanel payment={po.payment} delivery={po.delivery} onPayment={handlePayment} /> : null}
       </div>
+
+      {rejectOpen ? (
+        <RejectDialog
+          requestId={requestId}
+          purchaseOrderId={po.id}
+          title={`Reject ${po.number}?`}
+          description={`Only this ${po.supplier_name} cart is rejected; other proposals on the request stay open. The reason is recorded in the audit log.`}
+          confirmLabel="Reject proposal"
+          onClose={() => setRejectOpen(false)}
+          onRejected={onRejected}
+        />
+      ) : null}
     </article>
   );
 }
