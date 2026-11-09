@@ -108,8 +108,12 @@ function NavDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
     const desktop = window.matchMedia("(min-width: 64rem)");
     const onResize = () => desktop.matches && onCloseEvent();
     desktop.addEventListener("change", onResize);
+    // A click on the dialog element itself is a click on the backdrop (Escape covers keyboards).
+    const onBackdropClick = (e: MouseEvent) => e.target === el && onCloseEvent();
+    el.addEventListener("click", onBackdropClick);
     return () => {
       desktop.removeEventListener("change", onResize);
+      el.removeEventListener("click", onBackdropClick);
       if (el.open) el.close();
       if (opener?.isConnected) opener.focus();
     };
@@ -123,10 +127,6 @@ function NavDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
       onCancel={(e) => {
         e.preventDefault();
         onClose();
-      }}
-      onClick={(e) => {
-        // A click on the dialog element itself is a click on the backdrop.
-        if (e.target === ref.current) onClose();
       }}
       className="m-0 h-dvh max-h-dvh w-72 max-w-[85vw] bg-canvas p-0 shadow-[var(--shadow-pop)] lg:hidden"
     >

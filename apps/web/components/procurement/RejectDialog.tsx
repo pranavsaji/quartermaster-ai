@@ -71,6 +71,8 @@ export function RejectDialog({
     >
       <Field label="Reason" required>
         {(control) => (
+          // Inside a modal dialog autofocus is the HTML-recommended way to pick the initial focus.
+          // eslint-disable-next-line jsx-a11y/no-autofocus
           <Textarea {...control} value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} autoFocus />
         )}
       </Field>

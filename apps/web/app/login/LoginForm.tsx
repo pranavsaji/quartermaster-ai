@@ -59,7 +59,6 @@ export function LoginForm() {
             {...control}
             type="email"
             autoComplete="username"
-            autoFocus
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder={SHOW_DEMO_ACCOUNTS ? "owner@demo.quartermaster.dev" : "you@restaurant.com"}

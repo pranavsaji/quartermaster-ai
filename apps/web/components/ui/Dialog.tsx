@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, type ReactNode } from "react";
+import { useEffect, useEffectEvent, useId, useRef, type ReactNode } from "react";
 import { cn } from "./cn";
 
 /**
@@ -31,13 +31,18 @@ export function Dialog({
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   const descId = useId();
+  const close = useEffectEvent(onClose);
 
   useEffect(() => {
     const el = ref.current;
     if (!el || !open) return;
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     if (!el.open) el.showModal();
+    // A click on the dialog element itself is a click on its backdrop (Escape covers keyboards).
+    const onBackdropClick = (e: MouseEvent) => e.target === el && close();
+    el.addEventListener("click", onBackdropClick);
     return () => {
+      el.removeEventListener("click", onBackdropClick);
       if (el.open) el.close();
       if (opener?.isConnected) opener.focus();
     };
@@ -52,10 +57,6 @@ export function Dialog({
       onCancel={(e) => {
         e.preventDefault();
         onClose();
-      }}
-      onClick={(e) => {
-        // Click on the backdrop (the dialog element itself) closes it.
-        if (e.target === ref.current) onClose();
       }}
       className={cn(
         "m-auto w-[calc(100%-2rem)] rounded-xl border border-line bg-surface p-0 text-ink shadow-[var(--shadow-pop)]",
