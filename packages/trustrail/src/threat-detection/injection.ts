@@ -104,7 +104,10 @@ const RULES: Rule[] = [
  * (U+FE00–FE0F, U+E0100–E01EF), Hangul and Khmer fillers, and C0/C1 controls other than
  * whitespace.
  */
-const INVISIBLE = /[\p{Cf}͏︀-️\u{E0100}-\u{E01EF}ᅟᅠㅤﾠ឴឵\u0000-\u0008\u000E-\u001F\u007F-\u009F]/gu;
+// Written with escapes so every character is visible in review. Control characters are matched on
+// purpose: they are stripped from untrusted text.
+// eslint-disable-next-line no-control-regex, no-misleading-character-class -- deliberate: Hangul fillers are listed individually
+const INVISIBLE = /[\p{Cf}\u034F\uFE00-\uFE0F\u{E0100}-\u{E01EF}\u115F\u1160\u3164\uFFA0\u17B4\u17B5\u0000-\u0008\u000E-\u001F\u007F-\u009F]/gu;
 
 /** Unicode tag characters U+E0020–E007E mirror printable ASCII and are invisible ("ASCII smuggling"). */
 const TAG_CHARS = /[\u{E0020}-\u{E007E}]/gu;
