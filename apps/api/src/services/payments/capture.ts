@@ -24,6 +24,13 @@ import {
   transitionPayment,
 } from "./shared";
 
+/**
+ * PayPal-Request-Id for a capture. Stable while the outcome is unknown (so retries are idempotent)
+ * and new after a definitive rejection (so PayPal does not replay that rejection).
+ */
+export const captureRequestId = (paymentId: string, attempt: number) =>
+  attempt === 0 ? `qm-capture-${paymentId}` : `qm-capture-${paymentId}-${attempt}`;
+
 /** A capture is treated as in progress (not abandoned) for this long after it was authorised. */
 const CAPTURE_IN_PROGRESS_MS = 60_000;
 const BUYER_FIXABLE = new Set(["INSTRUMENT_DECLINED", "PAYER_ACTION_REQUIRED"]);
@@ -58,11 +65,11 @@ export async function capturePayment(ctx: AppContext, actor: Actor, paymentId: s
     return paymentResult(ctx, actor.organizationId, initial.id);
   }
 
-  await authorizeCapture(ctx, actor, paymentId, paypalOrderId, providerOrder);
+  const attempt = await authorizeCapture(ctx, actor, paymentId, paypalOrderId, providerOrder);
 
   let captured: PayPalOrder;
   try {
-    captured = await ctx.paypal.captureOrder(paypalOrderId, `qm-capture-${paymentId}`);
+    captured = await ctx.paypal.captureOrder(paypalOrderId, captureRequestId(paymentId, attempt));
   } catch (err) {
     return handleCaptureError(ctx, actor, paymentId, err);
   }
@@ -87,8 +94,8 @@ async function authorizeCapture(
   paymentId: string,
   paypalOrderId: string,
   providerOrder: PayPalOrder,
-): Promise<void> {
-  await withDeferredFailures(ctx, () =>
+): Promise<number> {
+  return withDeferredFailures(ctx, () =>
     ctx.db.transaction(async (tx) => {
       const now = ctx.now();
       // Lock order: mandate (shared) → payment → certificate. A concurrent mandate update takes
@@ -176,6 +183,7 @@ async function authorizeCapture(
         entityId: payment.id,
         data: { paypal_order_id: paypalOrderId, policy_decision_id: ev.decisionId },
       });
+      return payment.captureAttempt;
     }),
   );
 }
@@ -200,7 +208,8 @@ async function handleCaptureError(ctx: AppContext, actor: Actor, paymentId: stri
       tx,
       p,
       "ORDER_CREATED",
-      { failureCode: code, failureMessage: failureMessageFor(code) },
+      // A new attempt gets a new PayPal-Request-Id: PayPal may replay a cached rejection otherwise.
+      { failureCode: code, failureMessage: failureMessageFor(code), captureAttempt: p.captureAttempt + 1 },
       ctx.now(),
       "CAPTURE_REJECTED",
     );
