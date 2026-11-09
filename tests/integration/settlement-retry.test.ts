@@ -51,4 +51,18 @@ describe("capture", () => {
       h.ctx.db.transaction = realTransaction;
     }
   });
+
+  it("reports a definitive PayPal rejection as 422 and lets the buyer try again", async () => {
+    const o = await approvedOrder();
+    h.paypal.approve(o.paypalOrderId);
+    h.paypal.rejectNextCaptureIssue = "TRANSACTION_REFUSED";
+    const res = await owner.post(`/payments/${o.paymentId}/capture`, { paypal_order_id: o.paypalOrderId });
+    expect(res.status).toBe(422);
+    expect(res.body.error).toMatchObject({ code: "PAYPAL_CAPTURE_REJECTED", details: { paypal_issue: "TRANSACTION_REFUSED" } });
+    const p = (await owner.get(`/payments/${o.paymentId}`)).body;
+    expect(p.status).toBe("ORDER_CREATED");
+    expect(p.failure_code).toBe("TRANSACTION_REFUSED");
+    const retry = await owner.post(`/payments/${o.paymentId}/capture`, { paypal_order_id: o.paypalOrderId });
+    expect(retry.body.payment.status).toBe("COMPLETED");
+  });
 });

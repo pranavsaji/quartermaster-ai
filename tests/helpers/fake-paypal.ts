@@ -21,6 +21,8 @@ export class FakePayPal {
   /** Next capture: perform it but drop the response (simulated network loss). */
   dropNextCaptureResponse = false;
   declineNextCapture = false;
+  /** Next capture: PayPal refuses it with this issue (nothing is captured). */
+  rejectNextCaptureIssue: string | null = null;
   /** Next capture: fail with a network error before PayPal processes anything. */
   failNextCaptureBeforeProcessing = false;
   /** Next capture: perform it, then answer 500 (PayPal processed it but reported an error). */
@@ -130,8 +132,14 @@ export class FakePayPal {
         this.failNextCaptureBeforeProcessing = false;
         throw new TypeError("fetch failed: ETIMEDOUT");
       }
+      if (this.rejectNextCaptureIssue) {
+        const issue = this.rejectNextCaptureIssue;
+        this.rejectNextCaptureIssue = null;
+        return json(422, { name: "UNPROCESSABLE_ENTITY", details: [{ issue }] });
+      }
       if (this.declineNextCapture) {
         this.declineNextCapture = false;
+        this.rejectNextCaptureIssue = null;
         return json(422, { name: "UNPROCESSABLE_ENTITY", details: [{ issue: "INSTRUMENT_DECLINED" }] });
       }
       this.captureCount++;
