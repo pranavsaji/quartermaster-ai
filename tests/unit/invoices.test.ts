@@ -79,6 +79,48 @@ describe("invoice reconciliation", () => {
     expect(r.checks.filter((c) => !c.passed).map((c) => c.check)).toEqual(expect.arrayContaining(["QUANTITIES_WITHIN_ORDER", "PRICES_MATCH_ORDER"]));
   });
 
+  describe("per-SKU quantity matching", () => {
+    const twoSkuPo: PurchaseOrderView = {
+      ...po,
+      total_minor: 20_000,
+      items: [
+        { kind: "PRODUCT", sku: "A", quantity: 10, unit_price_minor: 1_000, line_total_minor: 10_000 },
+        { kind: "PRODUCT", sku: "B", quantity: 10, unit_price_minor: 1_000, line_total_minor: 10_000 },
+      ],
+    };
+    const line = (sku: string, quantity: number) => ({ sku, description: sku, quantity, unit_price_minor: 1_000, line_total_minor: quantity * 1_000 });
+
+    it("sums a SKU split across invoice lines, so A×10 + A×10 against A×10, B×10 is over-billed", () => {
+      const r = analyzeInvoice(invoice({ lines: [line("A", 10), line("A", 10)], total_minor: 20_000 }), twoSkuPo, []);
+      expect(r.status).toBe("DISCREPANCY");
+      expect(r.settlement_allowed).toBe(false);
+      const qty = r.checks.find((c) => c.check === "QUANTITIES_WITHIN_ORDER")!;
+      expect(qty).toMatchObject({ passed: false, severity: "MEDIUM" });
+      expect(qty.detail).toContain("A (20 of 10)");
+      expect(r.checks.find((c) => c.check === "ORDER_FULLY_INVOICED")).toMatchObject({ passed: false, severity: "LOW" });
+    });
+
+    it("accepts the same SKU split across lines when the sum is within the order", () => {
+      const r = analyzeInvoice(invoice({ lines: [line("A", 4), line("A", 6), line("B", 10)], total_minor: 20_000 }), twoSkuPo, []);
+      expect(r.status).toBe("MATCHED");
+      expect(r.checks.every((c) => c.passed)).toBe(true);
+    });
+
+    it("reports ordered products missing from the invoice without blocking a short invoice", () => {
+      const r = analyzeInvoice(invoice({ lines: [line("A", 10), line("B", 4)], total_minor: 14_000 }), twoSkuPo, []);
+      const note = r.checks.find((c) => c.check === "ORDER_FULLY_INVOICED")!;
+      expect(note).toMatchObject({ passed: false, severity: "LOW" });
+      expect(note.detail).toContain("B (4 of 10)");
+      expect(r.status).toBe("MATCHED");
+      expect(r.settlement_allowed).toBe(true);
+    });
+
+    it("compares unit prices against every ordered line of the SKU", () => {
+      const r = analyzeInvoice(invoice({ lines: [line("A", 10), { ...line("B", 10), unit_price_minor: 1_100, line_total_minor: 11_000 }], total_minor: 21_000 }), { ...twoSkuPo, total_minor: 30_000 }, []);
+      expect(r.checks.find((c) => c.check === "PRICES_MATCH_ORDER")).toMatchObject({ passed: false, detail: "Price differences: B." });
+    });
+  });
+
   it("flags arithmetic errors", () => {
     expect(analyzeInvoice(invoice({ total_minor: 17_000 }), po, []).checks.find((c) => c.check === "ARITHMETIC")?.passed).toBe(false);
   });

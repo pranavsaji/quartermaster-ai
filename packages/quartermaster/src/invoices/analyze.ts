@@ -78,6 +78,16 @@ export function invoiceContentHash(inv: Pick<InvoiceInput, "supplier_id" | "curr
 }
 
 /**
+ * Checks reported for visibility that do not by themselves turn a match into a discrepancy.
+ *
+ * ORDER_FULLY_INVOICED: an invoice that bills *less* than was ordered (a split invoice, a
+ * back-order, a short shipment) never over-charges the buyer, so it may still reconcile; the
+ * failed LOW check tells the owner to expect a follow-up invoice or a credit. Billing *more*
+ * than was ordered is QUANTITIES_WITHIN_ORDER and does block settlement.
+ */
+const ADVISORY_CHECKS = new Set(["ORDER_FULLY_INVOICED"]);
+
+/**
  * Three-way match of an invoice against the purchase order and payment, plus duplicate detection.
  * The result never triggers a payment: payment already happened through the authorised PayPal
  * flow. `settlement_allowed` only marks the invoice as reconciled for bookkeeping.
@@ -116,15 +126,24 @@ export function analyzeInvoice(inv: InvoiceInput, po: PurchaseOrderView | null, 
     add("PAYMENT_VERIFIED", po.payment_completed, "MEDIUM", po.payment_completed ? "A verified PayPal capture exists for this order." : "No verified payment for this order yet.");
     add("TOTAL_WITHIN_APPROVED", inv.total_minor <= po.total_minor, "HIGH", inv.total_minor <= po.total_minor ? "Invoice total is within the approved amount." : `Invoice exceeds approved order total by ${inv.total_minor - po.total_minor}.`);
 
-    const poBySku = new Map(po.items.filter((i) => i.sku).map((i) => [i.sku!, i]));
+    // Ordered quantity and unit prices per SKU. Quantities are summed on both sides so splitting
+    // one SKU across several invoice lines cannot bill more than was ordered.
+    const ordered = new Map<string, { kind: string; quantity: number; prices: Set<number> }>();
+    for (const i of po.items) {
+      if (!i.sku) continue;
+      const o = ordered.get(i.sku) ?? { kind: i.kind, quantity: 0, prices: new Set<number>() };
+      o.quantity += i.quantity;
+      o.prices.add(i.unit_price_minor);
+      ordered.set(i.sku, o);
+    }
+    const invoiced = new Map<string, number>();
     const unknown: string[] = [];
-    const overQty: string[] = [];
-    const priceDiff: string[] = [];
+    const priceDiff = new Set<string>();
     // Charges without a SKU (tax, shipping) may match a non-product order line of the same
     // amount; each order line can be matched at most once.
     const chargeLines = po.items.filter((i) => i.kind !== "PRODUCT").map((i) => ({ ...i, used: false }));
     for (const l of inv.lines) {
-      const match = l.sku ? poBySku.get(l.sku) : undefined;
+      const match = l.sku ? ordered.get(l.sku) : undefined;
       if (!match) {
         const charge = !l.sku ? chargeLines.find((c) => !c.used && c.line_total_minor === l.line_total_minor && l.quantity === 1) : undefined;
         if (charge) {
@@ -134,12 +153,22 @@ export function analyzeInvoice(inv: InvoiceInput, po: PurchaseOrderView | null, 
         unknown.push(l.description);
         continue;
       }
-      if (l.quantity > match.quantity) overQty.push(l.sku!);
-      if (l.unit_price_minor !== match.unit_price_minor) priceDiff.push(l.sku!);
+      invoiced.set(l.sku!, (invoiced.get(l.sku!) ?? 0) + l.quantity);
+      if (!match.prices.has(l.unit_price_minor)) priceDiff.add(l.sku!);
     }
+    const overQty = [...invoiced].filter(([sku, qty]) => qty > ordered.get(sku)!.quantity).map(([sku, qty]) => `${sku} (${qty} of ${ordered.get(sku)!.quantity})`);
+    const uninvoiced = [...ordered]
+      .filter(([sku, o]) => o.kind === "PRODUCT" && (invoiced.get(sku) ?? 0) < o.quantity)
+      .map(([sku, o]) => `${sku} (${invoiced.get(sku) ?? 0} of ${o.quantity})`);
     add("LINES_ON_ORDER", unknown.length === 0, "HIGH", unknown.length === 0 ? "Every invoice line is on the order." : `Lines not on the approved order: ${unknown.join("; ")}.`);
     add("QUANTITIES_WITHIN_ORDER", overQty.length === 0, "MEDIUM", overQty.length === 0 ? "Quantities within ordered amounts." : `Over-billed quantities: ${overQty.join(", ")}.`);
-    add("PRICES_MATCH_ORDER", priceDiff.length === 0, "MEDIUM", priceDiff.length === 0 ? "Unit prices match the order." : `Price differences: ${priceDiff.join(", ")}.`);
+    add("PRICES_MATCH_ORDER", priceDiff.size === 0, "MEDIUM", priceDiff.size === 0 ? "Unit prices match the order." : `Price differences: ${[...priceDiff].join(", ")}.`);
+    add(
+      "ORDER_FULLY_INVOICED",
+      uninvoiced.length === 0,
+      "LOW",
+      uninvoiced.length === 0 ? "Every ordered product is invoiced." : `Ordered products not (fully) invoiced: ${uninvoiced.join(", ")}. Expect a follow-up invoice or a credit for any short shipment.`,
+    );
   }
 
   let injection: InjectionVerdict | null = null;
@@ -150,7 +179,7 @@ export function analyzeInvoice(inv: InvoiceInput, po: PurchaseOrderView | null, 
   }
 
   const duplicate = numberDupes.length > 0 || contentDupes.length > 0 || poDupes.length > 0;
-  const failed = checks.filter((c) => !c.passed);
+  const failed = checks.filter((c) => !c.passed && !ADVISORY_CHECKS.has(c.check));
   const status: InvoiceStatus = duplicate ? "DUPLICATE" : !po ? "UNMATCHED" : failed.length > 0 ? "DISCREPANCY" : "MATCHED";
 
   return {
