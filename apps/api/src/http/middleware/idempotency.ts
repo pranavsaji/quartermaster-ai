@@ -36,11 +36,15 @@ export function idempotent(ctx: AppContext, route: string, handler: (req: Reques
       const requestHash = createHash("sha256").update(`${req.method} ${route} ${stableStringify(req.params)} ${stableStringify(req.body ?? null)}`).digest("hex");
       const scope = and(eq(idempotencyKeys.organizationId, user.organizationId), eq(idempotencyKeys.userId, user.id), eq(idempotencyKeys.key, key));
 
+      // `lease` (the row's created_at) identifies which execution owns an IN_PROGRESS key, so a
+      // stale takeover, completion and cleanup all act only on the execution that owns it.
+      const startedAt = ctx.now();
       const inserted = await ctx.db
         .insert(idempotencyKeys)
-        .values({ organizationId: user.organizationId, userId: user.id, key, route, requestHash, status: "IN_PROGRESS" })
+        .values({ organizationId: user.organizationId, userId: user.id, key, route, requestHash, status: "IN_PROGRESS", createdAt: startedAt })
         .onConflictDoNothing()
-        .returning({ id: idempotencyKeys.id });
+        .returning({ id: idempotencyKeys.id, createdAt: idempotencyKeys.createdAt });
+      let lease = inserted[0]?.createdAt ?? startedAt;
 
       if (inserted.length === 0) {
         const [existing] = await ctx.db.select().from(idempotencyKeys).where(scope);
@@ -55,21 +59,29 @@ export function idempotent(ctx: AppContext, route: string, handler: (req: Reques
         if (ctx.now().getTime() - existing.createdAt.getTime() < STALE_MS) {
           throw conflict("IDEMPOTENCY_IN_PROGRESS", "A request with this Idempotency-Key is still in progress.");
         }
-        // A stale in-progress record (process crashed mid-request): take it over.
-        await ctx.db.update(idempotencyKeys).set({ createdAt: ctx.now() }).where(scope);
+        // A stale in-progress record (process crashed mid-request): take it over atomically, so
+        // only one of several concurrent retries wins.
+        const taken = await ctx.db
+          .update(idempotencyKeys)
+          .set({ createdAt: startedAt })
+          .where(and(scope, eq(idempotencyKeys.status, "IN_PROGRESS"), eq(idempotencyKeys.createdAt, existing.createdAt)))
+          .returning({ createdAt: idempotencyKeys.createdAt });
+        if (taken.length === 0) throw conflict("IDEMPOTENCY_IN_PROGRESS", "A request with this Idempotency-Key is still in progress.");
+        lease = taken[0]!.createdAt;
       }
+      const owned = and(scope, eq(idempotencyKeys.status, "IN_PROGRESS"), eq(idempotencyKeys.createdAt, lease));
 
       let result: HandlerResult;
       try {
         result = await handler(req);
       } catch (err) {
-        await ctx.db.delete(idempotencyKeys).where(and(scope, eq(idempotencyKeys.status, "IN_PROGRESS")));
+        await ctx.db.delete(idempotencyKeys).where(owned);
         throw err;
       }
       await ctx.db
         .update(idempotencyKeys)
         .set({ status: "COMPLETED", responseStatus: result.status, responseBody: result.body as never })
-        .where(scope);
+        .where(owned);
       res.status(result.status).json(result.body);
     } catch (err) {
       next(err);
