@@ -7,6 +7,7 @@ import {
   paymentAttempts,
   purchaseOrders,
   refunds,
+  spendMandates,
   suppliers,
   type DbOrTx,
 } from "@qm/database";
@@ -180,6 +181,14 @@ export async function capturePayment(
   await withDeferredFailures(ctx, () =>
     ctx.db.transaction(async (tx) => {
       const now = ctx.now();
+      // Lock order: mandate (shared) → payment → certificate. A concurrent mandate update takes
+      // the mandate FOR UPDATE first, so it either completes (and revokes) before this capture
+      // is authorised, or waits until the capture is recorded as CAPTURE_PENDING.
+      await tx
+        .select({ id: spendMandates.id })
+        .from(spendMandates)
+        .where(and(eq(spendMandates.organizationId, actor.organizationId), eq(spendMandates.status, "ACTIVE")))
+        .for("share");
       const payment = await loadPayment(tx, actor.organizationId, paymentId, true);
       if (payment.status === "CAPTURE_PENDING" && now.getTime() - payment.updatedAt.getTime() < 60_000) {
         throw conflict("CAPTURE_IN_PROGRESS", "A capture for this payment is already in progress.");
@@ -237,21 +246,33 @@ export async function capturePayment(
     const captured = await ctx.paypal.captureOrder(paypalOrderId, `qm-capture-${paymentId}`);
     await finalizeFromOrder(ctx, paymentId, captured, "USER", actor.id);
   } catch (err) {
-    if (err instanceof PayPalAmbiguousError) {
-      // Outcome unknown: reconcile by reading the order rather than assuming failure.
-      await reconcilePayment(ctx, paymentId);
-    } else if (err instanceof PayPalApiError && err.issue === "ORDER_ALREADY_CAPTURED") {
-      await reconcilePayment(ctx, paymentId);
+    const ambiguous = err instanceof PayPalAmbiguousError || (err instanceof PayPalApiError && (err.retryable || err.issue === "ORDER_ALREADY_CAPTURED"));
+    if (ambiguous) {
+      // Outcome unknown (timeout, 5xx, or already captured): read the order rather than assume.
+      // If PayPal is unreachable the payment stays CAPTURE_PENDING and the sweeper reconciles it.
+      await reconcilePayment(ctx, paymentId).catch((e) => ctx.log.warn({ err: e, payment_id: paymentId }, "reconcile after capture failed"));
     } else if (err instanceof PayPalApiError && (err.issue === "INSTRUMENT_DECLINED" || err.issue === "PAYER_ACTION_REQUIRED")) {
-      await ctx.db.update(paymentAttempts).set({ status: "ORDER_CREATED", failureCode: err.issue, failureMessage: err.message.slice(0, 500), updatedAt: ctx.now() }).where(eq(paymentAttempts.id, paymentId));
+      await revertCapturePending(ctx, paymentId, err.issue, err.message);
       throw new AppError(422, err.issue, "PayPal declined the funding source. Choose another payment method and try again.", { restart: true });
     } else {
       const code = err instanceof PayPalApiError ? (err.issue ?? `HTTP_${err.status}`) : "CAPTURE_ERROR";
-      await ctx.db.update(paymentAttempts).set({ status: "ORDER_CREATED", failureCode: code, failureMessage: (err as Error).message.slice(0, 500), updatedAt: ctx.now() }).where(eq(paymentAttempts.id, paymentId));
+      await revertCapturePending(ctx, paymentId, code, (err as Error).message);
       throw badGateway("PAYPAL_CAPTURE_FAILED", "PayPal could not capture the payment.", { code });
     }
   }
   return result(ctx, actor.organizationId, paymentId);
+}
+
+/**
+ * After a definitive PayPal rejection, return a CAPTURE_PENDING payment to ORDER_CREATED so the
+ * buyer can retry. Conditional on the current status, so it can never regress a payment that a
+ * webhook or reconciliation completed in the meantime.
+ */
+async function revertCapturePending(ctx: AppContext, paymentId: string, code: string, message: string): Promise<void> {
+  await ctx.db
+    .update(paymentAttempts)
+    .set({ status: "ORDER_CREATED", failureCode: code, failureMessage: message.slice(0, 500), updatedAt: ctx.now() })
+    .where(and(eq(paymentAttempts.id, paymentId), eq(paymentAttempts.status, "CAPTURE_PENDING")));
 }
 
 async function result(ctx: AppContext, organizationId: string, paymentId: string) {
