@@ -115,6 +115,16 @@ describe("Intent Certificates", () => {
     expect(() => issue({ ttl_minutes: 120 })).toThrow();
   });
 
+  it.each([Number.NaN, 0.5, 15.5, 0, 61, -1, Number.POSITIVE_INFINITY])("refuses a TTL of %s minutes", (ttl) => {
+    expect(() => issue({ ttl_minutes: ttl })).toThrow(/whole number of minutes/);
+  });
+
+  it("accepts the TTL bounds and refuses an invalid approval time", () => {
+    expect(issue({ ttl_minutes: 1 }).payload.expires_at).toBe("2026-11-10T18:01:00.000Z");
+    expect(issue({ ttl_minutes: 60 }).payload.expires_at).toBe("2026-11-10T19:00:00.000Z");
+    expect(() => issue({ approved_at: new Date(Number.NaN) })).toThrow(/approval time/);
+  });
+
   it("loads base64-encoded PEM keys and derives stable fingerprints", () => {
     const g = generateSigningKey();
     const loaded = loadSigningKey(Buffer.from(g.private_key_pem).toString("base64"));

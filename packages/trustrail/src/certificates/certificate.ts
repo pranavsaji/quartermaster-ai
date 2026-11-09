@@ -4,6 +4,7 @@ import { canonicalize } from "../canonical";
 import type { SigningKey } from "./keys";
 
 export const CERTIFICATE_DOMAIN = "trustrail.intent-certificate.v1";
+export const MAX_CERTIFICATE_TTL_MINUTES = 60;
 
 export interface IssueCertificateInput {
   intent_id: string;
@@ -37,7 +38,10 @@ export function issueCertificate(input: IssueCertificateInput, key: SigningKey):
   if (!Number.isSafeInteger(input.approved_amount_minor) || input.approved_amount_minor <= 0) {
     throw new Error("Approved amount must be a positive integer in minor units");
   }
-  if (input.ttl_minutes < 1 || input.ttl_minutes > 60) throw new Error("Certificate TTL must be 1–60 minutes");
+  if (!Number.isInteger(input.ttl_minutes) || input.ttl_minutes < 1 || input.ttl_minutes > MAX_CERTIFICATE_TTL_MINUTES) {
+    throw new Error(`Certificate TTL must be a whole number of minutes between 1 and ${MAX_CERTIFICATE_TTL_MINUTES}`);
+  }
+  if (!(input.approved_at instanceof Date) || Number.isNaN(input.approved_at.getTime())) throw new Error("Certificate approval time is invalid");
   const expires = new Date(input.approved_at.getTime() + input.ttl_minutes * 60_000);
   const payload: IntentCertificatePayload = {
     certificate_version: 1,
