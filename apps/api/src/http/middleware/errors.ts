@@ -30,11 +30,25 @@ export function asyncHandler(fn: (req: Parameters<RequestHandler>[0], res: Param
   };
 }
 
+/**
+ * Details of a 5xx are reduced to top-level boolean, number and null fields (e.g. `retryable`).
+ * Strings and nested objects are dropped: they can carry upstream or driver error text that must
+ * not reach clients. The full details are logged instead.
+ */
+export function publicServerErrorDetails(details: unknown): Record<string, boolean | number | null> | undefined {
+  if (!details || typeof details !== "object" || Array.isArray(details)) return undefined;
+  const safe = Object.entries(details as Record<string, unknown>).filter(([, v]) => v === null || typeof v === "boolean" || (typeof v === "number" && Number.isFinite(v)));
+  return safe.length ? (Object.fromEntries(safe) as Record<string, boolean | number | null>) : undefined;
+}
+
 export function errorHandler(log: Logger): ErrorRequestHandler {
   return (err, req, res, _next) => {
     const correlation_id = req.correlationId;
     if (err instanceof AppError) {
-      if (err.status >= 500) log.error({ err, correlation_id }, err.message);
+      if (err.status >= 500) {
+        log.error({ err, details: err.details, correlation_id }, err.message);
+        return res.status(err.status).json({ error: { code: err.code, message: err.message, details: publicServerErrorDetails(err.details), correlation_id } });
+      }
       return res.status(err.status).json({ error: { code: err.code, message: err.message, details: err.details, correlation_id } });
     }
     if (err instanceof ZodError) {
