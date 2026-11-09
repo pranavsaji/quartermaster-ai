@@ -115,12 +115,22 @@ function parseDate(text: string, now: Date): string | null {
   return null;
 }
 
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * Whole-word (or whole-phrase) match of an inventory term, allowing a plural "s"/"es".
+ * Substring matching made "foil pans" match canola "oil".
+ */
+function containsTerm(text: string, term: string): boolean {
+  return new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(term)}(?:e?s)?(?![\\p{L}\\p{N}])`, "u").test(text);
+}
+
 /** Deterministic interpreter: keyword matching against inventory plus simple pattern extraction. */
 export function interpretDeterministically(instruction: string, inventory: InventoryRef[], now: Date): InterpretedIntent {
   const text = instruction.toLowerCase();
   const matched = inventory.filter((item) => {
     const terms = [item.name.toLowerCase(), item.sku.toLowerCase(), ...item.keywords.map((k) => k.toLowerCase())];
-    return terms.some((t) => t.length >= 3 && text.includes(t));
+    return terms.some((t) => t.trim().length >= 3 && containsTerm(text, t.trim()));
   });
   const wantsAll = /\b(everything|all (low|supplies|items)|whatever (is|we're) low|restock (low|anything))\b/i.test(instruction);
   return {

@@ -39,3 +39,23 @@ describe("budget extraction", () => {
     expect(interpretDeterministically("Restock oil, stay under $1500", inventory, now).budget_limit_minor).toBe(150_000);
   });
 });
+
+describe("inventory keyword matching", () => {
+  const withPans = [...inventory, { id: "inv_pan", sku: "PKG-FOIL-913", name: "Foil pans", category: "food_packaging", keywords: ["foil pan", "half pan"] }];
+
+  it("matches whole words only, so 'foil pans' does not select canola oil", () => {
+    expect(interpretDeterministically("Need foil pans for Friday", withPans, now).inventory_item_ids).toEqual(["inv_pan"]);
+  });
+
+  it("still matches plurals and multi-word keywords", () => {
+    expect(interpretDeterministically("Two more oils and cooking oil please", inventory, now).inventory_item_ids).toEqual(["inv_oil"]);
+    expect(interpretDeterministically("restock takeaway boxes", inventory, now).inventory_item_ids).toEqual(["inv_tk"]);
+  });
+
+  it("treats regex metacharacters in keywords literally", () => {
+    const odd = [{ id: "inv_x", sku: "X.(1)", name: "C++ cleaner", category: "cleaning_supplies", keywords: ["a+b"] }];
+    expect(interpretDeterministically("buy c++ cleaner", odd, now).inventory_item_ids).toEqual(["inv_x"]);
+    expect(interpretDeterministically("buy aab", odd, now).inventory_item_ids).toEqual([]);
+    expect(interpretDeterministically("sku X.(1)", odd, now).inventory_item_ids).toEqual(["inv_x"]);
+  });
+});
