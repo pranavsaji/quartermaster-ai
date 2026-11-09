@@ -25,7 +25,7 @@ export function ResearchProgress({ startedAt }: { startedAt: number }) {
   const activeIndex = STAGES.reduce((acc, s, i) => (elapsed >= s.at ? i : acc), 0);
 
   return (
-    <Card aria-live="polite" aria-busy="true">
+    <Card aria-label="Research progress">
       <CardBody className="py-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -37,8 +37,12 @@ export function ResearchProgress({ startedAt }: { startedAt: number }) {
               <p className="text-[13px] text-ink-3">This usually takes 5–25 seconds. You can leave this page; it keeps running.</p>
             </div>
           </div>
+          {/* Not announced: a counter ticking 4x a second would flood a live region. */}
           <span className="tnum rounded-md bg-canvas px-2 py-1 font-mono text-[12px] text-ink-3">{elapsed.toFixed(1)} s</span>
         </div>
+        <p className="sr-only" role="status">
+          {STAGES[activeIndex]?.label}
+        </p>
         <ol className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
           {STAGES.map((stage, i) => {
             const state = i < activeIndex ? "done" : i === activeIndex ? "active" : "todo";
