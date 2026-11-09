@@ -72,6 +72,8 @@ export interface ExplanationFacts {
   market_status: string[];
 }
 
+const sentence = (parts: string[]) => parts.map((p) => p.trim().replace(/[.\s]+$/, "")).join("; ");
+
 export function deterministicExplanation(f: ExplanationFacts): { summary: string; rationale: string[] } {
   const dollars = (m: number) => `$${(m / 100).toFixed(2)}`;
   const approvable = f.proposals.filter((p) => p.decision !== "BLOCK");
@@ -81,7 +83,7 @@ export function deterministicExplanation(f: ExplanationFacts): { summary: string
   const rationale = [
     f.demand_multiplier !== 1 ? `Demand assumption: ${Math.round((f.demand_multiplier - 1) * 100)}% ${f.demand_multiplier > 1 ? "above" : "below"} normal usage.` : "Demand assumption: normal usage.",
     ...approvable.map((p) => `${p.supplier}: ${p.lines.join("; ")}.${p.violations.length ? ` Needs review: ${p.violations.join(", ")}.` : ""}`),
-    ...f.blocked.map((b) => `TrustRail blocked ${b.supplier}: ${b.reasons.join("; ")}.`),
+    ...f.blocked.map((b) => `TrustRail blocked ${b.supplier}: ${sentence(b.reasons)}.`),
     ...(f.unfilled_items.length ? [`No eligible supplier for: ${f.unfilled_items.join(", ")}.`] : []),
     ...f.market_status,
   ];
@@ -107,7 +109,7 @@ export async function explainRecommendation(
     const summary = typeof res.data.summary === "string" ? res.data.summary.slice(0, 500) : fallback.summary;
     const rationale = Array.isArray(res.data.rationale) ? res.data.rationale.filter((r) => typeof r === "string").slice(0, 8).map((r) => r.slice(0, 300)) : fallback.rationale;
     // Always include TrustRail blocks verbatim; the model may not omit them.
-    const blocks = facts.blocked.map((b) => `TrustRail blocked ${b.supplier}: ${b.reasons.join("; ")}.`);
+    const blocks = facts.blocked.map((b) => `TrustRail blocked ${b.supplier}: ${sentence(b.reasons)}.`);
     return { summary, rationale: [...new Set([...rationale, ...blocks])], mode: "LLM" };
   } catch {
     return { ...fallback, mode: "DETERMINISTIC_FALLBACK" };
