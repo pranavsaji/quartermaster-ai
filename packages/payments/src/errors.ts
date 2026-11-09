@@ -54,6 +54,23 @@ export class PayPalAmbiguousError extends Error {
   }
 }
 
+/**
+ * PayPal answered 2xx with a body that failed schema validation. Treated as ambiguous: a
+ * malformed success response to a capture or refund may still mean money moved, so callers
+ * must reconcile exactly as they would after a dropped connection.
+ */
+export class PayPalInvalidResponseError extends PayPalAmbiguousError {
+  readonly status: number;
+  /** Paths of the invalid fields (never their values). */
+  readonly invalidPaths: string[];
+  constructor(operation: string, status: number, invalidPaths: string[]) {
+    super(operation, new Error(`unexpected ${status} response (invalid: ${invalidPaths.join(", ") || "body"})`));
+    this.name = "PayPalInvalidResponseError";
+    this.status = status;
+    this.invalidPaths = invalidPaths;
+  }
+}
+
 export class PayPalNotConfiguredError extends Error {
   constructor() {
     super("PayPal is not configured. Set PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET.");
