@@ -1,3 +1,4 @@
+import { CreateProcurementRequest, DEMAND_MULTIPLIER_MAX, DEMAND_MULTIPLIER_MIN } from "@qm/contracts";
 import { describe, expect, it } from "vitest";
 import {
   averageDailyUsage,
@@ -8,6 +9,8 @@ import {
   forecastItem,
   interpretDeterministically,
   median,
+  MULTIPLIER_MAX,
+  MULTIPLIER_MIN,
   packsFor,
   parsePackQuantity,
   parseVolumeLitres,
@@ -313,12 +316,22 @@ describe("intent interpretation", () => {
     );
     expect(s).toEqual({
       inventory_item_ids: ["inv_tk"],
-      demand_multiplier: 3,
+      demand_multiplier: 4,
       budget_limit_minor: null,
       required_by: null,
       notes: "x",
       unsupported_requests: ["wine"],
     });
     expect(sanitizeIntent(null, inventory)).toBeNull();
+  });
+
+  it("clamps demand to exactly the range the request schemas accept", () => {
+    expect([MULTIPLIER_MIN, MULTIPLIER_MAX]).toEqual([DEMAND_MULTIPLIER_MIN, DEMAND_MULTIPLIER_MAX]);
+    for (const m of [DEMAND_MULTIPLIER_MIN, 0.3, 3.5, DEMAND_MULTIPLIER_MAX]) {
+      expect(CreateProcurementRequest.safeParse({ instruction: "restock", demand_multiplier: m }).success).toBe(true);
+      expect(sanitizeIntent({ demand_multiplier: m }, inventory)?.demand_multiplier).toBe(m);
+    }
+    expect(sanitizeIntent({ demand_multiplier: 0.1 }, inventory)?.demand_multiplier).toBe(DEMAND_MULTIPLIER_MIN);
+    expect(CreateProcurementRequest.safeParse({ instruction: "restock", demand_multiplier: 4.5 }).success).toBe(false);
   });
 });

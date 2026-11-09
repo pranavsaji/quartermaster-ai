@@ -52,9 +52,17 @@ export const InventoryAdjustmentRequest = z.object({
 });
 export type InventoryAdjustmentRequest = z.infer<typeof InventoryAdjustmentRequest>;
 
+/**
+ * Accepted demand multipliers (1 = normal demand). Single source for the request schemas and for
+ * the procurement interpreter's clamp, so a multiplier the API accepts is never silently
+ * narrowed by the interpreter.
+ */
+export const DEMAND_MULTIPLIER_MIN = 0.25;
+export const DEMAND_MULTIPLIER_MAX = 4;
+
 export const ForecastRequest = z.object({
   inventory_item_ids: z.array(z.string().uuid()).max(100).optional(),
-  demand_multiplier: z.number().min(0.25).max(4).default(1),
+  demand_multiplier: z.number().min(DEMAND_MULTIPLIER_MIN).max(DEMAND_MULTIPLIER_MAX).default(1),
   horizon_days: z.number().int().min(1).max(30).optional(),
 });
 export type ForecastRequest = z.infer<typeof ForecastRequest>;
@@ -67,7 +75,7 @@ export const CreateProcurementRequest = z.object({
   budget_limit_minor: minor.optional(),
   required_by: isoDate.optional(),
   allow_alternatives: z.boolean().default(true),
-  demand_multiplier: z.number().min(0.25).max(4).optional(),
+  demand_multiplier: z.number().min(DEMAND_MULTIPLIER_MIN).max(DEMAND_MULTIPLIER_MAX).optional(),
 });
 export type CreateProcurementRequest = z.infer<typeof CreateProcurementRequest>;
 

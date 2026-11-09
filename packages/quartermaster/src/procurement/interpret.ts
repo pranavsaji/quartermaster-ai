@@ -1,4 +1,4 @@
-import { isCalendarDate } from "@qm/contracts";
+import { DEMAND_MULTIPLIER_MAX, DEMAND_MULTIPLIER_MIN, isCalendarDate } from "@qm/contracts";
 
 /**
  * Turns a natural-language procurement instruction into a structured intent.
@@ -25,8 +25,9 @@ export interface InterpretedIntent {
   unsupported_requests: string[];
 }
 
-export const MULTIPLIER_MIN = 0.5;
-export const MULTIPLIER_MAX = 3;
+/** The interpreter clamps to exactly the range the request schemas accept (see @qm/contracts). */
+export const MULTIPLIER_MIN = DEMAND_MULTIPLIER_MIN;
+export const MULTIPLIER_MAX = DEMAND_MULTIPLIER_MAX;
 
 /** JSON schema for model structured output. Kept in sync with `InterpretedIntent`. */
 export const INTENT_JSON_SCHEMA = {
