@@ -57,6 +57,29 @@ describe("policy engine — pack quantities", () => {
   });
 });
 
+describe("policy engine — timestamps", () => {
+  const ref = (observed_at: string | null) => [{ sku: "TK-250", reference_unit_price_minor: 31, candidate_unit_price_minor: 32, observed_at, comparable: true }];
+  const marketReason = (r: ReturnType<typeof evaluatePolicy>) => r.violations.find((v) => v.code === "MARKET_REFERENCE_UNAVAILABLE")?.evidence?.reason;
+
+  it("does not treat a future market observation as fresh forever", () => {
+    expect(marketReason(evaluatePolicy(baseInput({ market: ref("2027-01-01T00:00:00Z") })))).toBe("future_observation");
+    expect(marketReason(evaluatePolicy(baseInput({ market: ref("2026-11-10T18:06:00Z") })))).toBe("future_observation");
+  });
+
+  it("tolerates a small clock skew", () => {
+    expect(marketReason(evaluatePolicy(baseInput({ market: ref("2026-11-10T18:04:00Z") })))).toBeUndefined();
+  });
+
+  it("treats an unparseable observation time as stale", () => {
+    expect(marketReason(evaluatePolicy(baseInput({ market: ref("not a date") })))).toBe("stale");
+  });
+
+  it("counts a prior order with an unparseable created_at as inside the duplicate window", () => {
+    const r = evaluatePolicy(baseInput({ prior_orders: [{ id: "po_x", supplier_id: SUPPLIER, skus: ["TK-250"], status: "PAID", created_at: "garbage" }] }));
+    expect(r.violations.find((v) => v.code === "DUPLICATE_ORDER")?.evidence).toEqual({ purchase_order_ids: ["po_x"] });
+  });
+});
+
 describe("policy engine — tax rounding", () => {
   it("expects exactly the tax that quote building charges (one shared rounding helper)", () => {
     // 10_806 × 8.25 % = 891.495 → 891 under half-up on the exact product.

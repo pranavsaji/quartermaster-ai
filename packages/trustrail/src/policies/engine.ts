@@ -89,7 +89,10 @@ export interface PolicyResult {
   evaluated_at: string;
 }
 
-const DUPLICATE_STATUSES = new Set(["APPROVED", "PAYMENT_PENDING", "PAID", "FULFILLED"]);
+/** Tolerated clock skew for market observations timestamped slightly after `now`. */
+export const MARKET_CLOCK_SKEW_MS = 5 * 60_000;
+
+const DUPLICATE_STATUSES =new Set(["APPROVED", "PAYMENT_PENDING", "PAID", "FULFILLED"]);
 
 /**
  * Deterministic TrustRail policy evaluation. Pure function: identical input produces an
@@ -395,8 +398,10 @@ export function evaluatePolicy(input: PolicyInput): PolicyResult {
   for (const line of productLines) {
     if (!line.sku) continue;
     const ref = input.market.find((m) => m.sku === line.sku);
-    const fresh =
-      ref?.observed_at !== null && ref?.observed_at !== undefined && input.now.getTime() - Date.parse(ref.observed_at) <= maxAgeMs;
+    // Fresh means observed within the window *and* not in the future (beyond a small clock
+    // skew): a future timestamp would otherwise stay "fresh" forever. NaN ages are never fresh.
+    const age = ref?.observed_at !== null && ref?.observed_at !== undefined ? input.now.getTime() - Date.parse(ref.observed_at) : Number.NaN;
+    const fresh = age >= -MARKET_CLOCK_SKEW_MS && age <= maxAgeMs;
     const refPrice = ref?.reference_unit_price_minor ?? null;
     const usableRef = refPrice !== null && Number.isFinite(refPrice) && refPrice > 0;
     if (!ref || !ref.comparable || !usableRef || !fresh) {
@@ -404,7 +409,10 @@ export function evaluatePolicy(input: PolicyInput): PolicyResult {
         code: "MARKET_REFERENCE_UNAVAILABLE",
         severity: "REVIEW",
         message: `No recent, comparable market price is available for ${line.sku}; a human must judge the price.`,
-        evidence: { sku: line.sku, reason: !ref ? "missing" : !ref.comparable ? "not_comparable" : !fresh ? "stale" : "invalid_price" },
+        evidence: {
+          sku: line.sku,
+          reason: !ref ? "missing" : !ref.comparable ? "not_comparable" : !fresh ? (age < -MARKET_CLOCK_SKEW_MS ? "future_observation" : "stale") : "invalid_price",
+        },
       });
       continue;
     }
@@ -455,7 +463,8 @@ export function evaluatePolicy(input: PolicyInput): PolicyResult {
       (o) =>
         DUPLICATE_STATUSES.has(o.status) &&
         o.supplier_id === cart.supplier_id &&
-        Date.parse(o.created_at) >= windowStart &&
+        // An unparseable timestamp fails closed: it counts as inside the window.
+        !(Date.parse(o.created_at) < windowStart) &&
         o.skus.some((s) => skus.has(s)),
     );
     if (duplicates.length > 0) {
