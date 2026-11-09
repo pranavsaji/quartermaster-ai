@@ -1,3 +1,4 @@
+import { sign } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { generateSigningKey, issueCertificate, loadSigningKey, signingInput, verifyCertificate, type SignedCertificate, type VerificationContext } from "@qm/trustrail";
 
@@ -87,6 +88,45 @@ describe("Intent Certificates", () => {
   it("expires at the stated time", () => {
     const c = issue();
     expect(verifyCertificate(c, ctx(c, { now: new Date("2026-11-10T18:15:00Z") })).status).toBe("EXPIRED");
+  });
+
+  describe("validity window", () => {
+    /** Re-signs a modified payload with the real key, as a compromised issuer bug might. */
+    const resign = (payload: SignedCertificate["payload"]): SignedCertificate => ({
+      payload,
+      signature: sign(null, signingInput(payload), key.private_key).toString("base64url"),
+      key_id: key.key_id,
+      algorithm: "Ed25519",
+    });
+
+    it("is not valid before its approval time (beyond a small clock skew)", () => {
+      const c = issue();
+      const early = verifyCertificate(c, ctx(c, { now: new Date("2026-11-10T17:00:00Z") }));
+      expect(early.valid).toBe(false);
+      expect(early.status).toBe("PAYLOAD_MISMATCH");
+      expect(early.checks.find((x) => x.code === "NOT_BEFORE")?.passed).toBe(false);
+      expect(verifyCertificate(c, ctx(c, { now: new Date("2026-11-10T17:59:30Z") })).valid).toBe(true);
+    });
+
+    it("fails closed on an unparseable expiry", () => {
+      const c = resign({ ...issue().payload, expires_at: "never" });
+      const r = verifyCertificate(c, ctx(c));
+      expect(r.valid).toBe(false);
+      expect(r.checks.find((x) => x.code === "NOT_EXPIRED")?.passed).toBe(false);
+      expect(r.checks.find((x) => x.code === "VALIDITY_WINDOW")?.passed).toBe(false);
+    });
+
+    it("fails closed on an unparseable approval time or an invalid clock", () => {
+      const c = resign({ ...issue().payload, approved_at: "yesterday" });
+      expect(verifyCertificate(c, ctx(c)).valid).toBe(false);
+      const ok = issue();
+      expect(verifyCertificate(ok, ctx(ok, { now: new Date(Number.NaN) })).valid).toBe(false);
+    });
+
+    it("rejects a window longer than the maximum TTL", () => {
+      const c = resign({ ...issue().payload, expires_at: "2026-11-11T18:00:00.000Z" });
+      expect(verifyCertificate(c, ctx(c)).status).toBe("PAYLOAD_MISMATCH");
+    });
   });
 
   it("rejects revoked certificates and reports mandate changes", () => {

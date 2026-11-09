@@ -5,6 +5,8 @@ import type { SigningKey } from "./keys";
 
 export const CERTIFICATE_DOMAIN = "trustrail.intent-certificate.v1";
 export const MAX_CERTIFICATE_TTL_MINUTES = 60;
+/** Clock skew tolerated before `approved_at` (the certificate's not-before time). */
+export const CERTIFICATE_CLOCK_SKEW_MS = 60_000;
 
 export interface IssueCertificateInput {
   intent_id: string;
@@ -134,7 +136,18 @@ export function verifyCertificate(cert: SignedCertificate, ctx: VerificationCont
   checks.push({ code: "AMOUNT", passed: amountOk, detail: amountOk ? "Amount and currency match the approval." : "Amount or currency differs from the approval." });
   if (!cartOk || !amountOk) fail("CART_MODIFIED");
 
-  const expired = ctx.now.getTime() >= Date.parse(p.expires_at);
+  // Validity window [approved_at − skew, expires_at). Every comparison is written so that a
+  // NaN (unparseable timestamp or invalid clock) fails closed.
+  const now = ctx.now instanceof Date ? ctx.now.getTime() : Number.NaN;
+  const approvedAt = Date.parse(p.approved_at);
+  const expiresAt = Date.parse(p.expires_at);
+  const windowOk = expiresAt > approvedAt && expiresAt - approvedAt <= MAX_CERTIFICATE_TTL_MINUTES * 60_000;
+  checks.push({ code: "VALIDITY_WINDOW", passed: windowOk, detail: windowOk ? "Approval and expiry times are well-formed." : "Approval or expiry time is malformed." });
+  if (!windowOk) fail("PAYLOAD_MISMATCH");
+  const notYetValid = !(now >= approvedAt - CERTIFICATE_CLOCK_SKEW_MS);
+  checks.push({ code: "NOT_BEFORE", passed: !notYetValid, detail: notYetValid ? `Not valid before ${p.approved_at}.` : "Certificate is within its validity period." });
+  if (notYetValid) fail("PAYLOAD_MISMATCH");
+  const expired = !(now < expiresAt);
   checks.push({ code: "NOT_EXPIRED", passed: !expired, detail: expired ? `Expired at ${p.expires_at}.` : `Valid until ${p.expires_at}.` });
 
   if (ctx.stored_status === "REVOKED") {
