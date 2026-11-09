@@ -24,7 +24,8 @@ services:
     preDeployCommand: node apps/api/dist/migrate.js
     startCommand: node apps/api/dist/server.js
     healthCheckPath: /readyz
-    autoDeploy: true
+    # Deploy only after GitHub checks (CI) pass on the commit.
+    autoDeployTrigger: checksPass
     envVars:
       - key: NODE_ENV
         value: production
@@ -77,7 +78,8 @@ services:
     buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @qm/web build
     startCommand: pnpm --filter @qm/web start
     healthCheckPath: /login
-    autoDeploy: true
+    # Deploy only after GitHub checks (CI) pass on the commit.
+    autoDeployTrigger: checksPass
     envVars:
       - key: NODE_ENV
         value: production
