@@ -23,7 +23,7 @@ import {
   suppliers,
   type DbOrTx,
 } from "@qm/database";
-import { buildCart, computeCartHash, type Cart, type CartLine } from "@qm/trustrail";
+import { computeCartHash, type Cart, type CartLine } from "@qm/trustrail";
 import { notFound } from "../errors";
 import { afterCursor, decodeCursor, newestFirst, toPage } from "./pagination";
 
@@ -120,11 +120,6 @@ export function cartFromRows(po: PurchaseOrderRow, items: PurchaseOrderItemRow[]
     fees_minor: po.feesMinor,
     total_minor: po.totalMinor,
   };
-}
-
-export function rebuiltCart(po: PurchaseOrderRow, items: PurchaseOrderItemRow[]): Cart {
-  const c = cartFromRows(po, items);
-  return buildCart(c.supplier_id, c.currency, c.lines);
 }
 
 export async function loadOrder(db: DbOrTx, organizationId: string, id: string, lock = false) {
