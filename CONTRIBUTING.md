@@ -32,7 +32,8 @@ Read [`CLAUDE.md`](CLAUDE.md) → "Invariants". In short:
 - money is integer minor units everywhere;
 - `packages/trustrail` and `packages/quartermaster` stay pure (no DB, network or clock);
 - only `services/payments` calls PayPal capture, only after `guardCapture`, and every payment
-  status change goes through `transitionPayment`;
+  status change goes through `transitionPayment`, which enforces `canTransition` (plus a few
+  named exceptions) and applies the change only if the row is still in the expected state;
 - proposals are immutable, certificates bind the cart hash, the audit log is append-only;
 - new mutating routes need `requireRole`, `idempotent(...)` for approval or payment-like
   actions, and an entry in `scripts/api-routes.ts` (then `pnpm docs:api`).
