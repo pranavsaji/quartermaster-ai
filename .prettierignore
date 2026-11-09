@@ -1,0 +1,14 @@
+node_modules
+**/node_modules
+dist
+.next
+coverage
+test-results
+playwright-report
+pnpm-lock.yaml
+.data
+.claude
+packages/database/migrations
+docs/openapi.json
+postman
+apps/web/next-env.d.ts
