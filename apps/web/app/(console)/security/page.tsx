@@ -87,11 +87,11 @@ export default function SecurityPage() {
               <label htmlFor="severity-filter" className="text-[13px] text-ink-3">
                 Severity
               </label>
+              <div className="w-44">
               <Select
                 id="severity-filter"
                 value={severity}
                 onChange={(e) => setSeverity(e.target.value as Severity | "")}
-                className="w-40"
               >
                 <option value="">All</option>
                 <option value="CRITICAL">Critical</option>
@@ -99,6 +99,7 @@ export default function SecurityPage() {
                 <option value="MEDIUM">Medium</option>
                 <option value="LOW">Low</option>
               </Select>
+              </div>
             </div>
           ) : null}
           {active.state.error && !active.state.items ? (

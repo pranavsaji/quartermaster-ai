@@ -57,7 +57,7 @@ export function KpiRow({
         label="Blocked attempts"
         loading={loading}
         value={summary ? num(summary.security.blocked_attempts) : ""}
-        sub={summary ? `${summary.security.prompt_injections_detected} prompt injections detected` : undefined}
+        sub={summary ? `${summary.security.prompt_injections_detected} prompt injection${summary.security.prompt_injections_detected === 1 ? "" : "s"} detected` : undefined}
         href="/security"
         tone={summary && summary.security.blocked_attempts > 0 ? "block" : "neutral"}
       />
