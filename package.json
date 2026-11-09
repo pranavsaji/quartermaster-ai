@@ -28,7 +28,7 @@
     "lint": "eslint . && pnpm --filter @qm/web lint",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test:web": "pnpm --filter @qm/web test"
+    "test:web": "pnpm --filter @qm/web test:coverage"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.14.0",
