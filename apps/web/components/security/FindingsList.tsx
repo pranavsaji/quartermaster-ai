@@ -16,6 +16,14 @@ export function evidenceExcerpt(evidence: Record<string, unknown>): string | nul
       if (strings.length > 0) return strings.join(" · ");
     }
   }
+  // TrustRail threat-detection findings carry their excerpts on each matched signal.
+  const signals = evidence.signals;
+  if (Array.isArray(signals)) {
+    const excerpts = signals
+      .map((s) => (s && typeof s === "object" && typeof (s as { excerpt?: unknown }).excerpt === "string" ? (s as { excerpt: string }).excerpt.trim() : ""))
+      .filter(Boolean);
+    if (excerpts.length > 0) return excerpts.slice(0, 2).join(" · ");
+  }
   return null;
 }
 
