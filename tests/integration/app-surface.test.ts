@@ -261,3 +261,14 @@ describe("a deployment without PayPal or synthetic delivery actions", () => {
     expect((await manager.get("/invoices")).body).toEqual({ items: [] });
   });
 });
+
+describe("expensive or revealing endpoints", () => {
+  it("lets only managers and owners recompute the audit chain", async () => {
+    const viewer = await h.agent("viewer");
+    const denied = await viewer.get("/security/audit/verify");
+    expect(denied.status).toBe(403);
+    expect(denied.body.error.code).toBe("ROLE_REQUIRED");
+    const manager = await h.agent("manager");
+    expect((await manager.get("/security/audit/verify")).status).toBe(200);
+  });
+});

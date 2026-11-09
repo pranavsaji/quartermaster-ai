@@ -278,6 +278,7 @@ export const ROUTES: RouteSpec[] = [
     path: "/security/audit/verify",
     summary: "Verify the audit hash chain",
     tag: "Security",
+    role: "MANAGER",
     response: "AuditChainVerificationDto",
   },
   {

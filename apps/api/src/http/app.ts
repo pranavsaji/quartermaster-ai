@@ -14,6 +14,7 @@ import { inventoryRoutes } from "./routes/inventory";
 import { operationsRoutes } from "./routes/operations";
 import { intentAndPaymentRoutes, webhookRoutes } from "./routes/payments";
 import { procurementRoutes } from "./routes/procurement";
+import { limiterStore } from "./rate-limit-store";
 
 export function createApp(ctx: AppContext) {
   const app = express();
@@ -63,6 +64,9 @@ export function createApp(ctx: AppContext) {
   app.get("/readyz", async (_req, res) => {
     try {
       await ctx.database.ping();
+      // In production the probe says only whether the API can serve; which integrations are
+      // configured is not advertised to unauthenticated callers.
+      if (ctx.config.env === "production") return void res.json({ status: "ready" });
       res.json({
         status: "ready",
         database: ctx.database.driver,
@@ -85,6 +89,7 @@ export function createApp(ctx: AppContext) {
   api.use(
     rateLimit({
       windowMs: 60_000,
+      ...limiterStore(ctx, "api"),
       limit: ctx.config.rateLimits.perMinute,
       standardHeaders: "draft-8",
       legacyHeaders: false,

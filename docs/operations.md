@@ -2,13 +2,13 @@
 
 ## Services
 
-| Service                     | Command                                           | Health                                                                  |
-| --------------------------- | ------------------------------------------------- | ----------------------------------------------------------------------- |
-| API                         | `node apps/api/dist/server.js`                    | `GET /healthz` (liveness), `GET /readyz` (database + integration flags) |
-| Web                         | `pnpm --filter @qm/web start`                     | `GET /login`                                                            |
-| Sweeper (cron, every 5 min) | `node apps/api/dist/sweep.js`                     | logs `sweep complete` with counts                                       |
-| Migrations (pre-deploy)     | `node apps/api/dist/migrate.js`                   | exits 0                                                                 |
-| Demo seed (once)            | `DEMO_USER_PASSWORD=… node apps/api/dist/seed.js` | logs `demo seed`                                                        |
+| Service                     | Command                                           | Health                                                                                    |
+| --------------------------- | ------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| API                         | `node apps/api/dist/server.js`                    | `GET /healthz` (liveness), `GET /readyz` (database; integration flags outside production) |
+| Web                         | `pnpm --filter @qm/web start`                     | `GET /login`                                                                              |
+| Sweeper (cron, every 5 min) | `node apps/api/dist/sweep.js`                     | logs `sweep complete` with counts                                                         |
+| Migrations (pre-deploy)     | `node apps/api/dist/migrate.js`                   | exits 0                                                                                   |
+| Demo seed (once)            | `DEMO_USER_PASSWORD=… node apps/api/dist/seed.js` | logs `demo seed`                                                                          |
 
 All logs are structured JSON (pino). Every line written while handling a request carries
 `correlation_id`, `organization_id` and `user_id`; every API response carries `x-correlation-id`, and
@@ -33,7 +33,8 @@ The sweeper also fails research runs abandoned by a crashed or redeployed proces
    `PAYMENT.CAPTURE.DENIED`, `PAYMENT.CAPTURE.DECLINED`, `PAYMENT.CAPTURE.REFUNDED`; copy its id to
    `PAYPAL_WEBHOOK_ID`.
 4. Open a shell on the API service and run the seed command once.
-5. Check `GET /readyz` reports `paypal: true` and sign in as the demo owner.
+5. Check `GET /readyz` returns `ready`, sign in as the demo owner, and confirm the header shows PayPal as
+   enabled (`GET /api/v1/config/public`).
 
 Production refuses to boot when PayPal is configured without `PAYPAL_WEBHOOK_ID` and
 `PAYPAL_MERCHANT_ID`, or with `DATABASE_SSL=disable` (unless `DATABASE_ALLOW_INSECURE_TRANSPORT=true`

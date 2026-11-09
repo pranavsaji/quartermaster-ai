@@ -140,6 +140,8 @@ export function operationsRoutes(ctx: AppContext): Router {
 
   r.get(
     "/security/audit/verify",
+    // Recomputes the whole chain: limited to managers and owners so viewers cannot trigger it at will.
+    requireRole("MANAGER"),
     asyncHandler(async (req, res) => {
       res.json(await verifyAuditChain(ctx.db, req.user!.organizationId));
     }),
