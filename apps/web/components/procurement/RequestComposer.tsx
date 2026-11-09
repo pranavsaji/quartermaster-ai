@@ -76,7 +76,7 @@ export function RequestComposer({ currency, onCancel }: { currency: string; onCa
                 placeholder={EXAMPLE_INSTRUCTION}
                 maxLength={2000}
                 rows={3}
-                className="text-[14px]"
+                className="text-[14px] leading-relaxed"
               />
             )}
           </Field>
