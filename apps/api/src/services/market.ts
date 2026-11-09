@@ -103,6 +103,10 @@ export async function researchItem(
     const units = parsed.units !== null && parsed.units > 0 ? parsed.units : null;
     const priceMinor = floatToMinor(o.price, o.currency);
     const comparable = units !== null && parsed.confidence === "HIGH" && priceMinor > 0;
+    // Deliberate exception to "money is integer minor units": the normalised unit price is a
+    // comparison metric (minor units per usable unit, e.g. 4.375¢ per container), stored as
+    // double precision. It is never charged, summed into a cart or signed; it is only compared
+    // against a candidate's per-unit price by TrustRail's market-premium check.
     const verdict = detectPromptInjection(`${o.title}\n${o.description ?? ""}`);
     const [row] = await db
       .insert(marketQuotes)
