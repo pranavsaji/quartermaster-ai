@@ -158,6 +158,106 @@ function malformedMandateFields(m: SpendMandate): string[] {
   if (!Array.isArray(m.allowed_categories)) bad.push("allowed_categories");
   if (m.market_price_action !== "REVIEW" && m.market_price_action !== "BLOCK") bad.push("market_price_action");
   if (m.duplicate_action !== "REVIEW" && m.duplicate_action !== "BLOCK") bad.push("duplicate_action");
+  // Type confusion must never loosen a mandate: the string "false" is truthy.
+  if (typeof m.subscriptions_allowed !== "boolean") bad.push("subscriptions_allowed");
+  if (typeof m.human_approval_required !== "boolean") bad.push("human_approval_required");
+  if (!isCurrencyCode(m.currency)) bad.push("currency");
+  if (Array.isArray(m.approved_supplier_ids) && !isStringArray(m.approved_supplier_ids)) bad.push("approved_supplier_ids");
+  if (Array.isArray(m.allowed_categories) && !isStringArray(m.allowed_categories)) bad.push("allowed_categories");
+  return bad;
+}
+
+const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+/** Array.from reads holes as undefined, which `every` would skip. */
+const isStringArray = (v: unknown): v is string[] => Array.isArray(v) && Array.from(v).every((x) => typeof x === "string");
+const isCurrencyCode = (v: unknown): v is string => typeof v === "string" && /^[A-Z]{3}$/.test(v);
+const isStringOrNull = (v: unknown) => v === null || typeof v === "string";
+const everyItem = (v: unknown, ok: (item: Record<string, unknown>) => boolean) =>
+  Array.isArray(v) && Array.from(v as unknown[]).every((x) => isObject(x) && ok(x));
+
+/**
+ * Paths of facts whose JavaScript type the engine cannot reason about. Values of the right type
+ * keep their specific handling below (a NaN market price or a zero pack size is a REVIEW, a
+ * fractional quantity an arithmetic violation); this catches type confusion that would otherwise
+ * be coerced into a permissive answer: `quarantined_source_ids: "sup_1"` read as a set of
+ * characters, `market_reference_max_age_hours: "100000"` multiplied as a number, `active:
+ * "false"` read as true, a prior order whose status is not a string never counted as a duplicate.
+ */
+function malformedFacts(input: PolicyInput): string[] {
+  const bad: string[] = [];
+  const { cart, supplier } = input;
+  if (!isObject(cart)) {
+    bad.push("cart");
+  } else {
+    if (typeof cart.supplier_id !== "string") bad.push("cart.supplier_id");
+    if (!isCurrencyCode(cart.currency)) bad.push("cart.currency");
+    if (
+      !everyItem(
+        cart.lines,
+        (l) => isStringOrNull(l.sku) && typeof l.description === "string" && isStringOrNull(l.category) && typeof l.kind === "string",
+      )
+    )
+      bad.push("cart.lines");
+  }
+  if (supplier !== null) {
+    if (!isObject(supplier)) bad.push("supplier");
+    else {
+      if (typeof supplier.id !== "string") bad.push("supplier.id");
+      if (typeof supplier.active !== "boolean") bad.push("supplier.active");
+      if (
+        !everyItem(
+          supplier.fee_terms,
+          (t) =>
+            typeof t.code === "string" &&
+            (t.kind === "SHIPPING" || t.kind === "FEE") &&
+            isNonNegativeMinor(t.amount_minor) &&
+            (t.waived_over_minor === null || isNonNegativeMinor(t.waived_over_minor)),
+        )
+      )
+        bad.push("supplier.fee_terms");
+    }
+  }
+  if (
+    !everyItem(
+      input.catalog,
+      (c) =>
+        typeof c.sku === "string" &&
+        typeof c.supplier_id === "string" &&
+        typeof c.category === "string" &&
+        isNonNegativeMinor(c.unit_price_minor) &&
+        typeof c.recurring === "boolean" &&
+        typeof c.quarantined === "boolean",
+    )
+  )
+    bad.push("catalog");
+  if (!isObject(input.needed_units_by_sku)) bad.push("needed_units_by_sku");
+  if (!isObject(input.pack_quantity_by_sku)) bad.push("pack_quantity_by_sku");
+  if (
+    !everyItem(
+      input.market,
+      (m) =>
+        typeof m.sku === "string" &&
+        (m.reference_unit_price_minor === null || typeof m.reference_unit_price_minor === "number") &&
+        isStringOrNull(m.observed_at) &&
+        typeof m.comparable === "boolean",
+    )
+  )
+    bad.push("market");
+  if (
+    !everyItem(
+      input.prior_orders,
+      (o) =>
+        typeof o.id === "string" &&
+        typeof o.supplier_id === "string" &&
+        typeof o.status === "string" &&
+        typeof o.created_at === "string" &&
+        isStringArray(o.skus),
+    )
+  )
+    bad.push("prior_orders");
+  if (!isStringArray(input.quarantined_source_ids)) bad.push("quarantined_source_ids");
+  if (input.market_reference_max_age_hours !== undefined && !isNonNegativeFinite(input.market_reference_max_age_hours))
+    bad.push("market_reference_max_age_hours");
   return bad;
 }
 
@@ -193,6 +293,16 @@ function evaluate(input: PolicyInput): PolicyResult {
       severity: "BLOCK",
       message: "Evaluation time is invalid; the mandate cannot be applied.",
       evidence: { reason: "invalid_now" },
+    });
+    return finalize(input, violations, checks, mandate);
+  }
+  const badFacts = malformedFacts(input);
+  if (badFacts.length > 0) {
+    violate({
+      code: "POLICY_INPUT_INVALID",
+      severity: "BLOCK",
+      message: "Policy facts have the wrong type; the cart cannot be evaluated.",
+      evidence: { fields: badFacts },
     });
     return finalize(input, violations, checks, mandate);
   }

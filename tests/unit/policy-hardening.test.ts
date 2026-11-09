@@ -80,13 +80,47 @@ describe("policy engine — totality", () => {
 
   it("fails closed when the input is structurally broken", () => {
     const r = blocked({ ...baseInput(), catalog: null as never });
-    expect(r.violations).toEqual([
+    expect(r.violations).toEqual([expect.objectContaining({ code: "POLICY_INPUT_INVALID", evidence: { fields: ["catalog"] } })]);
+    expect(r.mandate_version).toBe(1);
+    // Anything that throws while reading the input is caught too.
+    const throwing = baseInput();
+    Object.defineProperty(throwing, "market", {
+      get() {
+        throw new Error("unreadable");
+      },
+    });
+    expect(blocked(throwing).violations).toEqual([
       expect.objectContaining({ code: "POLICY_INPUT_INVALID", evidence: expect.objectContaining({ reason: "evaluation_error" }) }),
     ]);
-    expect(r.mandate_version).toBe(1);
     expect(() => evaluatePolicy(null as never)).not.toThrow();
     expect(evaluatePolicy(null as never).decision).toBe("BLOCK");
     expect(evaluatePolicy({} as never).decision).toBe("BLOCK");
+  });
+
+  // Audit M2: each of these was ALLOWed through JavaScript coercion.
+  it.each([
+    ["a quarantined supplier listed as a string", { quarantined_source_ids: SUPPLIER as never }, "quarantined_source_ids"],
+    [
+      'subscriptions_allowed as the string "false"',
+      { mandate: mandate({ subscriptions_allowed: "false" as never }) },
+      "subscriptions_allowed",
+    ],
+    ["a market age limit as a string", { market_reference_max_age_hours: "100000" as never }, "market_reference_max_age_hours"],
+    ['an inactive supplier marked "false"', { supplier: { ...baseInput().supplier!, active: "false" as never } }, "supplier.active"],
+    [
+      "a prior order whose status is not a string",
+      { prior_orders: [{ id: "po", supplier_id: SUPPLIER, skus: ["TK-250"], status: ["PAID"] as never, created_at: NOW.toISOString() }] },
+      "prior_orders",
+    ],
+    ["a currency that is not an ISO code", { mandate: mandate({ currency: 840 as never }) }, "currency"],
+  ] as [string, Partial<PolicyInput>, string][])("blocks %s", (_name, patch, field) => {
+    const r = blocked(baseInput(patch));
+    expect(r.violations[0]).toMatchObject({ code: "POLICY_INPUT_INVALID" });
+    expect(r.violations[0]!.evidence!.fields).toContain(field);
+  });
+
+  it("blocks a quarantined supplier given as an array (the well-typed control)", () => {
+    expect(codes(evaluatePolicy(baseInput({ quarantined_source_ids: [SUPPLIER] })))).toContain("QUARANTINED_SOURCE");
   });
 
   it("gives different malformed inputs different digests", () => {
