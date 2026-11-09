@@ -3,7 +3,10 @@ import { type Cart, checkCartArithmetic } from "../cart";
 import { digest } from "../canonical";
 import type { SpendMandate } from "../mandates/types";
 
-export const POLICY_VERSION = "trustrail-policy/1.2.0";
+export const POLICY_VERSION = "trustrail-policy/1.3.0";
+
+/** Market references older than this many hours are stale unless the caller overrides it. */
+export const DEFAULT_MARKET_MAX_AGE_HOURS = 72;
 
 /** Published, supplier-level terms. Anything on a cart that is not covered here is unauthorized. */
 export interface SupplierTerms {
@@ -465,7 +468,7 @@ function evaluate(input: PolicyInput): PolicyResult {
   }
 
   // --- Market price -------------------------------------------------------------------
-  const maxAgeMs = (input.market_reference_max_age_hours ?? 72) * 3_600_000;
+  const maxAgeMs = (input.market_reference_max_age_hours ?? DEFAULT_MARKET_MAX_AGE_HOURS) * 3_600_000;
   for (const line of productLines) {
     if (!line.sku) continue;
     const ref = input.market.find((m) => m.sku === line.sku);
@@ -667,25 +670,48 @@ function inputDigest(input: PolicyInput): string {
   }
 }
 
-/** Stable subset of the input used to prove which facts a decision was made on. */
+const byCodeUnit = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+/** Stable sort by key: entries sharing a key keep their relative order, which can be decisive. */
+const sortedBy = <T>(items: readonly T[], key: (t: T) => string): T[] => [...items].sort((a, b) => byCodeUnit(key(a), key(b)));
+const sortedEntries = (record: Record<string, unknown>) => Object.entries(record).sort(([a], [b]) => byCodeUnit(a, b));
+/** Fractional unit prices in micro-minor units, so the digest stays integer for finite values. */
+const micro = (v: number | null) => (v !== null && Number.isFinite(v) && Number.isSafeInteger(Math.round(v * 1_000_000)) ? Math.round(v * 1_000_000) : v);
+
+/**
+ * Every fact the decision depends on, so the digest proves exactly which inputs produced it.
+ * Set-like collections are sorted (code-unit order); collections where order is decisive
+ * (catalog: last entry per SKU wins; market: first entry per SKU wins) are sorted stably by key
+ * so that order is preserved where it matters.
+ */
 function policyInputFingerprint(input: PolicyInput) {
   return {
     policy_version: POLICY_VERSION,
-    mandate_id: input.mandate?.id ?? null,
-    mandate_version: input.mandate?.version ?? null,
+    now: input.now,
+    mandate: input.mandate,
     cart: input.cart,
-    supplier_id: input.supplier?.id ?? null,
+    supplier: input.supplier
+      ? {
+          id: input.supplier.id,
+          active: input.supplier.active,
+          tax_rate_bps: input.supplier.tax_rate_bps,
+          fee_terms: sortedBy(input.supplier.fee_terms, (t) => `${t.kind}\u0000${t.code}`),
+        }
+      : null,
+    catalog: sortedBy(input.catalog, (c) => `${c.supplier_id}\u0000${c.sku}`),
     budget: input.budget,
     request_budget_limit_minor: input.request_budget_limit_minor,
-    quarantined_source_ids: [...input.quarantined_source_ids].sort(),
-    market: input.market.map((m) => ({
+    needed_units_by_sku: sortedEntries(input.needed_units_by_sku),
+    pack_quantity_by_sku: sortedEntries(input.pack_quantity_by_sku),
+    quarantined_source_ids: [...input.quarantined_source_ids].sort(byCodeUnit),
+    market: sortedBy(input.market, (m) => m.sku).map((m) => ({
       sku: m.sku,
       comparable: m.comparable,
       observed_at: m.observed_at,
-      // fractional unit prices are encoded in micro-minor units to stay integer
-      reference_micro: m.reference_unit_price_minor === null ? null : Math.round(m.reference_unit_price_minor * 1_000_000),
-      candidate_micro: Math.round(m.candidate_unit_price_minor * 1_000_000),
+      reference_micro: micro(m.reference_unit_price_minor),
+      candidate_micro: micro(m.candidate_unit_price_minor),
     })),
+    prior_orders: sortedBy(input.prior_orders, (o) => o.id).map((o) => ({ ...o, skus: [...o.skus].sort(byCodeUnit) })),
+    market_reference_max_age_hours: input.market_reference_max_age_hours ?? DEFAULT_MARKET_MAX_AGE_HOURS,
   };
 }
 
