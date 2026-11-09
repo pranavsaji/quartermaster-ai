@@ -3,6 +3,7 @@
 import type { PublicConfig, SessionUser } from "@qm/contracts";
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
 import { api } from "@/lib/api";
+import { ApiRequestError } from "@/lib/http";
 import { useResource } from "@/lib/hooks";
 import { userCan, type Capability } from "@/lib/roles";
 
@@ -12,6 +13,8 @@ export interface Session {
   can: (capability: Capability) => boolean;
   signOut: () => Promise<void>;
   signingOut: boolean;
+  /** Why the last sign-out attempt failed; the user is still signed in. */
+  signOutError: unknown;
 }
 
 const SessionContext = createContext<Session | null>(null);
@@ -36,23 +39,31 @@ export function useLoadSession(): SessionLoadState {
     [],
   );
   const [signingOut, setSigningOut] = useState(false);
+  const [signOutError, setSignOutError] = useState<unknown>(undefined);
 
+  // Only leave the console once the API has ended the session: navigating away after a
+  // failed logout would leave a live session cookie behind while looking signed out.
   const signOut = useCallback(async () => {
     setSigningOut(true);
+    setSignOutError(undefined);
     try {
       await api.auth.logout();
-    } catch {
-      // Even if the API call fails, leave the console; the cookie expires server-side.
-    } finally {
-      window.location.assign("/login");
+    } catch (err) {
+      // 401: the session had already ended, which is what we wanted.
+      if (!(err instanceof ApiRequestError && err.isUnauthorized)) {
+        setSignOutError(err);
+        setSigningOut(false);
+        return;
+      }
     }
+    window.location.assign("/login");
   }, []);
 
   const session = useMemo<Session | null>(() => {
     if (!resource.data) return null;
     const { user, config } = resource.data;
-    return { user, config, can: (c) => userCan(user, c), signOut, signingOut };
-  }, [resource.data, signOut, signingOut]);
+    return { user, config, can: (c) => userCan(user, c), signOut, signingOut, signOutError };
+  }, [resource.data, signOut, signingOut, signOutError]);
 
   return { session, loading: resource.loading, error: resource.error, retry: resource.reload };
 }

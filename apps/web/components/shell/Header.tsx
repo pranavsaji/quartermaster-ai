@@ -3,6 +3,8 @@
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { useSession } from "@/components/session/SessionProvider";
+import { describeError } from "@/lib/http";
+import { lookup } from "@/lib/labels";
 import { ROLE_LABELS } from "@/lib/roles";
 import { Icons } from "./icons";
 
@@ -12,8 +14,9 @@ function initials(name: string): string {
 }
 
 export function Header({ onOpenMenu }: { onOpenMenu: () => void }) {
-  const { user, config, signOut, signingOut } = useSession();
+  const { user, config, signOut, signingOut, signOutError } = useSession();
   const sandbox = config.paypal.environment === "sandbox";
+  const roleLabel = lookup(ROLE_LABELS, user.role, user.role);
 
   return (
     <header className="sticky top-0 z-20 border-b border-line bg-surface/85 backdrop-blur supports-[backdrop-filter]:bg-surface/70">
@@ -69,8 +72,8 @@ export function Header({ onOpenMenu }: { onOpenMenu: () => void }) {
             <p className="max-w-40 truncate text-[13px] font-medium text-ink">{user.name}</p>
             <p className="max-w-40 truncate text-[11.5px] text-ink-3">{user.email}</p>
           </div>
-          <Badge tone={user.role === "OWNER" ? "accent" : "neutral"} label={`Role: ${ROLE_LABELS[user.role]}`}>
-            {ROLE_LABELS[user.role]}
+          <Badge tone={user.role === "OWNER" ? "accent" : "neutral"} label={`Role: ${roleLabel}`}>
+            {roleLabel}
           </Badge>
           <Button variant="ghost" size="sm" onClick={signOut} loading={signingOut} aria-label="Sign out">
             {!signingOut ? <Icons.signOut className="size-4" /> : null}
@@ -78,6 +81,11 @@ export function Header({ onOpenMenu }: { onOpenMenu: () => void }) {
           </Button>
         </div>
       </div>
+      {signOutError ? (
+        <p role="alert" className="border-t border-block-line bg-block-soft px-4 py-2 text-[12.5px] text-block sm:px-6">
+          Couldn&apos;t sign out: {describeError(signOutError)} You are still signed in; try again.
+        </p>
+      ) : null}
     </header>
   );
 }
