@@ -35,6 +35,20 @@ describe("budget extraction", () => {
     expect(parseBudget(text)).toBeNull();
   });
 
+  it.each([
+    ["Grab $30 K-Cup pods", 3_000],
+    ["Grab $30 k-cups", 3_000],
+    ["$5 kits of gloves", 500],
+    ["$12 Kosher salt", 1_200],
+    ["$40 k9 treats", 4_000],
+    ["$2k.", 200_000],
+    ["$2K, no more", 200_000],
+    ["budget $3 k", 300_000],
+    ["(max $1.5k)", 150_000],
+  ])("reads the thousands suffix only when it stands alone: %s", (text, minor) => {
+    expect(parseBudget(text)).toBe(minor);
+  });
+
   it("never truncates a four-digit amount to three digits", () => {
     for (let dollars = 1000; dollars < 100_000; dollars += 777) {
       expect(parseBudget(`keep it below $${dollars}`)).toBe(dollars * 100);
