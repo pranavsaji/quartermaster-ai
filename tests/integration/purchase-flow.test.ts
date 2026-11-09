@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import request from "supertest";
 import { auditEvents, purchaseOrderItems } from "@qm/database";
 import type { ProcurementRequestDto, PurchaseOrderDto } from "@qm/contracts";
@@ -254,11 +254,22 @@ describe("end-to-end purchasing journey", () => {
     expect(ok.body.valid).toBe(true);
     expect(ok.body.events_checked).toBeGreaterThan(10);
     const [victim] = await h.ctx.db.select().from(auditEvents).where(eq(auditEvents.action, "payment.captured"));
-    await h.ctx.db.update(auditEvents).set({ data: { ...victim!.data, captured_minor: 1 } }).where(eq(auditEvents.id, victim!.id));
-    const bad = await owner.get("/security/audit/verify");
-    expect(bad.body.valid).toBe(false);
-    expect(bad.body.first_invalid_sequence).toBe(victim!.sequence);
-    await h.ctx.db.update(auditEvents).set({ data: victim!.data }).where(eq(auditEvents.id, victim!.id));
+    // The database refuses to rewrite or delete audit rows.
+    const cause = (p: Promise<unknown>) => p.catch((e: { cause?: unknown }) => Promise.reject(e.cause ?? e));
+    await expect(cause(h.ctx.db.update(auditEvents).set({ data: {} }).where(eq(auditEvents.id, victim!.id)))).rejects.toThrow(/append-only/);
+    await expect(cause(h.ctx.db.delete(auditEvents).where(eq(auditEvents.id, victim!.id)))).rejects.toThrow(/cannot be deleted/);
+
+    // Someone with DDL rights can bypass the trigger; the hash chain still exposes the edit.
+    await h.ctx.db.execute(sql`alter table audit_events disable trigger audit_events_append_only`);
+    try {
+      await h.ctx.db.update(auditEvents).set({ data: { ...victim!.data, captured_minor: 1 } }).where(eq(auditEvents.id, victim!.id));
+      const bad = await owner.get("/security/audit/verify");
+      expect(bad.body.valid).toBe(false);
+      expect(bad.body.first_invalid_sequence).toBe(victim!.sequence);
+      await h.ctx.db.update(auditEvents).set({ data: victim!.data }).where(eq(auditEvents.id, victim!.id));
+    } finally {
+      await h.ctx.db.execute(sql`alter table audit_events enable trigger audit_events_append_only`);
+    }
   });
 });
 
