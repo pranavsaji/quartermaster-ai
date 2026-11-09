@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import type { AnalyzeInvoiceRequest, InvoiceDto, InvoiceStatus, Severity } from "@qm/contracts";
 import { invoiceMatches, invoices, paymentAttempts, purchaseOrderItems, purchaseOrders, suppliers, type DbOrTx } from "@qm/database";
 import { analyzeInvoice, normalizeInvoiceNumber } from "@qm/quartermaster";
@@ -6,7 +6,7 @@ import type { AppContext } from "../context";
 import { notFound } from "../errors";
 import { appendAudit } from "./audit";
 import { recordFinding } from "./findings";
-import type { Actor } from "./common";
+import { AfterCommit, type Actor } from "./common";
 
 type InvoiceRow = typeof invoices.$inferSelect;
 
@@ -28,9 +28,11 @@ function toDto(r: InvoiceRow, matches: (typeof invoiceMatches.$inferSelect)[]): 
 
 export async function listInvoices(db: DbOrTx, organizationId: string): Promise<InvoiceDto[]> {
   const rows = await db.select().from(invoices).where(eq(invoices.organizationId, organizationId)).orderBy(desc(invoices.createdAt)).limit(200);
-  const out: InvoiceDto[] = [];
-  for (const r of rows) out.push(toDto(r, await db.select().from(invoiceMatches).where(eq(invoiceMatches.invoiceId, r.id))));
-  return out;
+  if (rows.length === 0) return [];
+  const matches = await db.select().from(invoiceMatches).where(inArray(invoiceMatches.invoiceId, rows.map((r) => r.id)));
+  const byInvoice = new Map<string, (typeof matches)[number][]>();
+  for (const m of matches) byInvoice.set(m.invoiceId, [...(byInvoice.get(m.invoiceId) ?? []), m]);
+  return rows.map((r) => toDto(r, byInvoice.get(r.id) ?? []));
 }
 
 /**
@@ -39,7 +41,8 @@ export async function listInvoices(db: DbOrTx, organizationId: string): Promise<
  * invoice can trigger a payment.
  */
 export async function analyzeAndRecordInvoice(ctx: AppContext, actor: Actor, input: AnalyzeInvoiceRequest): Promise<InvoiceDto> {
-  return ctx.db.transaction(async (tx) => {
+  const after = new AfterCommit();
+  const result = await ctx.db.transaction(async (tx) => {
     const [supplier] = await tx.select().from(suppliers).where(and(eq(suppliers.id, input.supplier_id), eq(suppliers.organizationId, actor.organizationId)));
     if (!supplier) throw notFound("Supplier");
 
@@ -114,7 +117,7 @@ export async function analyzeAndRecordInvoice(ctx: AppContext, actor: Actor, inp
         evidence: { duplicate_of: analysis.duplicate_of, failed_checks: analysis.checks.filter((c) => !c.passed).map((c) => c.check) },
         relatedPurchaseOrderId: poView?.id ?? null,
       });
-      void ctx.notifier.send({ kind: "INVOICE_FLAGGED", organization_id: actor.organizationId, title: `Invoice ${input.invoice_number} flagged`, summary: `${analysis.status.toLowerCase()} — settlement withheld`, link_path: "/orders" });
+      after.add(() => ctx.notifier.send({ kind: "INVOICE_FLAGGED", organization_id: actor.organizationId, title: `Invoice ${input.invoice_number} flagged`, summary: `${analysis.status.toLowerCase()} — settlement withheld`, link_path: "/orders" }));
     }
     if (analysis.injection?.suspicious) {
       await recordFinding(tx, {
@@ -140,4 +143,6 @@ export async function analyzeAndRecordInvoice(ctx: AppContext, actor: Actor, inp
     });
     return toDto(row!, matches);
   });
+  after.flush(ctx);
+  return result;
 }
