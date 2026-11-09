@@ -3,6 +3,12 @@ import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
 import "./globals.css";
 
+/**
+ * Every page carries a per-request CSP nonce (proxy.ts), which Next.js can only
+ * attach to its scripts at request time, so nothing is prerendered.
+ */
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: {
     default: "Quartermaster",
