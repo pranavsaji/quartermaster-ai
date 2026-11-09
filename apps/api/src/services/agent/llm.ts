@@ -7,6 +7,7 @@ import {
   type InterpretedIntent,
   type InventoryRef,
 } from "@qm/quartermaster";
+import { DEMAND_MULTIPLIER_MAX, DEMAND_MULTIPLIER_MIN } from "@qm/contracts";
 import { fenceUntrusted } from "@qm/trustrail";
 import type { AgentRun } from "./runtime";
 
@@ -18,7 +19,7 @@ import type { AgentRun } from "./runtime";
 const INTERPRET_SYSTEM = `You convert a restaurant owner's purchasing instruction into structured data.
 Rules:
 - Choose inventory_item_ids ONLY from the provided inventory list. If the owner asks for something not in the list, put it in unsupported_requests.
-- demand_multiplier: 1 means normal demand. "busy weekend" is about 1.25; "25% busier" is 1.25; "twice as busy" is 2. Range 0.5–3.
+- demand_multiplier: 1 means normal demand. "busy weekend" is about 1.25; "25% busier" is 1.25; "twice as busy" is 2. Range ${DEMAND_MULTIPLIER_MIN}–${DEMAND_MULTIPLIER_MAX}.
 - budget_limit_minor is in cents (e.g. "$300" -> 30000) and only if the owner stated a cap; otherwise null.
 - required_by is YYYY-MM-DD only if a date or weekday is stated, relative to TODAY; otherwise null.
 - Never invent prices, suppliers, or approvals. You cannot approve or pay for anything.`;
