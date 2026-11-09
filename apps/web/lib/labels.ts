@@ -159,6 +159,7 @@ export const FINDING_LABELS: Record<FindingType, string> = {
   CERTIFICATE_VERIFICATION_FAILED: "Certificate verification failed",
   PAYMENT_AMOUNT_MISMATCH: "Payment amount mismatch",
   ACCESS_DENIED: "Access denied",
+  PAYMENT_REVERSED: "Payment reversed",
 };
 
 export function findingLabel(type: string): string {
