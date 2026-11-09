@@ -47,6 +47,8 @@ export const InventoryAdjustmentRequest = z.object({
     .refine((v) => v !== 0, "Delta must be non-zero"),
   reason: z.enum(["COUNT_CORRECTION", "WASTE", "CONSUMPTION", "MANUAL_RECEIPT"]),
   note: z.string().trim().max(500).optional(),
+  /** The on-hand quantity the user saw. When given, the change is refused if stock has moved since. */
+  expected_on_hand: z.number().int().min(0).max(10_000_000).optional(),
 });
 export type InventoryAdjustmentRequest = z.infer<typeof InventoryAdjustmentRequest>;
 

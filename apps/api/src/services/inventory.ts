@@ -194,6 +194,13 @@ export async function adjustInventory(
     .where(and(eq(inventoryItems.id, args.itemId), eq(inventoryItems.organizationId, args.organizationId)))
     .for("update");
   if (!item) throw notFound("Inventory item");
+  // Compare-and-set: a count made against a stale on-hand figure must not silently overwrite a
+  // delivery or adjustment recorded in the meantime.
+  if (args.input.expected_on_hand !== undefined && args.input.expected_on_hand !== item.onHand) {
+    throw conflict("STOCK_CHANGED", "Stock changed since you opened this item. Review the new on-hand quantity and try again.", {
+      on_hand: item.onHand,
+    });
+  }
   const next = item.onHand + args.input.quantity_delta;
   if (next < 0) throw conflict("NEGATIVE_STOCK", `Adjustment would leave ${next} ${item.unit} on hand`);
   await tx.update(inventoryItems).set({ onHand: next, updatedAt: args.now }).where(eq(inventoryItems.id, item.id));

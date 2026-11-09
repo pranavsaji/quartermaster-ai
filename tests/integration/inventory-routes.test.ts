@@ -156,3 +156,24 @@ describe("GET /suppliers", () => {
     }
   });
 });
+
+describe("adjustment compare-and-set", () => {
+  it("applies a count only if stock has not moved since the user looked", async () => {
+    const owner = await h.agent("owner");
+    const item = (await owner.get("/inventory")).body.items[0] as { id: string; on_hand: number };
+    const ok = await owner.post(`/inventory/${item.id}/adjustments`, {
+      quantity_delta: 2,
+      reason: "COUNT_CORRECTION",
+      expected_on_hand: item.on_hand,
+    });
+    expect(ok.status).toBe(200);
+    // A second count made against the old figure is refused with the current quantity.
+    const stale = await owner.post(`/inventory/${item.id}/adjustments`, {
+      quantity_delta: 1,
+      reason: "COUNT_CORRECTION",
+      expected_on_hand: item.on_hand,
+    });
+    expect(stale.status).toBe(409);
+    expect(stale.body.error).toMatchObject({ code: "STOCK_CHANGED", details: { on_hand: item.on_hand + 2 } });
+  });
+});
