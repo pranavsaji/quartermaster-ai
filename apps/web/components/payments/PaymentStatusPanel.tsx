@@ -189,7 +189,7 @@ function RefundAction({
         <div className="space-y-4">
           <Field label="Amount" error={fieldError}>
             {(control) => (
-              <MoneyInput {...control} value={amount} onChange={(e) => setAmount(e.target.value)} />
+              <MoneyInput {...control} currency={payment.currency} value={amount} onChange={(e) => setAmount(e.target.value)} />
             )}
           </Field>
           <Field label="Reason" required>

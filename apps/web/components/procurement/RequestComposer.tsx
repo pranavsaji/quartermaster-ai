@@ -85,6 +85,7 @@ export function RequestComposer({ currency, onCancel }: { currency: string; onCa
               {(control) => (
                 <MoneyInput
                   {...control}
+                  currency={currency}
                   value={budget}
                   onChange={(e) => setBudget(e.target.value)}
                   placeholder="300.00"

@@ -225,17 +225,17 @@ export function MandateForm({
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <Field label="Weekly budget" required error={errors.weekly_budget_minor}>
                   {(control) => (
-                    <MoneyInput {...control} value={form.weekly} onChange={(e) => set("weekly", e.target.value)} />
+                    <MoneyInput {...control} currency={cur} value={form.weekly} onChange={(e) => set("weekly", e.target.value)} />
                   )}
                 </Field>
                 <Field label="Per-order limit" required error={errors.per_order_limit_minor} hint="≤ weekly budget">
                   {(control) => (
-                    <MoneyInput {...control} value={form.perOrder} onChange={(e) => set("perOrder", e.target.value)} />
+                    <MoneyInput {...control} currency={cur} value={form.perOrder} onChange={(e) => set("perOrder", e.target.value)} />
                   )}
                 </Field>
                 <Field label="Auto-approval limit" required error={errors.auto_approval_limit_minor} hint="≤ per-order limit">
                   {(control) => (
-                    <MoneyInput {...control} value={form.autoApproval} onChange={(e) => set("autoApproval", e.target.value)} />
+                    <MoneyInput {...control} currency={cur} value={form.autoApproval} onChange={(e) => set("autoApproval", e.target.value)} />
                   )}
                 </Field>
               </div>

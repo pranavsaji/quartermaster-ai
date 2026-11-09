@@ -220,7 +220,7 @@ export const InvoiceForm = forwardRef<
                         <td className="py-1"><Input aria-label={`Line ${i + 1} SKU`} value={l.sku} onChange={(e) => updateLine(l.key, { sku: e.target.value })} className="w-28 font-mono text-[12px]" /></td>
                         <td className="py-1 pl-2"><Input aria-label={`Line ${i + 1} description`} value={l.description} onChange={(e) => updateLine(l.key, { description: e.target.value })} /></td>
                         <td className="py-1 pl-2"><Input aria-label={`Line ${i + 1} quantity`} inputMode="numeric" value={l.quantity} onChange={(e) => updateLine(l.key, { quantity: e.target.value })} className="tnum" /></td>
-                        <td className="py-1 pl-2"><MoneyInput aria-label={`Line ${i + 1} unit price`} value={l.unitPrice} onChange={(e) => updateLine(l.key, { unitPrice: e.target.value })} /></td>
+                        <td className="py-1 pl-2"><MoneyInput currency={currency} aria-label={`Line ${i + 1} unit price`} value={l.unitPrice} onChange={(e) => updateLine(l.key, { unitPrice: e.target.value })} /></td>
                         <td className="tnum py-1 pl-2 text-right text-ink-2">{t !== null ? money(t, currency) : "—"}</td>
                         <td className="py-1 pl-1 text-right">
                           <button
@@ -247,7 +247,7 @@ export const InvoiceForm = forwardRef<
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <Field label="Invoice total" hint={`Sum of lines: ${computedTotal !== null ? money(computedTotal, currency) : "—"}. Override to test a mismatched total.`}>
               {(control) => (
-                <MoneyInput {...control} value={totalOverride} onChange={(e) => setTotalOverride(e.target.value)} placeholder={computedTotal !== null ? minorToInput(computedTotal, currency) : ""} />
+                <MoneyInput {...control} currency={currency} value={totalOverride} onChange={(e) => setTotalOverride(e.target.value)} placeholder={computedTotal !== null ? minorToInput(computedTotal, currency) : ""} />
               )}
             </Field>
             <Field label="Supplier notes" hint="Free text from the document. Treated as untrusted and scanned for injected instructions.">
