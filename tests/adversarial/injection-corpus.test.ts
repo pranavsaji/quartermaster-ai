@@ -21,7 +21,7 @@ describe("benign corpus — no false quarantines", () => {
     expect(quarantined).toEqual([]);
   });
 
-  it("flags at most a handful as merely suspicious", () => {
+  it("flags none of them as even suspicious", () => {
     const suspicious = BENIGN_PRODUCT_TEXT.filter((t) => detectPromptInjection(t).suspicious);
     expect(suspicious).toEqual([]);
   });
