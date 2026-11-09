@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { truncateMiddle } from "@/lib/format";
 import { cn } from "./cn";
 
@@ -22,28 +22,41 @@ export function CopyValue({
   tail?: number;
   className?: string;
 }) {
-  const [copied, setCopied] = useState(false);
+  const [status, setStatus] = useState<"idle" | "copied" | "selected">("idle");
+  const codeRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
-    if (!copied) return;
-    const t = window.setTimeout(() => setCopied(false), 1600);
-    return () => window.clearTimeout(t);
-  }, [copied]);
+    if (status === "copied") {
+      const t = window.setTimeout(() => setStatus("idle"), 1600);
+      return () => window.clearTimeout(t);
+    }
+    if (status === "selected" && codeRef.current) {
+      // The full value is rendered now; select it so Ctrl/Cmd+C copies it.
+      const range = document.createRange();
+      range.selectNodeContents(codeRef.current);
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+    }
+  }, [status]);
 
   async function copy() {
     try {
       await navigator.clipboard.writeText(value);
-      setCopied(true);
+      setStatus("copied");
     } catch {
-      // Clipboard can be unavailable (insecure context / permissions): select instead.
-      setCopied(false);
+      // Clipboard can be unavailable (insecure context, permissions): show the full value
+      // and select it instead, so the user can copy it with the keyboard.
+      setStatus("selected");
     }
   }
 
+  const copied = status === "copied";
+
   return (
     <span className={cn("inline-flex max-w-full items-center gap-1 align-middle", className)}>
-      <code title={value} className="truncate rounded bg-ink/[0.04] px-1.5 py-0.5 font-mono text-[12px] text-ink-2">
-        {truncateMiddle(value, head, tail)}
+      <code ref={codeRef} title={value} className="truncate rounded bg-ink/[0.04] px-1.5 py-0.5 font-mono text-[12px] text-ink-2">
+        {status === "selected" ? value : truncateMiddle(value, head, tail)}
       </code>
       <button
         type="button"
@@ -68,7 +81,8 @@ export function CopyValue({
         )}
       </button>
       <span className="sr-only" aria-live="polite">
-        {copied ? "Copied to clipboard" : ""}
+        {copied ? "Copied to clipboard" : null}
+        {status === "selected" ? "Couldn't copy automatically. The value is selected: press Ctrl+C or Cmd+C." : null}
       </span>
     </span>
   );
