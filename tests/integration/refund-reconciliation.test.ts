@@ -29,6 +29,13 @@ const refund = (paymentId: string, body: Record<string, unknown>, key?: string) 
   owner.post(`/payments/${paymentId}/refund`, { reason: "Test refund", ...body }, key);
 const payment = async (id: string) => (await owner.get(`/payments/${id}`)).body;
 const rows = (paymentId: string) => h.ctx.db.select().from(refunds).where(eq(refunds.paymentAttemptId, paymentId));
+/**
+ * refunds.created_at comes from the database clock, not the API's injected clock (apps
+ * follow-up), and the sweeper compares it with the injected clock: put a payment's refunds on the
+ * harness clock so the sweep cut-off does not depend on wall time.
+ */
+const onHarnessClock = (paymentId: string) =>
+  h.ctx.db.update(refunds).set({ createdAt: h.clock.now }).where(eq(refunds.paymentAttemptId, paymentId));
 const later = async (minutes: number) => {
   h.clock.now = new Date(h.clock.now.getTime() + minutes * 60_000);
 };
@@ -47,6 +54,7 @@ describe("refund reconciliation", () => {
     expect(first.status).toBe(502);
     expect(first.body.error.code).toBe("PAYPAL_REFUND_UNCONFIRMED");
     expect((await rows(o.paymentId)).map((r) => r.status)).toEqual(["UNKNOWN"]);
+    await onHarnessClock(o.paymentId);
     const paidOut = h.paypal.refundCount;
 
     // A new refund is blocked until the unknown one is resolved...
@@ -72,6 +80,7 @@ describe("refund reconciliation", () => {
     expect(res.body.payment.refunded_amount_minor).toBe(0);
     const [pending] = await rows(o.paymentId);
     expect(pending!.status).toBe("PENDING");
+    await onHarnessClock(o.paymentId);
 
     await later(5);
     await sweep(h.ctx);
