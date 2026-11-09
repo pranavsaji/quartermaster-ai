@@ -1,0 +1,120 @@
+# Render Blueprint — Quartermaster AI + TrustRail
+# https://render.com/docs/blueprint-spec
+#
+# quartermaster-web        Next.js interface (public)
+# quartermaster-api        Express API: TrustRail + protected PayPal gateway (public, for PayPal webhooks)
+# quartermaster-sweeper    Cron: payment reconciliation, certificate expiry, purges
+# quartermaster-postgres   System of record
+
+databases:
+  - name: quartermaster-postgres
+    plan: basic-256mb
+    databaseName: quartermaster
+    user: quartermaster
+    postgresMajorVersion: "17"
+    ipAllowList: [] # private network only
+
+services:
+  - type: web
+    name: quartermaster-api
+    runtime: node
+    plan: starter
+    region: oregon
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @qm/api build
+    preDeployCommand: node apps/api/dist/migrate.js
+    startCommand: node apps/api/dist/server.js
+    healthCheckPath: /readyz
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22"
+      - key: TRUST_PROXY
+        value: "1"
+      - key: LOG_LEVEL
+        value: info
+      - key: DATABASE_URL
+        fromDatabase:
+          name: quartermaster-postgres
+          property: connectionString
+      - key: DATABASE_SSL
+        value: disable # internal connection on Render's private network
+      - key: APP_BASE_URL
+        sync: false # e.g. https://quartermaster-web.onrender.com
+      - key: SWEEPER_INTERVAL_SECONDS
+        value: "0" # the cron job below runs the sweeper
+      - key: TRUSTRAIL_SIGNING_KEY_ID
+        sync: false
+      - key: TRUSTRAIL_SIGNING_KEY
+        sync: false
+      - key: PAYPAL_ENV
+        value: sandbox
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: PAYPAL_WEBHOOK_ID
+        sync: false
+      - key: PAYPAL_MERCHANT_ID
+        sync: false
+      - key: CHANNEL3_API_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-5-mini
+      - key: ZAPIER_WEBHOOK_URL
+        sync: false
+      - key: DEMO_USER_PASSWORD
+        sync: false
+
+  - type: web
+    name: quartermaster-web
+    runtime: node
+    plan: starter
+    region: oregon
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @qm/web build
+    startCommand: pnpm --filter @qm/web start
+    healthCheckPath: /login
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22"
+      - key: API_HOSTPORT
+        fromService:
+          type: web
+          name: quartermaster-api
+          property: hostport
+
+  - type: cron
+    name: quartermaster-sweeper
+    runtime: node
+    plan: starter
+    region: oregon
+    schedule: "*/5 * * * *"
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm --filter @qm/api build
+    startCommand: node apps/api/dist/sweep.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: quartermaster-postgres
+          property: connectionString
+      - key: TRUSTRAIL_SIGNING_KEY_ID
+        sync: false
+      - key: TRUSTRAIL_SIGNING_KEY
+        sync: false
+      - key: PAYPAL_ENV
+        value: sandbox
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: PAYPAL_WEBHOOK_ID
+        sync: false
