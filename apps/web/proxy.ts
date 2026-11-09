@@ -1,13 +1,21 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { buildCsp, createNonce } from "./lib/csp";
+import { loginRedirectFor, SESSION_COOKIE_NAMES } from "./lib/session-gate";
 
 /**
- * Runs before every page request: sets a per-request nonce-based
- * Content-Security-Policy. Next.js reads the nonce from the request's CSP
- * header and attaches it to its own scripts, which is why pages render
- * dynamically (see app/layout.tsx).
+ * Runs before every page request:
+ * 1. Sends visitors without a session cookie to /login?next=… (the client still
+ *    asks the API whether the session is valid and what the role allows).
+ * 2. Sets a per-request nonce-based Content-Security-Policy. Next.js reads the
+ *    nonce from the request's CSP header and attaches it to its own scripts,
+ *    which is why pages render dynamically (see app/layout.tsx).
  */
 export function proxy(request: NextRequest) {
+  const { pathname, search } = request.nextUrl;
+  const hasSession = SESSION_COOKIE_NAMES.some((name) => request.cookies.has(name));
+  const loginUrl = loginRedirectFor(pathname, search, hasSession);
+  if (loginUrl) return NextResponse.redirect(new URL(loginUrl, request.url));
+
   const nonce = createNonce();
   const https = request.nextUrl.protocol === "https:" || request.headers.get("x-forwarded-proto") === "https";
   const csp = buildCsp({ nonce, dev: process.env.NODE_ENV === "development", https });
