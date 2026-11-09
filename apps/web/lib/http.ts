@@ -49,6 +49,15 @@ export class ApiRequestError extends Error {
     return this.status === 403;
   }
 
+  /**
+   * The caller's role is too low for the action (`requireRole` in the API).
+   * Other 403s (CSRF guard, "only the approving owner can pay", disabled
+   * synthetic actions) carry their own explanation and are not role problems.
+   */
+  get isRoleDenied(): boolean {
+    return this.status === 403 && this.code === "FORBIDDEN" && /\brequires the (OWNER|MANAGER|VIEWER) role\b/i.test(this.message);
+  }
+
   /** Network failure, gateway problem or 5xx: the outcome on the server is unknown. */
   get isAmbiguous(): boolean {
     return this.status === 0 || this.status >= 500;
@@ -175,10 +184,7 @@ export function isAbortError(error: unknown): boolean {
 
 /** Human-readable message for any thrown value, preferring the API's message. */
 export function describeError(error: unknown): string {
-  if (error instanceof ApiRequestError) {
-    if (error.isForbidden) return "You don't have permission to do that.";
-    return error.message;
-  }
+  if (error instanceof ApiRequestError) return error.message;
   if (error instanceof Error) return error.message;
   return "Something went wrong.";
 }
