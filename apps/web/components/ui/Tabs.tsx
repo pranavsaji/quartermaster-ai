@@ -1,27 +1,41 @@
 "use client";
 
-import { useId, useRef, type KeyboardEvent, type ReactNode } from "react";
+import { useRef, type HTMLAttributes, type KeyboardEvent, type ReactNode } from "react";
 import { cn } from "./cn";
 
 export interface TabItem<K extends string> {
   key: K;
   label: ReactNode;
-  count?: number;
+  /** Shown as a pill after the label, e.g. 42 or "100+". */
+  count?: ReactNode;
 }
 
-/** WAI-ARIA tablist with arrow-key navigation. The caller renders the active role="tabpanel". */
+const tabId = (idBase: string, key: string) => `${idBase}-tab-${key}`;
+const panelId = (idBase: string, key: string) => `${idBase}-panel-${key}`;
+
+/** Props for the element that renders the active tab's content. */
+export function tabPanelProps(idBase: string, key: string): HTMLAttributes<HTMLDivElement> {
+  return { id: panelId(idBase, key), role: "tabpanel", "aria-labelledby": tabId(idBase, key), tabIndex: 0 };
+}
+
+/**
+ * WAI-ARIA tablist with arrow-key navigation. The caller renders the active
+ * panel with `tabPanelProps(idBase, value)`, which wires aria-controls/labelledby.
+ */
 export function Tabs<K extends string>({
   items,
   value,
   onChange,
   label,
+  idBase,
 }: {
   items: TabItem<K>[];
   value: K;
   onChange: (key: K) => void;
   label: string;
+  /** Shared with `tabPanelProps` so each tab and its panel reference each other. */
+  idBase: string;
 }) {
-  const base = useId();
   const refs = useRef<Array<HTMLButtonElement | null>>([]);
 
   function onKeyDown(e: KeyboardEvent<HTMLButtonElement>, index: number) {
@@ -49,10 +63,11 @@ export function Tabs<K extends string>({
             ref={(el) => {
               refs.current[i] = el;
             }}
-            id={`${base}-tab-${item.key}`}
+            id={tabId(idBase, item.key)}
             role="tab"
             type="button"
             aria-selected={selected}
+            aria-controls={selected ? panelId(idBase, item.key) : undefined}
             tabIndex={selected ? 0 : -1}
             onClick={() => onChange(item.key)}
             onKeyDown={(e) => onKeyDown(e, i)}
