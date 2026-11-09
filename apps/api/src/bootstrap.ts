@@ -37,7 +37,13 @@ export async function bootstrap(overrides: ContextOverrides & { env?: NodeJS.Pro
   process.env.QM_MIGRATIONS_DIR ??= path.join(REPO_ROOT, "packages", "database", "migrations");
   const config = loadConfig(env);
   const log = createLogger(config.logLevel);
-  const database = await createDatabase({ url: config.database.url, ssl: config.database.ssl, sslCa: config.database.ca, maxConnections: config.database.poolMax });
+  const database = await createDatabase({
+    url: config.database.url,
+    ssl: config.database.ssl,
+    sslCa: config.database.ca,
+    maxConnections: config.database.poolMax,
+    onPoolError: (err) => log.error({ err }, "idle database connection failed"),
+  });
   if (overrides.migrate !== false) await database.migrate();
   const signingKey = resolveSigningKey(config, log);
   await registerSigningKey(database.db, signingKey);
