@@ -52,11 +52,7 @@ function shouldKeepKey(error: unknown): boolean {
  * Runs `perform` with an idempotency key bound to `action` + `body`.
  * Retries of an identical action reuse the key until a definitive response.
  */
-export async function withIdempotency<T>(
-  action: string,
-  body: unknown,
-  perform: (idempotencyKey: string) => Promise<T>,
-): Promise<T> {
+export async function withIdempotency<T>(action: string, body: unknown, perform: (idempotencyKey: string) => Promise<T>): Promise<T> {
   const scope = `${action}::${stableStringify(body ?? null)}`;
   let key = pending.get(scope);
   if (!key) {

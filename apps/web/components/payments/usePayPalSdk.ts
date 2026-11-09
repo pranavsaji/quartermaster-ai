@@ -12,10 +12,7 @@ export type PayPalSdkState =
   | { status: "error"; error: unknown };
 
 /** Loads the v6 SDK and checks PayPal eligibility for `currency`. */
-export function usePayPalSdk(
-  config: PublicConfig["paypal"],
-  currency: string,
-): { state: PayPalSdkState; retry: () => void } {
+export function usePayPalSdk(config: PublicConfig["paypal"], currency: string): { state: PayPalSdkState; retry: () => void } {
   const clientId = config.enabled ? config.client_id : null;
   const [attempt, setAttempt] = useState(0);
   // The outcome of one load attempt; any other key means a newer attempt is still loading.
@@ -42,10 +39,6 @@ export function usePayPalSdk(
   }, [clientId, config.sdk_url, currency, key]);
 
   const retry = useCallback(() => setAttempt((a) => a + 1), []);
-  const state: PayPalSdkState = !clientId
-    ? { status: "disabled" }
-    : result && result.key === key
-      ? result.state
-      : { status: "loading" };
+  const state: PayPalSdkState = !clientId ? { status: "disabled" } : result && result.key === key ? result.state : { status: "loading" };
   return { state, retry };
 }

@@ -66,9 +66,7 @@ function useChartOptions(s: AnalyticsSummaryDto | undefined) {
       count: d.count,
       kind: d.decision,
     }));
-    const findings = [...s.findings_by_type]
-      .sort((a, b) => b.count - a.count)
-      .map((f) => ({ type: findingLabel(f.type), count: f.count }));
+    const findings = [...s.findings_by_type].sort((a, b) => b.count - a.count).map((f) => ({ type: findingLabel(f.type), count: f.count }));
 
     const tooltipMoney = (label: string) => ({
       renderer: ({ datum, yKey }: { datum: Record<string, unknown>; yKey: string }) => ({
@@ -80,8 +78,26 @@ function useChartOptions(s: AnalyticsSummaryDto | undefined) {
     const spendByWeek: AgChartOptions = {
       data: weekly,
       series: [
-        { type: "bar", xKey: "week", yKey: "captured", yName: "Captured", stacked: true, fill: CHART_COLORS.series1, cornerRadius: 4, tooltip: tooltipMoney("Captured") },
-        { type: "bar", xKey: "week", yKey: "reserved", yName: "Reserved", stacked: true, fill: CHART_COLORS.series2, cornerRadius: 4, tooltip: tooltipMoney("Reserved") },
+        {
+          type: "bar",
+          xKey: "week",
+          yKey: "captured",
+          yName: "Captured",
+          stacked: true,
+          fill: CHART_COLORS.series1,
+          cornerRadius: 4,
+          tooltip: tooltipMoney("Captured"),
+        },
+        {
+          type: "bar",
+          xKey: "week",
+          yKey: "reserved",
+          yName: "Reserved",
+          stacked: true,
+          fill: CHART_COLORS.series2,
+          cornerRadius: 4,
+          tooltip: tooltipMoney("Reserved"),
+        },
       ],
       axes: { x: { type: "category", position: "bottom" }, y: moneyAxis(cur) },
       legend: { position: "top", enabled: true },
@@ -90,7 +106,16 @@ function useChartOptions(s: AnalyticsSummaryDto | undefined) {
     const spendByCategory: AgChartOptions = {
       data: byCategory,
       series: [
-        { type: "bar", direction: "horizontal", xKey: "category", yKey: "captured", yName: "Captured spend", fill: CHART_COLORS.series1, cornerRadius: 4, tooltip: tooltipMoney("Captured") },
+        {
+          type: "bar",
+          direction: "horizontal",
+          xKey: "category",
+          yKey: "captured",
+          yName: "Captured spend",
+          fill: CHART_COLORS.series1,
+          cornerRadius: 4,
+          tooltip: tooltipMoney("Captured"),
+        },
       ],
       axes: { x: { type: "category", position: "left" }, y: { ...moneyAxis(cur), position: "bottom" } },
       legend: { enabled: false },
@@ -105,7 +130,9 @@ function useChartOptions(s: AnalyticsSummaryDto | undefined) {
           yKey: "count",
           yName: "Decisions",
           cornerRadius: 4,
-          itemStyler: ({ datum }: { datum: { kind: PolicyDecisionKind } }) => ({ fill: lookup(DECISION_COLORS, datum.kind, CHART_COLORS.muted) }),
+          itemStyler: ({ datum }: { datum: { kind: PolicyDecisionKind } }) => ({
+            fill: lookup(DECISION_COLORS, datum.kind, CHART_COLORS.muted),
+          }),
           label: { enabled: true, placement: "outside-end", color: CHART_COLORS.text },
         },
       ],
@@ -116,7 +143,16 @@ function useChartOptions(s: AnalyticsSummaryDto | undefined) {
     const findingsByType: AgChartOptions = {
       data: findings,
       series: [
-        { type: "bar", direction: "horizontal", xKey: "type", yKey: "count", yName: "Findings", fill: CHART_COLORS.series1, cornerRadius: 4, label: { enabled: true, placement: "outside-end", color: CHART_COLORS.text } },
+        {
+          type: "bar",
+          direction: "horizontal",
+          xKey: "type",
+          yKey: "count",
+          yName: "Findings",
+          fill: CHART_COLORS.series1,
+          cornerRadius: 4,
+          label: { enabled: true, placement: "outside-end", color: CHART_COLORS.text },
+        },
       ],
       axes: { x: { type: "category", position: "left" }, y: countAxis("bottom", Math.max(0, ...findings.map((f) => f.count))) },
       legend: { enabled: false },
@@ -145,7 +181,13 @@ export function AnalyticsPage() {
       />
 
       {summary.error && !s ? <ErrorNotice error={summary.error} onRetry={summary.reload} /> : null}
-      <RefreshErrorNotice error={summary.error} hasData={Boolean(s)} updatedAt={summary.updatedAt} onRetry={summary.reload} className="mb-6" />
+      <RefreshErrorNotice
+        error={summary.error}
+        hasData={Boolean(s)}
+        updatedAt={summary.updatedAt}
+        onRetry={summary.reload}
+        className="mb-6"
+      />
 
       {!s && !summary.error ? (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
@@ -161,9 +203,24 @@ export function AnalyticsPage() {
               Measurable outcomes
             </h2>
             <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 2xl:grid-cols-6">
-              <StatTile label="Blocked attempts" value={num(s.security.blocked_attempts)} tone={s.security.blocked_attempts > 0 ? "block" : "neutral"} sub="Carts TrustRail refused" />
-              <StatTile label="Prompt injections detected" value={num(s.security.prompt_injections_detected)} tone="review" sub="Quarantined, never executed" />
-              <StatTile label="Duplicate captures" value={num(s.security.duplicate_captures)} tone={s.security.duplicate_captures === 0 ? "allow" : "block"} sub="Idempotent payments: target 0" />
+              <StatTile
+                label="Blocked attempts"
+                value={num(s.security.blocked_attempts)}
+                tone={s.security.blocked_attempts > 0 ? "block" : "neutral"}
+                sub="Carts TrustRail refused"
+              />
+              <StatTile
+                label="Prompt injections detected"
+                value={num(s.security.prompt_injections_detected)}
+                tone="review"
+                sub="Quarantined, never executed"
+              />
+              <StatTile
+                label="Duplicate captures"
+                value={num(s.security.duplicate_captures)}
+                tone={s.security.duplicate_captures === 0 ? "allow" : "block"}
+                sub="Idempotent payments: target 0"
+              />
               <StatTile label="Duplicate invoices flagged" value={num(s.security.duplicate_invoices_flagged)} sub="Settlement blocked" />
               <StatTile label="Procurement time (median)" value={duration(s.procurement_time_ms.median)} sub="Request → approved cart" />
               <StatTile label="Procurement time (p90)" value={duration(s.procurement_time_ms.p90)} sub="90th percentile" />

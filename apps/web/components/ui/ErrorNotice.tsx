@@ -48,8 +48,7 @@ export function ErrorNotice({
           {apiError.code ? <span>{apiError.code}</span> : null}
           {apiError.correlationId ? (
             <span>
-              {apiError.code ? " · " : ""}correlation id{" "}
-              <span className="select-all text-ink-2">{apiError.correlationId}</span>
+              {apiError.code ? " · " : ""}correlation id <span className="select-all text-ink-2">{apiError.correlationId}</span>
             </span>
           ) : null}
         </p>

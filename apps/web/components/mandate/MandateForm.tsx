@@ -126,17 +126,7 @@ function fromMandate(m: SpendMandateDto): FormState {
 }
 
 /** A group of related settings; its description and group-level error are announced with it. */
-function Section({
-  title,
-  description,
-  error,
-  children,
-}: {
-  title: string;
-  description?: string;
-  error?: string;
-  children: ReactNode;
-}) {
+function Section({ title, description, error, children }: { title: string; description?: string; error?: string; children: ReactNode }) {
   const id = useId();
   const describedBy = [error ? `${id}-error` : null, description ? `${id}-desc` : null].filter(Boolean).join(" ");
   return (
@@ -236,7 +226,12 @@ export function MandateForm({
                 </Field>
                 <Field label="Auto-approval limit" required error={errors.auto_approval_limit_minor} hint="≤ per-order limit">
                   {(control) => (
-                    <MoneyInput {...control} currency={cur} value={form.autoApproval} onChange={(e) => set("autoApproval", e.target.value)} />
+                    <MoneyInput
+                      {...control}
+                      currency={cur}
+                      value={form.autoApproval}
+                      onChange={(e) => set("autoApproval", e.target.value)}
+                    />
                   )}
                 </Field>
               </div>
@@ -316,7 +311,11 @@ export function MandateForm({
                 </Field>
                 <Field label="When exceeded">
                   {(control) => (
-                    <Select {...control} value={form.marketAction} onChange={(e) => set("marketAction", e.target.value as "REVIEW" | "BLOCK")}>
+                    <Select
+                      {...control}
+                      value={form.marketAction}
+                      onChange={(e) => set("marketAction", e.target.value as "REVIEW" | "BLOCK")}
+                    >
                       <option value="REVIEW">Require review</option>
                       <option value="BLOCK">Block</option>
                     </Select>
@@ -367,15 +366,15 @@ export function MandateForm({
             </Section>
 
             <Section title="Intent certificates" description="How long a signed approval stays payable.">
-              <Field label="Certificate lifetime (minutes)" required error={errors.certificate_ttl_minutes} hint="5–60" className="max-w-56">
+              <Field
+                label="Certificate lifetime (minutes)"
+                required
+                error={errors.certificate_ttl_minutes}
+                hint="5–60"
+                className="max-w-56"
+              >
                 {(control) => (
-                  <Input
-                    {...control}
-                    inputMode="numeric"
-                    value={form.ttl}
-                    onChange={(e) => set("ttl", e.target.value)}
-                    className="tnum"
-                  />
+                  <Input {...control} inputMode="numeric" value={form.ttl} onChange={(e) => set("ttl", e.target.value)} className="tnum" />
                 )}
               </Field>
             </Section>

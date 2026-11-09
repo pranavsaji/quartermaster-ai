@@ -55,8 +55,10 @@ export const gridTheme = themeQuartz.withParams({
   browserColorScheme: "light",
 });
 
-export interface DataGridProps<T extends { id: string }>
-  extends Omit<AgGridReactProps<T>, "rowData" | "columnDefs" | "theme" | "getRowId"> {
+export interface DataGridProps<T extends { id: string }> extends Omit<
+  AgGridReactProps<T>,
+  "rowData" | "columnDefs" | "theme" | "getRowId"
+> {
   rows: T[] | undefined;
   columns: ColDef<T>[];
   /**

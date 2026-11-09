@@ -64,7 +64,11 @@ export function ProposalLines({ po }: { po: PurchaseOrderDto }) {
         <tfoot className="tnum border-t border-line-strong">
           {totals.map((t) => (
             <tr key={t.label}>
-              <th scope="row" colSpan={4} className={t.strong ? "pt-2 text-right text-[13.5px] font-semibold text-ink" : "pt-1.5 text-right font-normal text-ink-3"}>
+              <th
+                scope="row"
+                colSpan={4}
+                className={t.strong ? "pt-2 text-right text-[13.5px] font-semibold text-ink" : "pt-1.5 text-right font-normal text-ink-3"}
+              >
                 {t.label}
               </th>
               <td className={t.strong ? "pt-2 text-right text-[15px] font-semibold text-ink" : "pt-1.5 text-right text-ink-2"}>

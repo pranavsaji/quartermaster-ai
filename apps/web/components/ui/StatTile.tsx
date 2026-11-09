@@ -37,14 +37,15 @@ export function StatTile({
       {loading ? (
         <Skeleton className="mt-2 h-7 w-24" />
       ) : (
-        <p className={cn("tnum mt-1.5 text-[26px] leading-8 font-semibold tracking-[-0.02em]", lookup(ACCENTS, tone, ACCENTS.neutral))}>{value}</p>
+        <p className={cn("tnum mt-1.5 text-[26px] leading-8 font-semibold tracking-[-0.02em]", lookup(ACCENTS, tone, ACCENTS.neutral))}>
+          {value}
+        </p>
       )}
       {sub && !loading ? <p className="mt-1 text-[12.5px] text-ink-3">{sub}</p> : null}
       {children}
     </>
   );
-  const cls =
-    "block rounded-[var(--radius-card)] border border-line bg-surface p-4 shadow-[var(--shadow-card)] transition-colors";
+  const cls = "block rounded-[var(--radius-card)] border border-line bg-surface p-4 shadow-[var(--shadow-card)] transition-colors";
   if (href) {
     return (
       <Link href={href} className={cn(cls, "hover:border-line-strong hover:bg-canvas/40")}>

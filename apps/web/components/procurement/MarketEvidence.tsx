@@ -66,8 +66,8 @@ export function MarketEvidence({
                   {ref.reference_unit_price_minor !== null ? (
                     <>
                       Reference unit price{" "}
-                      <span className="tnum font-semibold text-ink">{money(ref.reference_unit_price_minor, currency)}</span>{" "}
-                      · n={ref.sample_size}
+                      <span className="tnum font-semibold text-ink">{money(ref.reference_unit_price_minor, currency)}</span> · n=
+                      {ref.sample_size}
                     </>
                   ) : (
                     "No reference price"

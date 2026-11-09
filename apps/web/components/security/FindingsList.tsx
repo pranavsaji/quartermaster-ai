@@ -20,7 +20,11 @@ export function evidenceExcerpt(evidence: Record<string, unknown>): string | nul
   const signals = evidence.signals;
   if (Array.isArray(signals)) {
     const excerpts = signals
-      .map((s) => (s && typeof s === "object" && typeof (s as { excerpt?: unknown }).excerpt === "string" ? (s as { excerpt: string }).excerpt.trim() : ""))
+      .map((s) =>
+        s && typeof s === "object" && typeof (s as { excerpt?: unknown }).excerpt === "string"
+          ? (s as { excerpt: string }).excerpt.trim()
+          : "",
+      )
       .filter(Boolean);
     if (excerpts.length > 0) return excerpts.slice(0, 2).join(" · ");
   }

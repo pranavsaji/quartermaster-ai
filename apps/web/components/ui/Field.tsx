@@ -1,11 +1,4 @@
-import {
-  forwardRef,
-  useId,
-  type InputHTMLAttributes,
-  type ReactNode,
-  type SelectHTMLAttributes,
-  type TextareaHTMLAttributes,
-} from "react";
+import { forwardRef, useId, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
 import { currencySymbol } from "@/lib/format";
 import { cn } from "./cn";
 
@@ -75,38 +68,32 @@ export function Field({
   );
 }
 
-export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(function Input(
-  { className, ...rest },
-  ref,
-) {
+export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(function Input({ className, ...rest }, ref) {
   return <input ref={ref} className={cn(control, "h-9", className)} {...rest} />;
 });
 
 /** Text input with a leading currency-symbol adornment for money entry. */
-export const MoneyInput = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement> & { currency: string }>(
-  function MoneyInput({ className, currency, ...rest }, ref) {
-    const symbol = currencySymbol(currency);
-    return (
-      <div className="relative">
-        <span aria-hidden className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-ink-3">
-          {symbol}
-        </span>
-        <input
-          ref={ref}
-          inputMode="decimal"
-          className={cn(control, "tnum h-9", symbol.length > 1 ? "pl-12" : "pl-6", className)}
-          {...rest}
-        />
-      </div>
-    );
-  },
-);
+export const MoneyInput = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement> & { currency: string }>(function MoneyInput(
+  { className, currency, ...rest },
+  ref,
+) {
+  const symbol = currencySymbol(currency);
+  return (
+    <div className="relative">
+      <span aria-hidden className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-ink-3">
+        {symbol}
+      </span>
+      <input ref={ref} inputMode="decimal" className={cn(control, "tnum h-9", symbol.length > 1 ? "pl-12" : "pl-6", className)} {...rest} />
+    </div>
+  );
+});
 
-export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement>>(
-  function Textarea({ className, ...rest }, ref) {
-    return <textarea ref={ref} className={cn(control, "min-h-24 py-2 leading-relaxed", className)} {...rest} />;
-  },
-);
+export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement>>(function Textarea(
+  { className, ...rest },
+  ref,
+) {
+  return <textarea ref={ref} className={cn(control, "min-h-24 py-2 leading-relaxed", className)} {...rest} />;
+});
 
 export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement>>(function Select(
   { className, children, ...rest },

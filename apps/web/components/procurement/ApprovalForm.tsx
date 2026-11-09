@@ -60,8 +60,8 @@ export function ApprovalForm({
     <div className="rounded-xl border border-accent-line bg-accent-soft/40 p-4">
       <p className="text-[13.5px] font-semibold text-ink">Owner approval</p>
       <p className="mt-0.5 text-[12.5px] text-ink-3">
-        Approving signs an Intent Certificate for exactly this cart ({money(po.total_minor, po.currency)}). Payment
-        can then only be made for this cart hash.
+        Approving signs an Intent Certificate for exactly this cart ({money(po.total_minor, po.currency)}). Payment can then only be made
+        for this cart hash.
       </p>
 
       {reviewCodes.length > 0 ? (

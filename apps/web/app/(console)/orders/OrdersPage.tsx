@@ -78,7 +78,15 @@ export function OrdersPage() {
         title="Orders & invoices"
         description="Paid purchase orders, their (synthetic) deliveries, and supplier invoices matched before settlement."
         actions={
-          <Button variant="secondary" onClick={() => { orders.reload(); deliveries.reload(); invoices.reload(); }} loading={orders.refreshing}>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              orders.reload();
+              deliveries.reload();
+              invoices.reload();
+            }}
+            loading={orders.refreshing}
+          >
             Refresh
           </Button>
         }
@@ -103,8 +111,20 @@ export function OrdersPage() {
             }
           />
           <div className="p-3">
-            <RefreshErrorNotice error={orders.error} hasData={Boolean(orders.data)} updatedAt={orders.updatedAt} onRetry={orders.reload} className="mb-3" />
-            <RefreshErrorNotice error={deliveries.error} hasData={Boolean(deliveries.data)} updatedAt={deliveries.updatedAt} onRetry={deliveries.reload} className="mb-3" />
+            <RefreshErrorNotice
+              error={orders.error}
+              hasData={Boolean(orders.data)}
+              updatedAt={orders.updatedAt}
+              onRetry={orders.reload}
+              className="mb-3"
+            />
+            <RefreshErrorNotice
+              error={deliveries.error}
+              hasData={Boolean(deliveries.data)}
+              updatedAt={deliveries.updatedAt}
+              onRetry={deliveries.reload}
+              className="mb-3"
+            />
             {orders.error && !orders.data ? (
               <ErrorNotice error={orders.error} onRetry={orders.reload} />
             ) : (
@@ -117,7 +137,9 @@ export function OrdersPage() {
                 onInvoice={onInvoice}
               />
             )}
-            {deliveries.error && !deliveries.data ? <ErrorNotice error={deliveries.error} onRetry={deliveries.reload} title="Couldn't load deliveries" className="mt-3" /> : null}
+            {deliveries.error && !deliveries.data ? (
+              <ErrorNotice error={deliveries.error} onRetry={deliveries.reload} title="Couldn't load deliveries" className="mt-3" />
+            ) : null}
           </div>
         </Card>
 
@@ -144,7 +166,13 @@ export function OrdersPage() {
         <Card aria-labelledby="invoices-title">
           <CardHeader id="invoices-title" title="Invoices" description="Every analyzed invoice, with its match result." />
           <div className="p-3">
-            <RefreshErrorNotice error={invoices.error} hasData={Boolean(invoices.data)} updatedAt={invoices.updatedAt} onRetry={invoices.reload} className="mb-3" />
+            <RefreshErrorNotice
+              error={invoices.error}
+              hasData={Boolean(invoices.data)}
+              updatedAt={invoices.updatedAt}
+              onRetry={invoices.reload}
+              className="mb-3"
+            />
             {invoices.error && !invoices.data ? (
               <ErrorNotice error={invoices.error} onRetry={invoices.reload} />
             ) : (

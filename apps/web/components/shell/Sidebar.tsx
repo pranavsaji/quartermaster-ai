@@ -40,10 +40,7 @@ function isActive(pathname: string, href: string): boolean {
 export function Brand() {
   return (
     <Link href="/" className="flex items-center gap-2.5 rounded-lg px-1 py-1">
-      <span
-        aria-hidden
-        className="grid size-8 place-items-center rounded-lg bg-ink text-white shadow-sm ring-1 ring-ink/10"
-      >
+      <span aria-hidden className="grid size-8 place-items-center rounded-lg bg-ink text-white shadow-sm ring-1 ring-ink/10">
         <svg viewBox="0 0 20 20" className="size-[18px]" fill="none" stroke="currentColor" strokeWidth={1.8}>
           <path d="M4 7.5 10 4l6 3.5v5L10 16l-6-3.5v-5Z" strokeLinejoin="round" />
           <path d="M7 11.2 10 13l3-1.8" strokeLinecap="round" strokeLinejoin="round" />

@@ -173,7 +173,14 @@ export function InvoiceForm({
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <Field label="Supplier" required>
               {(control) => (
-                <Select {...control} value={supplierId} onChange={(e) => { setSupplierId(e.target.value); setPoId(""); }}>
+                <Select
+                  {...control}
+                  value={supplierId}
+                  onChange={(e) => {
+                    setSupplierId(e.target.value);
+                    setPoId("");
+                  }}
+                >
                   <option value="">Select supplier…</option>
                   {suppliers.map((s) => (
                     <option key={s.id} value={s.id}>
@@ -204,10 +211,14 @@ export function InvoiceForm({
               )}
             </Field>
             <Field label="Invoice number" required>
-              {(control) => <Input {...control} value={number} onChange={(e) => setNumber(e.target.value)} maxLength={64} className="font-mono" />}
+              {(control) => (
+                <Input {...control} value={number} onChange={(e) => setNumber(e.target.value)} maxLength={64} className="font-mono" />
+              )}
             </Field>
             <Field label="Invoice date" required>
-              {(control) => <Input {...control} type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} className="tnum" />}
+              {(control) => (
+                <Input {...control} type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} className="tnum" />
+              )}
             </Field>
           </div>
 
@@ -217,12 +228,24 @@ export function InvoiceForm({
               <table className="w-full min-w-[640px] text-left text-[13px]">
                 <thead className="text-[11.5px] text-ink-3">
                   <tr>
-                    <th scope="col" className="pb-1.5 font-medium">SKU</th>
-                    <th scope="col" className="pb-1.5 pl-2 font-medium">Description</th>
-                    <th scope="col" className="w-20 pb-1.5 pl-2 font-medium">Qty</th>
-                    <th scope="col" className="w-32 pb-1.5 pl-2 font-medium">Unit price</th>
-                    <th scope="col" className="w-28 pb-1.5 pl-2 text-right font-medium">Line total</th>
-                    <th scope="col" className="w-10 pb-1.5"><span className="sr-only">Remove</span></th>
+                    <th scope="col" className="pb-1.5 font-medium">
+                      SKU
+                    </th>
+                    <th scope="col" className="pb-1.5 pl-2 font-medium">
+                      Description
+                    </th>
+                    <th scope="col" className="w-20 pb-1.5 pl-2 font-medium">
+                      Qty
+                    </th>
+                    <th scope="col" className="w-32 pb-1.5 pl-2 font-medium">
+                      Unit price
+                    </th>
+                    <th scope="col" className="w-28 pb-1.5 pl-2 text-right font-medium">
+                      Line total
+                    </th>
+                    <th scope="col" className="w-10 pb-1.5">
+                      <span className="sr-only">Remove</span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -230,10 +253,38 @@ export function InvoiceForm({
                     const t = lineTotal(l, currency);
                     return (
                       <tr key={l.key}>
-                        <td className="py-1"><Input aria-label={`Line ${i + 1} SKU`} value={l.sku} onChange={(e) => updateLine(l.key, { sku: e.target.value })} className="w-28 font-mono text-[12px]" /></td>
-                        <td className="py-1 pl-2"><Input aria-label={`Line ${i + 1} description`} value={l.description} onChange={(e) => updateLine(l.key, { description: e.target.value })} /></td>
-                        <td className="py-1 pl-2"><Input aria-label={`Line ${i + 1} quantity`} inputMode="numeric" value={l.quantity} onChange={(e) => updateLine(l.key, { quantity: e.target.value })} className="tnum" /></td>
-                        <td className="py-1 pl-2"><MoneyInput currency={currency} aria-label={`Line ${i + 1} unit price`} value={l.unitPrice} onChange={(e) => updateLine(l.key, { unitPrice: e.target.value })} /></td>
+                        <td className="py-1">
+                          <Input
+                            aria-label={`Line ${i + 1} SKU`}
+                            value={l.sku}
+                            onChange={(e) => updateLine(l.key, { sku: e.target.value })}
+                            className="w-28 font-mono text-[12px]"
+                          />
+                        </td>
+                        <td className="py-1 pl-2">
+                          <Input
+                            aria-label={`Line ${i + 1} description`}
+                            value={l.description}
+                            onChange={(e) => updateLine(l.key, { description: e.target.value })}
+                          />
+                        </td>
+                        <td className="py-1 pl-2">
+                          <Input
+                            aria-label={`Line ${i + 1} quantity`}
+                            inputMode="numeric"
+                            value={l.quantity}
+                            onChange={(e) => updateLine(l.key, { quantity: e.target.value })}
+                            className="tnum"
+                          />
+                        </td>
+                        <td className="py-1 pl-2">
+                          <MoneyInput
+                            currency={currency}
+                            aria-label={`Line ${i + 1} unit price`}
+                            value={l.unitPrice}
+                            onChange={(e) => updateLine(l.key, { unitPrice: e.target.value })}
+                          />
+                        </td>
                         <td className="tnum py-1 pl-2 text-right text-ink-2">{t !== null ? money(t, currency) : "—"}</td>
                         <td className="py-1 pl-1 text-right">
                           <button
@@ -258,19 +309,39 @@ export function InvoiceForm({
           </fieldset>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <Field label="Invoice total" hint={`Sum of lines: ${computedTotal !== null ? money(computedTotal, currency) : "—"}. Override to test a mismatched total.`}>
+            <Field
+              label="Invoice total"
+              hint={`Sum of lines: ${computedTotal !== null ? money(computedTotal, currency) : "—"}. Override to test a mismatched total.`}
+            >
               {(control) => (
-                <MoneyInput {...control} currency={currency} value={totalOverride} onChange={(e) => setTotalOverride(e.target.value)} placeholder={computedTotal !== null ? minorToInput(computedTotal, currency) : ""} />
+                <MoneyInput
+                  {...control}
+                  currency={currency}
+                  value={totalOverride}
+                  onChange={(e) => setTotalOverride(e.target.value)}
+                  placeholder={computedTotal !== null ? minorToInput(computedTotal, currency) : ""}
+                />
               )}
             </Field>
             <Field label="Supplier notes" hint="Free text from the document. Treated as untrusted and scanned for injected instructions.">
               {(control) => (
-                <Textarea {...control} value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={5000} className="min-h-[38px]" rows={2} />
+                <Textarea
+                  {...control}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  maxLength={5000}
+                  className="min-h-[38px]"
+                  rows={2}
+                />
               )}
             </Field>
           </div>
 
-          {formError ? <p className="text-[12.5px] font-medium text-block" role="alert">{formError}</p> : null}
+          {formError ? (
+            <p className="text-[12.5px] font-medium text-block" role="alert">
+              {formError}
+            </p>
+          ) : null}
           <ErrorNotice error={analyze.error} title="Invoice analysis failed" />
           {result ? (
             <div className="space-y-2">

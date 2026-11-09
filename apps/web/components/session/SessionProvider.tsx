@@ -31,13 +31,10 @@ export interface SessionLoadState {
  * from `/auth/me` is handled by the HTTP layer (redirect to /login).
  */
 export function useLoadSession(): SessionLoadState {
-  const resource = useResource(
-    async (signal) => {
-      const [config, me] = await Promise.all([api.config.public({ signal }), api.auth.me({ signal })]);
-      return { config, user: me.user };
-    },
-    [],
-  );
+  const resource = useResource(async (signal) => {
+    const [config, me] = await Promise.all([api.config.public({ signal }), api.auth.me({ signal })]);
+    return { config, user: me.user };
+  }, []);
   const [signingOut, setSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState<unknown>(undefined);
 

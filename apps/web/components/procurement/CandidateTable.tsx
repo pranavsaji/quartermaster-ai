@@ -33,9 +33,7 @@ export function CandidateTable({
       candidates
         .map((c) => ({ ...c, item_name: itemNames.get(c.inventory_item_id) ?? c.title }))
         .sort(
-          (a, b) =>
-            a.item_name.localeCompare(b.item_name) ||
-            (a.rank ?? Number.POSITIVE_INFINITY) - (b.rank ?? Number.POSITIVE_INFINITY),
+          (a, b) => a.item_name.localeCompare(b.item_name) || (a.rank ?? Number.POSITIVE_INFINITY) - (b.rank ?? Number.POSITIVE_INFINITY),
         ),
     [candidates, itemNames],
   );

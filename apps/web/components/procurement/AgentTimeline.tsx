@@ -36,9 +36,7 @@ export function AgentTimeline({ steps }: { steps: AgentStepDto[] }) {
               const Icon = Icons[s.icon];
               return (
                 <li key={step.id} className="relative flex gap-3 pb-4 last:pb-0">
-                  {i < ordered.length - 1 ? (
-                    <span aria-hidden className="absolute top-7 bottom-0 left-[13px] w-px bg-line" />
-                  ) : null}
+                  {i < ordered.length - 1 ? <span aria-hidden className="absolute top-7 bottom-0 left-[13px] w-px bg-line" /> : null}
                   <span className={cn("relative z-10 grid size-7 shrink-0 place-items-center rounded-full ring-1", s.ring)}>
                     <Icon className="size-3.5" strokeWidth={2.2} />
                   </span>

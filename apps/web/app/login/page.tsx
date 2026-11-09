@@ -32,7 +32,10 @@ export default function LoginPage() {
           <p className="text-[12px] font-semibold tracking-[0.08em] text-white/50 uppercase">How TrustRail works</p>
           <ol className="mt-6 space-y-6">
             {[
-              ["Deterministic spend policy", "Every cart is checked against your mandate: suppliers, categories, limits, market price, duplicates."],
+              [
+                "Deterministic spend policy",
+                "Every cart is checked against your mandate: suppliers, categories, limits, market price, duplicates.",
+              ],
               ["Human approval, signed", "Your approval mints an Ed25519-signed Intent Certificate bound to the exact cart hash."],
               ["Verified before PayPal", "Payment is only created if the certificate still verifies — any change to the cart voids it."],
             ].map(([title, body], i) => (

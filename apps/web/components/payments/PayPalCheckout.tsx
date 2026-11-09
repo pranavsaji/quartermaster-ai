@@ -100,9 +100,7 @@ export function PayPalCheckout({
   const onApprove = useEffectEvent((orderId: string) => {
     const paymentId = paymentIdRef.current;
     if (!paymentId) {
-      setError(
-        new Error("PayPal approved an order, but no Quartermaster payment is in progress. Refresh and check the payment status."),
-      );
+      setError(new Error("PayPal approved an order, but no Quartermaster payment is in progress. Refresh and check the payment status."));
       setPhase("idle");
       return;
     }
@@ -162,8 +160,8 @@ export function PayPalCheckout({
   if (state.status === "disabled") {
     return (
       <Notice tone="review" title="PayPal sandbox not configured">
-        The API has no PayPal sandbox client id, so checkout is unavailable. Approval and certificate verification still
-        work; set the PayPal sandbox credentials on the API to enable payment.
+        The API has no PayPal sandbox client id, so checkout is unavailable. Approval and certificate verification still work; set the
+        PayPal sandbox credentials on the API to enable payment.
       </Notice>
     );
   }
@@ -243,8 +241,8 @@ export function PayPalCheckout({
             </Button>
           }
         >
-          {uncertain.reason} PayPal may or may not have captured this payment, so we&apos;re checking its status with
-          the server. Retrying repeats the same capture request and can&apos;t charge you twice.
+          {uncertain.reason} PayPal may or may not have captured this payment, so we&apos;re checking its status with the server. Retrying
+          repeats the same capture request and can&apos;t charge you twice.
         </Notice>
       ) : null}
       <ErrorNotice error={error} title="Payment didn't go through" />

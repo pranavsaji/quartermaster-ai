@@ -3,10 +3,7 @@ import { cn } from "./cn";
 
 export function Card({ className, children, ...rest }: HTMLAttributes<HTMLElement>) {
   return (
-    <section
-      className={cn("rounded-[var(--radius-card)] border border-line bg-surface shadow-[var(--shadow-card)]", className)}
-      {...rest}
-    >
+    <section className={cn("rounded-[var(--radius-card)] border border-line bg-surface shadow-[var(--shadow-card)]", className)} {...rest}>
       {children}
     </section>
   );
@@ -29,9 +26,7 @@ export function CardHeader({
   id?: string;
 }) {
   return (
-    <header
-      className={cn("flex flex-wrap items-start justify-between gap-x-4 gap-y-2 border-b border-line px-5 py-4", className)}
-    >
+    <header className={cn("flex flex-wrap items-start justify-between gap-x-4 gap-y-2 border-b border-line px-5 py-4", className)}>
       <div className="min-w-0">
         {eyebrow ? <div className="mb-1">{eyebrow}</div> : null}
         <h2 id={id} className="text-[15px] font-semibold tracking-[-0.01em] text-ink">
@@ -50,8 +45,6 @@ export function CardBody({ className, children }: { className?: string; children
 
 export function CardFooter({ className, children }: { className?: string; children: ReactNode }) {
   return (
-    <footer className={cn("flex flex-wrap items-center gap-2 border-t border-line bg-canvas/60 px-5 py-3", className)}>
-      {children}
-    </footer>
+    <footer className={cn("flex flex-wrap items-center gap-2 border-t border-line bg-canvas/60 px-5 py-3", className)}>{children}</footer>
   );
 }

@@ -88,7 +88,13 @@ export function InventoryPage() {
             }
           />
           <div className="p-3">
-            <RefreshErrorNotice error={inventory.error} hasData={Boolean(items)} updatedAt={inventory.updatedAt} onRetry={inventory.reload} className="mb-3" />
+            <RefreshErrorNotice
+              error={inventory.error}
+              hasData={Boolean(items)}
+              updatedAt={inventory.updatedAt}
+              onRetry={inventory.reload}
+              className="mb-3"
+            />
             {inventory.error && !items ? (
               <ErrorNotice error={inventory.error} onRetry={inventory.reload} />
             ) : (

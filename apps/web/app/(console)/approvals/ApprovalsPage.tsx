@@ -54,9 +54,7 @@ function ApprovalRow({ po, now }: { po: PurchaseOrderDto; now: number }) {
           <span>· {po.items.filter((i) => i.kind === "PRODUCT").length} products</span>
           <span>· proposed {relativeTime(po.created_at)}</span>
           {po.certificate ? (
-            <span className={certLeft ? "text-ink-2" : "text-block"}>
-              · certificate {certLeft ? `expires in ${certLeft}` : "expired"}
-            </span>
+            <span className={certLeft ? "text-ink-2" : "text-block"}>· certificate {certLeft ? `expires in ${certLeft}` : "expired"}</span>
           ) : null}
           <SourceLabel source="SANDBOX_SUPPLIER" />
         </p>
@@ -80,10 +78,7 @@ function ApprovalRow({ po, now }: { po: PurchaseOrderDto; now: number }) {
 export function ApprovalsPage() {
   const { can } = useSession();
   const now = useNow(5000);
-  const orders = useResource(
-    (signal) => fetchAllPages((cursor) => api.purchaseOrders.list({ limit: 100, cursor }, { signal })),
-    [],
-  );
+  const orders = useResource((signal) => fetchAllPages((cursor) => api.purchaseOrders.list({ limit: 100, cursor }, { signal })), []);
 
   const awaiting = useMemo(
     () =>
@@ -115,7 +110,13 @@ export function ApprovalsPage() {
       ) : null}
 
       {orders.error && !orders.data ? <ErrorNotice error={orders.error} onRetry={orders.reload} /> : null}
-      <RefreshErrorNotice error={orders.error} hasData={Boolean(orders.data)} updatedAt={orders.updatedAt} onRetry={orders.reload} className="mb-6" />
+      <RefreshErrorNotice
+        error={orders.error}
+        hasData={Boolean(orders.data)}
+        updatedAt={orders.updatedAt}
+        onRetry={orders.reload}
+        className="mb-6"
+      />
 
       <div className="space-y-6">
         {(
@@ -136,7 +137,11 @@ export function ApprovalsPage() {
                 <SkeletonRows rows={2} />
               </div>
             ) : groups[stage].length === 0 ? (
-              <EmptyState compact title="Nothing waiting" description={stage === "review" ? "No proposals need approval." : "No approved carts awaiting payment."} />
+              <EmptyState
+                compact
+                title="Nothing waiting"
+                description={stage === "review" ? "No proposals need approval." : "No approved carts awaiting payment."}
+              />
             ) : (
               <ul className="divide-y divide-line">
                 {groups[stage].map((po) => (

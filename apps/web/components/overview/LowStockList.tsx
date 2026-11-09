@@ -38,15 +38,7 @@ function CoverBar({ days, leadTime }: { days: number | null; leadTime: number })
   );
 }
 
-export function LowStockList({
-  items,
-  error,
-  onRetry,
-}: {
-  items: InventoryItemDto[] | undefined;
-  error: unknown;
-  onRetry: () => void;
-}) {
+export function LowStockList({ items, error, onRetry }: { items: InventoryItemDto[] | undefined; error: unknown; onRetry: () => void }) {
   const { can } = useSession();
   const low = items ? sortByUrgency(items.filter((i) => i.status !== "OK")).slice(0, 8) : undefined;
   const source = items?.[0]?.data_source;

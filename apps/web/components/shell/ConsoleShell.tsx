@@ -134,12 +134,7 @@ function NavDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
         <div className="flex h-full flex-col px-3 py-4">
           <div className="mb-7 flex items-center justify-between px-1">
             <Brand />
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-md p-1.5 text-ink-2 hover:bg-ink/5"
-              aria-label="Close navigation"
-            >
+            <button type="button" onClick={onClose} className="rounded-md p-1.5 text-ink-2 hover:bg-ink/5" aria-label="Close navigation">
               <Icons.close />
             </button>
           </div>
@@ -154,8 +149,8 @@ function NavDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
 function SidebarFooter() {
   return (
     <div className="mt-auto rounded-lg border border-line bg-surface px-3 py-2.5 text-[11.5px] leading-relaxed text-ink-3">
-      Payments run in <span className="font-medium text-ink-2">PayPal sandbox</span>. Suppliers are sandbox merchants;
-      deliveries are synthetic.
+      Payments run in <span className="font-medium text-ink-2">PayPal sandbox</span>. Suppliers are sandbox merchants; deliveries are
+      synthetic.
     </div>
   );
 }

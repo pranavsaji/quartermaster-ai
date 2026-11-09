@@ -128,12 +128,6 @@ export function OrdersGrid({
   }, [canManage, canInvoice, onReceive, onDelay, onInvoice]);
 
   return (
-    <DataGrid<OrderRow>
-      ariaLabel="Purchase orders"
-      rows={rows}
-      columns={columns}
-      height={460}
-      emptyMessage="No purchase orders yet."
-    />
+    <DataGrid<OrderRow> ariaLabel="Purchase orders" rows={rows} columns={columns} height={460} emptyMessage="No purchase orders yet." />
   );
 }

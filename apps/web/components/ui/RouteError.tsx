@@ -32,7 +32,9 @@ export function RouteError({ error, retry }: { error: Error & { digest?: string 
         }
       >
         <p>
-          {apiError ? apiError.message : "Something went wrong while showing this page. Your data is safe; try again or go back to the overview."}
+          {apiError
+            ? apiError.message
+            : "Something went wrong while showing this page. Your data is safe; try again or go back to the overview."}
         </p>
         {reference ? (
           <p className="mt-1 font-mono text-[11.5px] text-ink-3">

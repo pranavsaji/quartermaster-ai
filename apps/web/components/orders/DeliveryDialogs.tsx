@@ -192,11 +192,20 @@ export function DelayDialog({
         <SourceLabel source="SYNTHETIC">Synthetic fulfillment data</SourceLabel>
         <Field label="New expected date" required error={errors.date}>
           {(control) => (
-            <Input {...control} type="date" min={todayIso()} value={newDate} onChange={(e) => setNewDate(e.target.value)} className="tnum" />
+            <Input
+              {...control}
+              type="date"
+              min={todayIso()}
+              value={newDate}
+              onChange={(e) => setNewDate(e.target.value)}
+              className="tnum"
+            />
           )}
         </Field>
         <Field label="Reason" required error={errors.reason}>
-          {(control) => <Textarea {...control} value={reason} onChange={(e) => setReason(e.target.value)} maxLength={255} className="min-h-16" />}
+          {(control) => (
+            <Textarea {...control} value={reason} onChange={(e) => setReason(e.target.value)} maxLength={255} className="min-h-16" />
+          )}
         </Field>
         <ErrorNotice error={delay.error} />
       </div>

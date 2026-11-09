@@ -65,8 +65,7 @@ export interface ForecastInput {
 }
 
 const get = <T>(path: string, options?: RequestOptions) => request<T>("GET", path, options);
-const post = <T>(path: string, body?: unknown, options?: RequestOptions) =>
-  request<T>("POST", path, { ...options, body: body ?? {} });
+const post = <T>(path: string, body?: unknown, options?: RequestOptions) => request<T>("POST", path, { ...options, body: body ?? {} });
 
 /** POST/PUT to an (I) endpoint with a per-action idempotency key. */
 function idempotent<T>(method: "POST" | "PUT", path: string, body: unknown, options?: RequestOptions): Promise<T> {
@@ -85,8 +84,7 @@ export const api = {
   },
 
   auth: {
-    login: (body: { email: string; password: string }) =>
-      post<SessionResponse>("/auth/login", body, { redirectOnUnauthorized: false }),
+    login: (body: { email: string; password: string }) => post<SessionResponse>("/auth/login", body, { redirectOnUnauthorized: false }),
     logout: () => post<unknown>("/auth/logout", {}, { redirectOnUnauthorized: false }),
     me: (o?: Signal & { redirectOnUnauthorized?: boolean }) => get<SessionResponse>("/auth/me", o),
   },
@@ -103,8 +101,7 @@ export const api = {
   },
 
   procurement: {
-    list: (q?: PageQuery, o?: Signal) =>
-      get<Page<ProcurementRequestSummaryDto>>("/procurement/requests", { ...o, query: pageQuery(q) }),
+    list: (q?: PageQuery, o?: Signal) => get<Page<ProcurementRequestSummaryDto>>("/procurement/requests", { ...o, query: pageQuery(q) }),
     create: (body: CreateProcurementRequest) => idempotent<ProcurementRequestDto>("POST", "/procurement/requests", body),
     get: (requestId: string, o?: Signal) => get<ProcurementRequestDto>(`/procurement/requests/${id(requestId)}`, o),
     research: (requestId: string) => post<ProcurementRequestDto>(`/procurement/requests/${id(requestId)}/research`),
@@ -112,8 +109,7 @@ export const api = {
     approve: (requestId: string, body: ApproveRequest) =>
       idempotent<ApprovalResponse>("POST", `/procurement/requests/${id(requestId)}/approve`, body),
     /** With `purchase_order_id` rejects only that proposal; without it, every open proposal on the request. */
-    reject: (requestId: string, body: RejectRequest) =>
-      post<ProcurementRequestDto>(`/procurement/requests/${id(requestId)}/reject`, body),
+    reject: (requestId: string, body: RejectRequest) => post<ProcurementRequestDto>(`/procurement/requests/${id(requestId)}/reject`, body),
   },
 
   mandates: {
@@ -123,21 +119,18 @@ export const api = {
 
   intents: {
     verify: (intentId: string, o?: Signal) => get<CertificateVerificationDto>(`/intents/${id(intentId)}/verify`, o),
-    createPayPalOrder: (intentId: string) =>
-      idempotent<PayPalOrderResponse>("POST", `/intents/${id(intentId)}/paypal-order`, {}),
+    createPayPalOrder: (intentId: string) => idempotent<PayPalOrderResponse>("POST", `/intents/${id(intentId)}/paypal-order`, {}),
   },
 
   payments: {
     get: (paymentId: string, o?: Signal) => get<PaymentDto>(`/payments/${id(paymentId)}`, o),
     capture: (paymentId: string, body: { paypal_order_id: string }) =>
       idempotent<CaptureResponse>("POST", `/payments/${id(paymentId)}/capture`, body),
-    refund: (paymentId: string, body: RefundRequest) =>
-      idempotent<RefundResponse>("POST", `/payments/${id(paymentId)}/refund`, body),
+    refund: (paymentId: string, body: RefundRequest) => idempotent<RefundResponse>("POST", `/payments/${id(paymentId)}/refund`, body),
   },
 
   purchaseOrders: {
-    list: (q?: PageQuery, o?: Signal) =>
-      get<Page<PurchaseOrderDto>>("/purchase-orders", { ...o, query: pageQuery(q) }),
+    list: (q?: PageQuery, o?: Signal) => get<Page<PurchaseOrderDto>>("/purchase-orders", { ...o, query: pageQuery(q) }),
     get: (poId: string, o?: Signal) => get<PurchaseOrderDto>(`/purchase-orders/${id(poId)}`, o),
   },
 
@@ -145,8 +138,7 @@ export const api = {
     list: (o?: Signal) => get<ItemsResponse<DeliveryDto>>("/deliveries", o),
     receive: (deliveryId: string, body: ReceiveDeliveryRequest) =>
       idempotent<DeliveryMutationResponse>("POST", `/deliveries/${id(deliveryId)}/receive`, body),
-    delay: (deliveryId: string, body: DelayDeliveryRequest) =>
-      post<DeliveryMutationResponse>(`/deliveries/${id(deliveryId)}/delay`, body),
+    delay: (deliveryId: string, body: DelayDeliveryRequest) => post<DeliveryMutationResponse>(`/deliveries/${id(deliveryId)}/delay`, body),
   },
 
   invoices: {
@@ -160,8 +152,7 @@ export const api = {
         ...o,
         query: { ...pageQuery(q), severity: q?.severity, type: q?.type },
       }),
-    decisions: (q?: PageQuery, o?: Signal) =>
-      get<Page<PolicyDecisionDto>>("/security/decisions", { ...o, query: pageQuery(q) }),
+    decisions: (q?: PageQuery, o?: Signal) => get<Page<PolicyDecisionDto>>("/security/decisions", { ...o, query: pageQuery(q) }),
     audit: (q?: PageQuery, o?: Signal) => get<Page<AuditEventDto>>("/security/audit", { ...o, query: pageQuery(q) }),
     verifyAudit: (o?: Signal) => get<AuditChainVerificationDto>("/security/audit/verify", o),
   },
@@ -175,10 +166,7 @@ export const api = {
  * Fetches every page of a cursor-paginated endpoint, up to `maxPages` as a
  * safety bound.
  */
-export async function fetchAllPages<T>(
-  fetchPage: (cursor: string | null) => Promise<Page<T>>,
-  maxPages = 10,
-): Promise<T[]> {
+export async function fetchAllPages<T>(fetchPage: (cursor: string | null) => Promise<Page<T>>, maxPages = 10): Promise<T[]> {
   const items: T[] = [];
   let cursor: string | null = null;
   for (let i = 0; i < maxPages; i += 1) {

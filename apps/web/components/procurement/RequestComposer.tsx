@@ -13,8 +13,7 @@ import { inputToMinor, todayIso } from "@/lib/format";
 import { useAction } from "@/lib/hooks";
 
 /** An example, shown as a placeholder: the owner's request starts empty rather than pre-written. */
-const EXAMPLE_INSTRUCTION =
-  "e.g. We're expecting a busy weekend. Restock takeaway containers and cooking oil without exceeding $300.";
+const EXAMPLE_INSTRUCTION = "e.g. We're expecting a busy weekend. Restock takeaway containers and cooking oil without exceeding $300.";
 
 export function RequestComposer({ currency, onCancel }: { currency: string; onCancel?: () => void }) {
   const router = useRouter();

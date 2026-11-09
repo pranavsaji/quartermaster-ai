@@ -91,9 +91,7 @@ export function LoginForm() {
 function DemoAccounts({ onPick }: { onPick: (email: string) => void }) {
   return (
     <div className="rounded-lg border border-line bg-canvas px-3.5 py-3 text-[12.5px] text-ink-3">
-      <p className="font-medium text-ink-2">
-        Demo accounts: owner@demo.quartermaster.dev / manager@… / viewer@…
-      </p>
+      <p className="font-medium text-ink-2">Demo accounts: owner@demo.quartermaster.dev / manager@… / viewer@…</p>
       <ul className="mt-2 flex flex-wrap gap-1.5">
         {DEMO_ACCOUNTS.map((a) => (
           <li key={a.email}>

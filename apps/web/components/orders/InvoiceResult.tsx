@@ -21,7 +21,12 @@ export function InvoiceResult({ invoice }: { invoice: InvoiceDto }) {
           Invoice <span className="font-mono">{invoice.invoice_number}</span>
         </p>
         <StatusBadge status={invoice.status} tones={INVOICE_STATUS_TONES} kind="Invoice" />
-        <Badge tone={invoice.settlement_allowed ? "allow" : "block"} dot size="md" label={`Settlement ${invoice.settlement_allowed ? "allowed" : "blocked"}`}>
+        <Badge
+          tone={invoice.settlement_allowed ? "allow" : "block"}
+          dot
+          size="md"
+          label={`Settlement ${invoice.settlement_allowed ? "allowed" : "blocked"}`}
+        >
           {invoice.settlement_allowed ? "Settlement allowed" : "Settlement blocked"}
         </Badge>
         <span className="tnum ml-auto text-[14px] font-semibold text-ink">{money(invoice.total_minor, invoice.currency)}</span>

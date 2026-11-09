@@ -18,8 +18,8 @@ export default function GlobalError({ error, retry }: { error: Error & { digest?
         <main style={{ maxWidth: 480, margin: "96px auto", padding: "0 16px" }}>
           <h1 style={{ fontSize: 20, fontWeight: 600 }}>Quartermaster couldn&apos;t load</h1>
           <p style={{ fontSize: 14, color: "#475467", lineHeight: 1.5 }}>
-            Something went wrong while starting the console. Your data is safe. Try again, and if it keeps happening share
-            the reference below with your administrator.
+            Something went wrong while starting the console. Your data is safe. Try again, and if it keeps happening share the reference
+            below with your administrator.
           </p>
           {error.digest ? (
             <p style={{ fontFamily: "ui-monospace, monospace", fontSize: 12, color: "#475467" }}>reference {error.digest}</p>

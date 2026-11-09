@@ -100,8 +100,7 @@ const shortDateFmt = new Intl.DateTimeFormat("en-US", { month: "short", day: "nu
 
 function toDate(value: string | Date): Date | null {
   // Bare YYYY-MM-DD dates are calendar dates, not instants: render them in local time.
-  const d =
-    typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T00:00:00`) : new Date(value);
+  const d = typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T00:00:00`) : new Date(value);
   return Number.isNaN(d.getTime()) ? null : d;
 }
 

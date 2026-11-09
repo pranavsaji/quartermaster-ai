@@ -46,7 +46,9 @@ export function AuditLog({ events }: { events: AuditEventDto[] | undefined }) {
         headerName: "Actor",
         minWidth: 120,
         cellRenderer: (p: CustomCellRendererProps<AuditEventDto>) =>
-          p.data ? <Badge tone={lookup<keyof typeof ACTOR_TONES, Tone>(ACTOR_TONES, p.data.actor_type, "neutral")}>{p.data.actor_type}</Badge> : null,
+          p.data ? (
+            <Badge tone={lookup<keyof typeof ACTOR_TONES, Tone>(ACTOR_TONES, p.data.actor_type, "neutral")}>{p.data.actor_type}</Badge>
+          ) : null,
       },
       {
         colId: "entity",

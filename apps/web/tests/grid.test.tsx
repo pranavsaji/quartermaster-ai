@@ -91,7 +91,10 @@ describe("InventoryGrid", () => {
     render(<InventoryGrid items={[item]} canAdjust onAdjust={vi.fn()} />);
 
     await waitFor(() => expect(screen.getByRole("button", { name: "Adjust Fryer oil 20 L" })).toBeInTheDocument());
-    const agMessages = [...errors.mock.calls, ...warnings.mock.calls].flat().map(String).filter((m) => /AG Grid/.test(m));
+    const agMessages = [...errors.mock.calls, ...warnings.mock.calls]
+      .flat()
+      .map(String)
+      .filter((m) => /AG Grid/.test(m));
     expect(agMessages).toEqual([]);
   });
 });

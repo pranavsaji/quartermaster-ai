@@ -28,8 +28,7 @@ export function moneyColumn<T>(
     headerName,
     type: "rightAligned",
     cellClass: rightCell(),
-    valueFormatter: (p: ValueFormatterParams<T>) =>
-      p.data ? money(typeof p.value === "number" ? p.value : null, currencyOf(p.data)) : "",
+    valueFormatter: (p: ValueFormatterParams<T>) => (p.data ? money(typeof p.value === "number" ? p.value : null, currencyOf(p.data)) : ""),
     comparator: (a: unknown, b: unknown) => Number(a ?? 0) - Number(b ?? 0),
     ...extra,
   };

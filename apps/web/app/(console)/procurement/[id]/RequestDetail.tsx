@@ -218,9 +218,7 @@ export function RequestDetail({ id }: { id: string }) {
           <MarketEvidence market={data.market} itemNames={itemNames} currency={data.currency} />
         ) : null}
 
-        {data.candidates.length > 0 ? (
-          <CandidateTable candidates={data.candidates} itemNames={itemNames} currency={data.currency} />
-        ) : null}
+        {data.candidates.length > 0 ? <CandidateTable candidates={data.candidates} itemNames={itemNames} currency={data.currency} /> : null}
 
         {data.recommendation ? <RecommendationPanel recommendation={data.recommendation} /> : null}
 

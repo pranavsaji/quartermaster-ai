@@ -3,8 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { ApiRequestError } from "@/lib/http";
 
-const err = (status: number, code: string, message: string) =>
-  new ApiRequestError({ status, code, message, correlationId: "corr-123" });
+const err = (status: number, code: string, message: string) => new ApiRequestError({ status, code, message, correlationId: "corr-123" });
 
 describe("ErrorNotice", () => {
   it("explains a role denial and points to the owner", () => {
@@ -28,7 +27,9 @@ describe("ErrorNotice", () => {
 
   it("shows other API errors with their code, correlation id and a retry", () => {
     const onRetry = vi.fn();
-    render(<ErrorNotice error={err(502, "UPSTREAM_ERROR", "The Quartermaster API is unreachable.")} onRetry={onRetry} title="Couldn't load" />);
+    render(
+      <ErrorNotice error={err(502, "UPSTREAM_ERROR", "The Quartermaster API is unreachable.")} onRetry={onRetry} title="Couldn't load" />,
+    );
     expect(screen.getByRole("alert")).toHaveTextContent("Couldn't load");
     expect(screen.getByText("corr-123")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));

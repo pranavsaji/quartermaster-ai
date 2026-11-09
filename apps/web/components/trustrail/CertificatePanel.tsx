@@ -50,7 +50,11 @@ export function CertificatePanel({ certificate }: { certificate: IntentCertifica
           aria-live="off"
           title={`Expires ${dateTime(certificate.expires_at)}`}
         >
-          {certificate.status === "ACTIVE" ? (remaining ? `expires in ${remaining}` : "expired") : `expires ${dateTime(certificate.expires_at)}`}
+          {certificate.status === "ACTIVE"
+            ? remaining
+              ? `expires in ${remaining}`
+              : "expired"
+            : `expires ${dateTime(certificate.expires_at)}`}
         </span>
       </div>
 

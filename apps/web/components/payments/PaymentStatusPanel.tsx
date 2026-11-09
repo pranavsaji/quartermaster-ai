@@ -94,7 +94,9 @@ export function PaymentStatusPanel({
         </div>
         <div>
           <dt className="text-[12px] text-ink-3">PayPal order id</dt>
-          <dd>{payment.paypal_order_id ? <CopyValue value={payment.paypal_order_id} label="PayPal order id" head={10} tail={4} /> : "—"}</dd>
+          <dd>
+            {payment.paypal_order_id ? <CopyValue value={payment.paypal_order_id} label="PayPal order id" head={10} tail={4} /> : "—"}
+          </dd>
         </div>
         <div>
           <dt className="text-[12px] text-ink-3">{payment.completed_at ? "Completed" : "Updated"}</dt>
@@ -133,8 +135,7 @@ export function PaymentStatusPanel({
             </Button>
           }
         >
-          We stopped checking automatically. Nothing is charged twice by refreshing; it only asks the server for the
-          latest status.
+          We stopped checking automatically. Nothing is charged twice by refreshing; it only asks the server for the latest status.
         </Notice>
       ) : polling ? (
         <ErrorNotice error={poll.error} title="Couldn't refresh payment status — retrying" className="mt-3" />
@@ -222,9 +223,7 @@ function RefundDialog({
     >
       <div className="space-y-4">
         <Field label="Amount" required error={errors.amount}>
-          {(control) => (
-            <MoneyInput {...control} currency={payment.currency} value={amount} onChange={(e) => setAmount(e.target.value)} />
-          )}
+          {(control) => <MoneyInput {...control} currency={payment.currency} value={amount} onChange={(e) => setAmount(e.target.value)} />}
         </Field>
         <Field label="Reason" required error={errors.reason}>
           {(control) => (

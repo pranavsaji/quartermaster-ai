@@ -35,7 +35,15 @@ export function MandatePage() {
         title="Spend mandate"
         description="The deterministic rules TrustRail enforces on every cart before it can be approved, signed and paid."
         actions={
-          <Button variant="secondary" onClick={() => { setSaved(null); current.reload(); suppliers.reload(); }} loading={current.refreshing}>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setSaved(null);
+              current.reload();
+              suppliers.reload();
+            }}
+            loading={current.refreshing}
+          >
             Reload
           </Button>
         }
@@ -50,9 +58,23 @@ export function MandatePage() {
       ) : null}
 
       {current.error && !data ? <ErrorNotice error={current.error} onRetry={current.reload} /> : null}
-      <RefreshErrorNotice error={current.error} hasData={Boolean(current.data)} updatedAt={current.updatedAt} onRetry={current.reload} className="mb-4" />
-      <RefreshErrorNotice error={suppliers.error} hasData={Boolean(suppliers.data)} updatedAt={suppliers.updatedAt} onRetry={suppliers.reload} className="mb-4" />
-      {suppliers.error && !suppliers.data ? <ErrorNotice error={suppliers.error} onRetry={suppliers.reload} title="Couldn't load suppliers" className="mb-4" /> : null}
+      <RefreshErrorNotice
+        error={current.error}
+        hasData={Boolean(current.data)}
+        updatedAt={current.updatedAt}
+        onRetry={current.reload}
+        className="mb-4"
+      />
+      <RefreshErrorNotice
+        error={suppliers.error}
+        hasData={Boolean(suppliers.data)}
+        updatedAt={suppliers.updatedAt}
+        onRetry={suppliers.reload}
+        className="mb-4"
+      />
+      {suppliers.error && !suppliers.data ? (
+        <ErrorNotice error={suppliers.error} onRetry={suppliers.reload} title="Couldn't load suppliers" className="mb-4" />
+      ) : null}
 
       {!data && !current.error ? (
         <div className="space-y-4">
@@ -94,9 +116,9 @@ export function MandatePage() {
                 {dateTime(data.mandate.created_at)}.
               </p>
               <p className="mt-2 text-ink-3">
-                Mandates are append-only: every save creates a new version and marks the previous one superseded. Each
-                policy decision and intent certificate records the mandate version it was evaluated under, and every change
-                is written to the hash-chained audit log in the Security center.
+                Mandates are append-only: every save creates a new version and marks the previous one superseded. Each policy decision and
+                intent certificate records the mandate version it was evaluated under, and every change is written to the hash-chained audit
+                log in the Security center.
               </p>
             </CardBody>
           </Card>

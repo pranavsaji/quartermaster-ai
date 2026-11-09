@@ -98,7 +98,12 @@ export function ProposalCard({
         </div>
         <div className="text-right">
           <p className="text-[12px] text-ink-3">Total</p>
-          <p className={cn("tnum text-[20px] font-semibold tracking-[-0.01em]", blocked ? "text-ink-3 line-through decoration-block/60" : "text-ink")}>
+          <p
+            className={cn(
+              "tnum text-[20px] font-semibold tracking-[-0.01em]",
+              blocked ? "text-ink-3 line-through decoration-block/60" : "text-ink",
+            )}
+          >
             {money(po.total_minor, po.currency)}
           </p>
         </div>
@@ -148,9 +153,7 @@ export function ProposalCard({
             />
           </section>
         ) : null}
-        {payable && !can("pay") ? (
-          <Notice tone="info">Approved — waiting for the owner to pay with PayPal.</Notice>
-        ) : null}
+        {payable && !can("pay") ? <Notice tone="info">Approved — waiting for the owner to pay with PayPal.</Notice> : null}
 
         {po.payment ? <PaymentStatusPanel payment={po.payment} delivery={po.delivery} onPayment={handlePayment} /> : null}
       </div>

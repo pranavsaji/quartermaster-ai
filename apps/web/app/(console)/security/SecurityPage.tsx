@@ -23,9 +23,7 @@ function LoadMore<T>({ state }: { state: PagedState<T> }) {
   if (!state.hasMore && !state.moreError) return null;
   return (
     <div className="mt-3 flex flex-col items-center gap-2">
-      {state.moreError ? (
-        <ErrorNotice error={state.moreError} title="Couldn't load more" className="w-full" />
-      ) : null}
+      {state.moreError ? <ErrorNotice error={state.moreError} title="Couldn't load more" className="w-full" /> : null}
       {state.hasMore ? (
         <Button variant="secondary" size="sm" onClick={state.loadMore} loading={state.loadingMore}>
           {state.moreError ? "Try loading more again" : "Load more"}

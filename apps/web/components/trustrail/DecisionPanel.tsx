@@ -14,7 +14,9 @@ function EvidenceList({ evidence }: { evidence: Record<string, unknown> }) {
       {entries.map(([k, v]) => (
         <div key={k} className="contents">
           <dt className="text-ink-4">{k}</dt>
-          <dd className="break-all text-ink-2">{typeof v === "string" || typeof v === "number" || typeof v === "boolean" ? String(v) : JSON.stringify(v)}</dd>
+          <dd className="break-all text-ink-2">
+            {typeof v === "string" || typeof v === "number" || typeof v === "boolean" ? String(v) : JSON.stringify(v)}
+          </dd>
         </div>
       ))}
     </dl>
@@ -24,7 +26,9 @@ function EvidenceList({ evidence }: { evidence: Record<string, unknown> }) {
 export function ViolationItem({ violation }: { violation: ViolationDto }) {
   const block = violation.severity === "BLOCK";
   return (
-    <li className={cn("rounded-lg border px-3 py-2.5", block ? "border-block-line bg-block-soft/60" : "border-review-line bg-review-soft/60")}>
+    <li
+      className={cn("rounded-lg border px-3 py-2.5", block ? "border-block-line bg-block-soft/60" : "border-review-line bg-review-soft/60")}
+    >
       <div className="flex flex-wrap items-center gap-2">
         <Badge tone={block ? "block" : "review"} label={`Severity: ${block ? "Block" : "Review"}`}>
           {block ? "BLOCK" : "REVIEW"}
@@ -102,8 +106,8 @@ export function DecisionPanel({ decision }: { decision: PolicyDecisionDto }) {
       </Disclosure>
 
       <p className="mt-3 font-mono text-[11px] leading-relaxed text-ink-4">
-        policy {decision.policy_version} · mandate v{decision.mandate_version} · evaluated {dateTime(decision.evaluated_at)} ·
-        digest <span title={decision.input_digest}>{truncateMiddle(decision.input_digest, 12, 6)}</span>
+        policy {decision.policy_version} · mandate v{decision.mandate_version} · evaluated {dateTime(decision.evaluated_at)} · digest{" "}
+        <span title={decision.input_digest}>{truncateMiddle(decision.input_digest, 12, 6)}</span>
         {decision.human_approval_required ? " · human approval required" : ""}
       </p>
     </div>

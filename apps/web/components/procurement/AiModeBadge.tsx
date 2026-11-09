@@ -7,7 +7,11 @@ export function AiModeBadge({ mode }: { mode: AiMode }) {
       LLM
     </Badge>
   ) : (
-    <Badge tone="review" label="Interpreted by: deterministic fallback" title="No LLM configured or available: deterministic rules were used">
+    <Badge
+      tone="review"
+      label="Interpreted by: deterministic fallback"
+      title="No LLM configured or available: deterministic rules were used"
+    >
       Deterministic fallback
     </Badge>
   );

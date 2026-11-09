@@ -23,11 +23,14 @@ describe("useResource", () => {
     const calls: Array<{ key: string; signal: AbortSignal; d: Deferred<string> }> = [];
     const { result, rerender } = renderHook(
       ({ key }) =>
-        useResource((signal) => {
-          const d = deferred<string>();
-          calls.push({ key, signal, d });
-          return d.promise;
-        }, [key]),
+        useResource(
+          (signal) => {
+            const d = deferred<string>();
+            calls.push({ key, signal, d });
+            return d.promise;
+          },
+          [key],
+        ),
       { initialProps: { key: "a" } },
     );
 
@@ -89,11 +92,14 @@ describe("usePagedResource", () => {
     const requests: Array<{ filter: string; cursor: string | null; signal?: AbortSignal; d: Deferred<Page> }> = [];
     const { result, rerender } = renderHook(
       ({ filter }) =>
-        usePagedResource<string>((cursor, signal) => {
-          const d = deferred<Page>();
-          requests.push({ filter, cursor, signal, d });
-          return d.promise;
-        }, [filter]),
+        usePagedResource<string>(
+          (cursor, signal) => {
+            const d = deferred<Page>();
+            requests.push({ filter, cursor, signal, d });
+            return d.promise;
+          },
+          [filter],
+        ),
       { initialProps: { filter: "all" } },
     );
 

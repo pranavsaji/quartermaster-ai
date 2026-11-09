@@ -6,13 +6,7 @@ import { date, describeDemandMultiplier, money, num } from "@/lib/format";
 import { AiModeBadge } from "./AiModeBadge";
 
 /** "What the agent understood": the structured intent extracted from the instruction. */
-export function IntentPanel({
-  request,
-  itemNames,
-}: {
-  request: ProcurementRequestDto;
-  itemNames: Map<string, string>;
-}) {
+export function IntentPanel({ request, itemNames }: { request: ProcurementRequestDto; itemNames: Map<string, string> }) {
   const intent = request.intent;
   return (
     <Card aria-labelledby="intent-title">

@@ -117,13 +117,7 @@ export function AdjustmentDialog({
         </Field>
         <Field label="Note" hint="Optional, up to 500 characters.">
           {(control) => (
-            <Textarea
-              {...control}
-              value={note}
-              maxLength={500}
-              onChange={(e) => setNote(e.target.value)}
-              className="min-h-16"
-            />
+            <Textarea {...control} value={note} maxLength={500} onChange={(e) => setNote(e.target.value)} className="min-h-16" />
           )}
         </Field>
         <ErrorNotice error={save.error} />

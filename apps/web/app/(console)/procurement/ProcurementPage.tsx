@@ -65,7 +65,13 @@ function ProcurementContent() {
           }
         />
         <div className="p-3">
-          <RefreshErrorNotice error={requests.error} hasData={Boolean(requests.data)} updatedAt={requests.updatedAt} onRetry={requests.reload} className="mb-3" />
+          <RefreshErrorNotice
+            error={requests.error}
+            hasData={Boolean(requests.data)}
+            updatedAt={requests.updatedAt}
+            onRetry={requests.reload}
+            className="mb-3"
+          />
           {requests.error && !requests.data ? (
             <ErrorNotice error={requests.error} onRetry={requests.reload} />
           ) : (
