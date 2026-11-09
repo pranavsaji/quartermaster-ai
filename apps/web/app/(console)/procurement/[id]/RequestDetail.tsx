@@ -23,7 +23,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { SkeletonCard } from "@/components/ui/Skeleton";
 import { api } from "@/lib/api";
 import { dateTime, describeDemandMultiplier, num } from "@/lib/format";
-import { useAction, useInterval, useResource } from "@/lib/hooks";
+import { useAction, usePoller, useResource } from "@/lib/hooks";
 import { REQUEST_STATUS_TONES } from "@/lib/labels";
 
 /** Guards against firing the long research call twice (e.g. React StrictMode remounts). */
@@ -70,9 +70,15 @@ export function RequestDetail({ id }: { id: string }) {
     router.replace(`/procurement/${id}`, { scroll: false });
   }, [data, can, runResearch, autoResearch, router, id]);
 
-  // If research is running server-side (started elsewhere), poll until it settles.
+  // If research is running server-side (started elsewhere), poll until it settles. Each poll
+  // waits for the previous one, so a slow GET is never cut off by the next tick.
   const serverResearching = data?.status === "RESEARCHING" && !research.pending;
-  useInterval(request.reload, 3000, serverResearching);
+  const poll = usePoller(
+    async (signal) => {
+      setRequest(await api.procurement.get(id, { signal }));
+    },
+    { active: serverResearching, intervalMs: 3000, maxIntervalMs: 30_000 },
+  );
 
   const itemNames = useMemo(() => {
     const map = new Map<string, string>();
@@ -174,6 +180,9 @@ export function RequestDetail({ id }: { id: string }) {
 
         {researching ? <ResearchProgress startedAt={researchStartedAt ?? Date.parse(data.updated_at)} /> : null}
         <ErrorNotice error={research.error} title="Research failed" onRetry={() => void research.run()} />
+        {serverResearching && poll.error ? (
+          <ErrorNotice error={poll.error} title="Couldn't check research progress — retrying" onRetry={poll.restart} />
+        ) : null}
         <ErrorNotice error={evaluate.error} title="Re-evaluation failed" />
 
         {data.security_findings.length > 0 ? (
