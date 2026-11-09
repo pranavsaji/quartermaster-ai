@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
-import { forecastRuns, purchaseRequests } from "@qm/database";
+import { forecastRuns, purchaseCandidates, purchaseRequests } from "@qm/database";
 import type { ProcurementRequestDto } from "@qm/contracts";
 import type { PolicyResult } from "@qm/trustrail";
 import { failClosedOnMalformedFacts, parseStoredIntent } from "../../apps/api/src/services/policy";
@@ -80,6 +80,20 @@ describe("malformed stored facts", () => {
     expect(res.body.error.code).toBe("REQUEST_INTENT_INVALID");
     const [row] = await h.ctx.db.select().from(purchaseRequests).where(eq(purchaseRequests.id, created.id));
     expect(row!.status).toBe("FAILED");
+  });
+});
+
+describe("candidate quotes in the request view", () => {
+  it("leaves out a candidate whose stored quote is malformed", async () => {
+    const { request } = await proposed(owner, "PKG-TAKEOUT-32");
+    expect(request.candidates.length).toBeGreaterThan(1);
+    const [victim, ...rest] = request.candidates;
+    await h.ctx.db
+      .update(purchaseCandidates)
+      .set({ quote: { subtotal_minor: "12.50", total_minor: null } })
+      .where(eq(purchaseCandidates.id, victim!.id));
+    const seen = (await owner.get(`/procurement/requests/${request.id}`)).body as ProcurementRequestDto;
+    expect(seen.candidates.map((c) => c.id)).toEqual(rest.map((c) => c.id));
   });
 });
 
