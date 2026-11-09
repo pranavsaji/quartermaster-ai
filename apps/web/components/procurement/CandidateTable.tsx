@@ -131,12 +131,12 @@ export function CandidateTable({
                     Ineligible
                   </Badge>
                 )}
-                {c.quarantined ? (
-                  <Badge tone="block" title="Source content was quarantined by TrustRail (e.g. prompt injection)">
-                    Quarantined
-                  </Badge>
-                ) : null}
+                {c.quarantined ? <Badge tone="block">Quarantined</Badge> : null}
               </span>
+              {/* Written out rather than in a hover-only title, so keyboard and touch users get it too. */}
+              {c.quarantined ? (
+                <p className="text-[12px] text-ink-3">TrustRail quarantined this source&apos;s content (e.g. a prompt injection).</p>
+              ) : null}
               {c.ineligible_reasons.length > 0 ? (
                 <ul className="text-[12px] text-ink-3">
                   {c.ineligible_reasons.map((r) => (

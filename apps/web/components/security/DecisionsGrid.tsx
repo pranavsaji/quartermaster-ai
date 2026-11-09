@@ -20,19 +20,22 @@ export function DecisionsGrid({ decisions }: { decisions: PolicyDecisionDto[] | 
         colId: "violations",
         headerName: "Violations",
         flex: 2,
-        minWidth: 280,
+        minWidth: 320,
         autoHeight: true,
+        wrapText: true,
         sortable: true,
         valueGetter: (p) => p.data?.violations.length ?? 0,
+        // Each message is written out, not left in a hover-only tooltip that keyboard and touch users never see.
         cellRenderer: (p: CustomCellRendererProps<PolicyDecisionDto>) =>
           p.data && p.data.violations.length > 0 ? (
-            <div className="flex flex-wrap gap-1 py-2">
+            <ul className="flex flex-col gap-1.5 py-2 leading-snug">
               {p.data.violations.map((v, i) => (
-                <Badge key={`${v.code}-${i}`} tone={v.severity === "BLOCK" ? "block" : "review"} title={v.message}>
-                  {v.code}
-                </Badge>
+                <li key={`${v.code}-${i}`} className="whitespace-normal">
+                  <Badge tone={v.severity === "BLOCK" ? "block" : "review"}>{v.code}</Badge>
+                  <span className="ml-1.5 text-[12px] text-ink-3">{v.message}</span>
+                </li>
               ))}
-            </div>
+            </ul>
           ) : (
             <span className="text-ink-4">None</span>
           ),
