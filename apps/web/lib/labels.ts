@@ -20,6 +20,14 @@ import type { InventoryItemDto } from "@qm/contracts";
 
 export type Tone = "neutral" | "accent" | "allow" | "review" | "block" | "info";
 
+/**
+ * Total lookup for an enum-keyed map. The API can add an enum value before
+ * the web app knows it; rendering must degrade to `fallback`, not crash.
+ */
+export function lookup<K extends string, V>(map: Readonly<Record<K, V>>, key: string, fallback: V): V {
+  return Object.hasOwn(map, key) ? map[key as K] : fallback;
+}
+
 export const CATEGORY_LABELS: Record<ProductCategory, string> = {
   food_packaging: "Food packaging",
   cleaning_supplies: "Cleaning supplies",

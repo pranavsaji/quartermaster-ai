@@ -12,12 +12,13 @@ import { api } from "@/lib/api";
 import { inputToMinor, todayIso } from "@/lib/format";
 import { useAction } from "@/lib/hooks";
 
-export const DEFAULT_INSTRUCTION =
-  "We're expecting a busy weekend. Restock takeaway containers and cooking oil without exceeding $300.";
+/** An example, shown as a placeholder: the owner's request starts empty rather than pre-written. */
+const EXAMPLE_INSTRUCTION =
+  "e.g. We're expecting a busy weekend. Restock takeaway containers and cooking oil without exceeding $300.";
 
 export function RequestComposer({ currency, onCancel }: { currency: string; onCancel?: () => void }) {
   const router = useRouter();
-  const [instruction, setInstruction] = useState(DEFAULT_INSTRUCTION);
+  const [instruction, setInstruction] = useState("");
   const [budget, setBudget] = useState("");
   const [requiredBy, setRequiredBy] = useState("");
   const [overrideDemand, setOverrideDemand] = useState(false);
@@ -68,13 +69,12 @@ export function RequestComposer({ currency, onCancel }: { currency: string; onCa
         />
         <CardBody className="space-y-5">
           <Field label="Instruction" required error={errors.instruction} hint="Mention items, timing and any spending cap.">
-            {({ id, describedBy, invalid }) => (
+            {(control) => (
               <Textarea
-                id={id}
+                {...control}
                 value={instruction}
                 onChange={(e) => setInstruction(e.target.value)}
-                aria-describedby={describedBy}
-                aria-invalid={invalid}
+                placeholder={EXAMPLE_INSTRUCTION}
                 maxLength={2000}
                 rows={3}
                 className="text-[14px]"
@@ -84,27 +84,24 @@ export function RequestComposer({ currency, onCancel }: { currency: string; onCa
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field label="Budget cap (optional)" error={errors.budget} hint="TrustRail blocks any cart above this.">
-              {({ id, describedBy, invalid }) => (
+              {(control) => (
                 <MoneyInput
-                  id={id}
+                  {...control}
+                  currency={currency}
                   value={budget}
                   onChange={(e) => setBudget(e.target.value)}
-                  aria-describedby={describedBy}
-                  aria-invalid={invalid}
                   placeholder="300.00"
                 />
               )}
             </Field>
             <Field label="Required by (optional)" error={errors.requiredBy}>
-              {({ id, describedBy, invalid }) => (
+              {(control) => (
                 <Input
-                  id={id}
+                  {...control}
                   type="date"
                   min={todayIso()}
                   value={requiredBy}
                   onChange={(e) => setRequiredBy(e.target.value)}
-                  aria-describedby={describedBy}
-                  aria-invalid={invalid}
                   className="tnum"
                 />
               )}

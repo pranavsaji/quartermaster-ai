@@ -82,7 +82,7 @@ export function DecisionPanel({ decision }: { decision: PolicyDecisionDto }) {
         </ul>
       ) : null}
 
-      <Disclosure className="mt-3 bg-surface" summary={`Passed checks (${passed.length})`}>
+      <Disclosure className="mt-3 bg-surface" summary={`All checks (${passed.length} of ${decision.checks.length} passed)`}>
         <ul className="space-y-1.5">
           {decision.checks.map((c) => (
             <li key={c.code} className="flex gap-2 text-[12.5px]">
@@ -92,6 +92,7 @@ export function DecisionPanel({ decision }: { decision: PolicyDecisionDto }) {
                 <Icons.x className="mt-0.5 size-3.5 text-block" strokeWidth={2.4} />
               )}
               <span>
+                <span className="sr-only">{c.passed ? "Passed: " : "Failed: "}</span>
                 <span className="font-medium text-ink-2">{humanize(c.code)}</span>
                 <span className="text-ink-3"> — {c.detail}</span>
               </span>

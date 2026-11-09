@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { Tone } from "@/lib/labels";
+import { lookup, type Tone } from "@/lib/labels";
 import { cn } from "./cn";
 
 const TONES: Record<Tone, string> = {
@@ -66,7 +66,7 @@ export function Notice({
   return (
     <div
       role={live ? (tone === "block" ? "alert" : "status") : undefined}
-      className={cn("flex gap-2.5 rounded-lg border px-3.5 py-3 text-[13px]", TONES[tone], className)}
+      className={cn("flex gap-2.5 rounded-lg border px-3.5 py-3 text-[13px]", lookup(TONES, tone, TONES.neutral), className)}
     >
       <Icon tone={tone} />
       <div className="min-w-0 flex-1">

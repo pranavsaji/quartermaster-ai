@@ -36,8 +36,15 @@ export function stableStringify(value: unknown): string {
   return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${stableStringify(v)}`).join(",")}}`;
 }
 
+/**
+ * 5xx answers the API documents as definitive: the attempt was refused and
+ * unwound, so a retry is a new action that needs a new key.
+ */
+const DEFINITIVE_SERVER_CODES = new Set(["PAYPAL_ORDER_MISMATCH"]);
+
 function shouldKeepKey(error: unknown): boolean {
   if (!(error instanceof ApiRequestError)) return true; // unknown failure: outcome ambiguous
+  if (DEFINITIVE_SERVER_CODES.has(error.code)) return false;
   return error.isAmbiguous || error.status === 409;
 }
 

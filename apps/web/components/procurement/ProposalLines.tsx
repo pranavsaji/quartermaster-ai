@@ -1,7 +1,7 @@
 import type { LineKind, PurchaseOrderDto } from "@qm/contracts";
 import { Badge } from "@/components/ui/Badge";
 import type { Tone } from "@/lib/labels";
-import { categoryLabel } from "@/lib/labels";
+import { categoryLabel, lookup } from "@/lib/labels";
 import { money, num } from "@/lib/format";
 
 const KIND_TONES: Record<LineKind, Tone> = { PRODUCT: "neutral", SHIPPING: "info", TAX: "neutral", FEE: "review" };
@@ -9,7 +9,7 @@ const KIND_ORDER: Record<LineKind, number> = { PRODUCT: 0, SHIPPING: 1, FEE: 2, 
 
 /** Itemised cart: every product, shipping, fee and tax line, plus totals. */
 export function ProposalLines({ po }: { po: PurchaseOrderDto }) {
-  const items = [...po.items].sort((a, b) => KIND_ORDER[a.kind] - KIND_ORDER[b.kind]);
+  const items = [...po.items].sort((a, b) => lookup(KIND_ORDER, a.kind, 9) - lookup(KIND_ORDER, b.kind, 9));
   const totals: { label: string; value: number; strong?: boolean }[] = [
     { label: "Subtotal", value: po.subtotal_minor },
     { label: "Shipping", value: po.shipping_minor },
@@ -44,7 +44,7 @@ export function ProposalLines({ po }: { po: PurchaseOrderDto }) {
           {items.map((line) => (
             <tr key={line.id}>
               <td className="py-2 pr-2 align-top">
-                <Badge tone={KIND_TONES[line.kind]}>{line.kind}</Badge>
+                <Badge tone={lookup<LineKind, Tone>(KIND_TONES, line.kind, "neutral")}>{line.kind}</Badge>
               </td>
               <td className="py-2 pr-2 align-top">
                 <p className="text-ink">{line.description}</p>

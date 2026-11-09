@@ -1,6 +1,6 @@
 "use client";
 
-import type { PaymentDto, PurchaseOrderDto } from "@qm/contracts";
+import type { ApprovalResponse, CaptureResponse, PaymentDto, PurchaseOrderDto } from "@qm/contracts";
 import { PayPalCheckout } from "@/components/payments/PayPalCheckout";
 import { PaymentStatusPanel } from "@/components/payments/PaymentStatusPanel";
 import { useSession } from "@/components/session/SessionProvider";
@@ -13,7 +13,6 @@ import { CopyValue } from "@/components/ui/CopyValue";
 import { Notice } from "@/components/ui/Notice";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import { Icons } from "@/components/shell/icons";
-import type { ApprovalResponse, CaptureResponse } from "@/lib/api";
 import { countdown, money } from "@/lib/format";
 import { useNow } from "@/lib/hooks";
 import { PO_STATUS_TONES } from "@/lib/labels";
@@ -54,7 +53,7 @@ export function ProposalCard({
     !(po.payment && SETTLED_OR_SETTLING.has(po.payment.status));
 
   function handleApproved(result: ApprovalResponse) {
-    onChange({ ...result.purchase_order, certificate: result.purchase_order.certificate ?? result.certificate });
+    onChange(result.purchase_order);
   }
 
   function handlePayment(payment: PaymentDto) {

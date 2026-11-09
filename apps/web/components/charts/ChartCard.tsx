@@ -1,13 +1,22 @@
 "use client";
 
-import { AllCommunityModule, ModuleRegistry, type AgChartOptions, type AgChartTheme } from "ag-charts-community";
+import {
+  BarSeriesModule,
+  CategoryAxisModule,
+  LegendModule,
+  ModuleRegistry,
+  NumberAxisModule,
+  type AgChartOptions,
+  type AgChartTheme,
+} from "ag-charts-community";
 import { AgCharts } from "ag-charts-react";
 import type { ReactNode } from "react";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Disclosure } from "@/components/ui/Disclosure";
 import { EmptyState } from "@/components/ui/EmptyState";
 
-ModuleRegistry.registerModules([AllCommunityModule]);
+// Only what the analytics bar charts use (AllCommunityModule was a 1.2 MB chunk).
+ModuleRegistry.registerModules([BarSeriesModule, CategoryAxisModule, NumberAxisModule, LegendModule]);
 
 /**
  * Chart palette. Categorical slots follow a fixed, CVD-validated order

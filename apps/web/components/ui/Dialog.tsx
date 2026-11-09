@@ -1,11 +1,15 @@
 "use client";
 
-import { useEffect, useId, useRef, type ReactNode } from "react";
+import { useEffect, useEffectEvent, useId, useRef, type ReactNode } from "react";
 import { cn } from "./cn";
 
 /**
  * Modal dialog on top of the native <dialog> element, which gives us focus
  * trapping, Escape-to-close and an inert background for free.
+ *
+ * Callers with form state usually mount it only while it is open
+ * (`{editing ? <SomeDialog … /> : null}`) so every opening starts fresh; it
+ * closes itself and hands focus back to the opener when unmounted.
  */
 export function Dialog({
   open,
@@ -27,12 +31,21 @@ export function Dialog({
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   const descId = useId();
+  const close = useEffectEvent(onClose);
 
   useEffect(() => {
     const el = ref.current;
-    if (!el) return;
-    if (open && !el.open) el.showModal();
-    if (!open && el.open) el.close();
+    if (!el || !open) return;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (!el.open) el.showModal();
+    // A click on the dialog element itself is a click on its backdrop (Escape covers keyboards).
+    const onBackdropClick = (e: MouseEvent) => e.target === el && close();
+    el.addEventListener("click", onBackdropClick);
+    return () => {
+      el.removeEventListener("click", onBackdropClick);
+      if (el.open) el.close();
+      if (opener?.isConnected) opener.focus();
+    };
   }, [open]);
 
   return (
@@ -44,10 +57,6 @@ export function Dialog({
       onCancel={(e) => {
         e.preventDefault();
         onClose();
-      }}
-      onClick={(e) => {
-        // Click on the backdrop (the dialog element itself) closes it.
-        if (e.target === ref.current) onClose();
       }}
       className={cn(
         "m-auto w-[calc(100%-2rem)] rounded-xl border border-line bg-surface p-0 text-ink shadow-[var(--shadow-pop)]",

@@ -1,7 +1,7 @@
 "use client";
 
 import { AnalyzeInvoiceRequest, type InvoiceDto, type PurchaseOrderDto, type SupplierDto } from "@qm/contracts";
-import { forwardRef, useImperativeHandle, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardFooter, CardHeader } from "@/components/ui/Card";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
@@ -23,8 +23,10 @@ interface LineDraft {
 let lineSeq = 0;
 const blankLine = (): LineDraft => ({ key: `l${(lineSeq += 1)}`, sku: "", description: "", quantity: "1", unitPrice: "" });
 
-export interface InvoiceFormHandle {
-  prefillFrom: (po: PurchaseOrderDto) => void;
+/** A request to fill the form from a purchase order; a new `seq` re-applies it even for the same PO. */
+export interface InvoicePrefill {
+  po: PurchaseOrderDto;
+  seq: number;
 }
 
 function lineTotal(line: LineDraft, currency: string): number | null {
@@ -39,15 +41,20 @@ function lineTotal(line: LineDraft, currency: string): number | null {
  * receipts and prior invoices (duplicates) and decides whether settlement may
  * proceed. Supplier notes are untrusted and are scanned for prompt injection.
  */
-export const InvoiceForm = forwardRef<
-  InvoiceFormHandle,
-  {
-    suppliers: SupplierDto[];
-    orders: PurchaseOrderDto[];
-    currency: string;
-    onAnalyzed: (invoice: InvoiceDto) => void;
-  }
->(function InvoiceForm({ suppliers, orders, currency, onAnalyzed }, ref) {
+export function InvoiceForm({
+  suppliers,
+  orders,
+  currency,
+  prefill,
+  onAnalyzed,
+}: {
+  suppliers: SupplierDto[];
+  orders: PurchaseOrderDto[];
+  currency: string;
+  /** Set by the orders grid's "Invoice" action. */
+  prefill: InvoicePrefill | null;
+  onAnalyzed: (invoice: InvoiceDto) => void;
+}) {
   const [supplierId, setSupplierId] = useState("");
   const [poId, setPoId] = useState("");
   const [number, setNumber] = useState("");
@@ -89,7 +96,13 @@ export const InvoiceForm = forwardRef<
     analyze.reset();
   }
 
-  useImperativeHandle(ref, () => ({ prefillFrom }));
+  // Apply a new prefill request while rendering (React's "adjust state when a prop changes"
+  // pattern) instead of exposing an imperative handle.
+  const [appliedPrefill, setAppliedPrefill] = useState<number | null>(null);
+  if (prefill && prefill.seq !== appliedPrefill) {
+    setAppliedPrefill(prefill.seq);
+    prefillFrom(prefill.po);
+  }
 
   const computedTotal = lines.reduce<number | null>((sum, l) => {
     const t = lineTotal(l, currency);
@@ -159,8 +172,8 @@ export const InvoiceForm = forwardRef<
         <CardBody className="space-y-4">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <Field label="Supplier" required>
-              {({ id }) => (
-                <Select id={id} value={supplierId} onChange={(e) => { setSupplierId(e.target.value); setPoId(""); }}>
+              {(control) => (
+                <Select {...control} value={supplierId} onChange={(e) => { setSupplierId(e.target.value); setPoId(""); }}>
                   <option value="">Select supplier…</option>
                   {suppliers.map((s) => (
                     <option key={s.id} value={s.id}>
@@ -171,11 +184,10 @@ export const InvoiceForm = forwardRef<
               )}
             </Field>
             <Field label="Purchase order" hint="Choosing one prefills the lines from the PO.">
-              {({ id, describedBy }) => (
+              {(control) => (
                 <Select
-                  id={id}
+                  {...control}
                   value={poId}
-                  aria-describedby={describedBy}
                   onChange={(e) => {
                     const po = orders.find((o) => o.id === e.target.value);
                     if (po) prefillFrom(po);
@@ -192,10 +204,10 @@ export const InvoiceForm = forwardRef<
               )}
             </Field>
             <Field label="Invoice number" required>
-              {({ id }) => <Input id={id} value={number} onChange={(e) => setNumber(e.target.value)} maxLength={64} className="font-mono" />}
+              {(control) => <Input {...control} value={number} onChange={(e) => setNumber(e.target.value)} maxLength={64} className="font-mono" />}
             </Field>
             <Field label="Invoice date" required>
-              {({ id }) => <Input id={id} type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} className="tnum" />}
+              {(control) => <Input {...control} type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} className="tnum" />}
             </Field>
           </div>
 
@@ -221,7 +233,7 @@ export const InvoiceForm = forwardRef<
                         <td className="py-1"><Input aria-label={`Line ${i + 1} SKU`} value={l.sku} onChange={(e) => updateLine(l.key, { sku: e.target.value })} className="w-28 font-mono text-[12px]" /></td>
                         <td className="py-1 pl-2"><Input aria-label={`Line ${i + 1} description`} value={l.description} onChange={(e) => updateLine(l.key, { description: e.target.value })} /></td>
                         <td className="py-1 pl-2"><Input aria-label={`Line ${i + 1} quantity`} inputMode="numeric" value={l.quantity} onChange={(e) => updateLine(l.key, { quantity: e.target.value })} className="tnum" /></td>
-                        <td className="py-1 pl-2"><MoneyInput aria-label={`Line ${i + 1} unit price`} value={l.unitPrice} onChange={(e) => updateLine(l.key, { unitPrice: e.target.value })} /></td>
+                        <td className="py-1 pl-2"><MoneyInput currency={currency} aria-label={`Line ${i + 1} unit price`} value={l.unitPrice} onChange={(e) => updateLine(l.key, { unitPrice: e.target.value })} /></td>
                         <td className="tnum py-1 pl-2 text-right text-ink-2">{t !== null ? money(t, currency) : "—"}</td>
                         <td className="py-1 pl-1 text-right">
                           <button
@@ -247,13 +259,13 @@ export const InvoiceForm = forwardRef<
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <Field label="Invoice total" hint={`Sum of lines: ${computedTotal !== null ? money(computedTotal, currency) : "—"}. Override to test a mismatched total.`}>
-              {({ id, describedBy }) => (
-                <MoneyInput id={id} value={totalOverride} onChange={(e) => setTotalOverride(e.target.value)} aria-describedby={describedBy} placeholder={computedTotal !== null ? minorToInput(computedTotal, currency) : ""} />
+              {(control) => (
+                <MoneyInput {...control} currency={currency} value={totalOverride} onChange={(e) => setTotalOverride(e.target.value)} placeholder={computedTotal !== null ? minorToInput(computedTotal, currency) : ""} />
               )}
             </Field>
             <Field label="Supplier notes" hint="Free text from the document. Treated as untrusted and scanned for injected instructions.">
-              {({ id, describedBy }) => (
-                <Textarea id={id} value={notes} onChange={(e) => setNotes(e.target.value)} aria-describedby={describedBy} maxLength={5000} className="min-h-[38px]" rows={2} />
+              {(control) => (
+                <Textarea {...control} value={notes} onChange={(e) => setNotes(e.target.value)} maxLength={5000} className="min-h-[38px]" rows={2} />
               )}
             </Field>
           </div>
@@ -285,4 +297,4 @@ export const InvoiceForm = forwardRef<
       </form>
     </Card>
   );
-});
+}

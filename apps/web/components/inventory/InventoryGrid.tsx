@@ -4,6 +4,7 @@ import type { ColDef } from "ag-grid-community";
 import type { CustomCellRendererProps } from "ag-grid-react";
 import type { InventoryItemDto } from "@qm/contracts";
 import { useMemo } from "react";
+import { ActionCell, controlColumn } from "@/components/grid/ActionCell";
 import { DataGrid } from "@/components/grid/DataGrid";
 import { numberColumn, statusColumn, rightCell } from "@/components/grid/columns";
 import { Button } from "@/components/ui/Button";
@@ -76,13 +77,14 @@ export function InventoryGrid({
         resizable: false,
         minWidth: 100,
         maxWidth: 110,
+        ...controlColumn<InventoryItemDto>(),
         cellRenderer: (p: CustomCellRendererProps<InventoryItemDto>) =>
           p.data ? (
-            <div className="flex h-full items-center">
+            <ActionCell eGridCell={p.eGridCell}>
               <Button size="sm" variant="secondary" onClick={() => p.data && onAdjust(p.data)} aria-label={`Adjust ${p.data.name}`}>
                 Adjust
               </Button>
-            </div>
+            </ActionCell>
           ) : null,
       });
     }

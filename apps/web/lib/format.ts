@@ -41,6 +41,33 @@ function safeExponent(currency: string): number {
   }
 }
 
+/**
+ * Minor units -> major units as a plain number, for chart scales only. Money
+ * arithmetic and display stay in integer minor units (`money`).
+ */
+export function minorToMajor(minor: number, currency = "USD"): number {
+  return minor / 10 ** safeExponent(currency);
+}
+
+/** Whole-unit money for chart axis ticks, e.g. "$1,500". */
+export function moneyTick(major: number, currency = "USD"): string {
+  try {
+    return new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: 0 }).format(major);
+  } catch {
+    return `${Math.round(major)} ${currency}`;
+  }
+}
+
+/** The narrow symbol for a currency ("$", "€", "¥"), or its code if there isn't one. */
+export function currencySymbol(currency = "USD"): string {
+  try {
+    const parts = new Intl.NumberFormat("en-US", { style: "currency", currency, currencyDisplay: "narrowSymbol" }).formatToParts(0);
+    return parts.find((p) => p.type === "currency")?.value ?? currency;
+  } catch {
+    return currency;
+  }
+}
+
 const numberFmt = new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 });
 export function num(value: number | null | undefined, digits?: number): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return "—";

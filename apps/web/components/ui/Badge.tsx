@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { Tone } from "@/lib/labels";
+import { lookup, type Tone } from "@/lib/labels";
 import { humanize } from "@/lib/format";
 import { cn } from "./cn";
 
@@ -19,17 +19,15 @@ export interface BadgeProps {
   dot?: boolean;
   size?: "sm" | "md";
   className?: string;
-  /** Accessible description, e.g. "TrustRail decision: Blocked". */
+  /** Text read by screen readers instead of the visible text, e.g. "TrustRail decision: Blocked". Not a live region. */
   label?: string;
   title?: string;
 }
 
 export function Badge({ tone = "neutral", children, dot = false, size = "sm", className, label, title }: BadgeProps) {
-  const t = TONES[tone];
+  const t = lookup(TONES, tone, TONES.neutral);
   return (
     <span
-      role={label ? "status" : undefined}
-      aria-label={label}
       title={title}
       className={cn(
         "inline-flex items-center gap-1.5 rounded-full font-medium whitespace-nowrap ring-1 ring-inset",
@@ -39,7 +37,14 @@ export function Badge({ tone = "neutral", children, dot = false, size = "sm", cl
       )}
     >
       {dot ? <span aria-hidden className={cn("size-1.5 rounded-full", t.dot)} /> : null}
-      {children}
+      {label ? (
+        <>
+          <span aria-hidden>{children}</span>
+          <span className="sr-only">{label}</span>
+        </>
+      ) : (
+        children
+      )}
     </span>
   );
 }
@@ -60,7 +65,7 @@ export function StatusBadge<S extends string>({
 }) {
   const text = labels?.[status] ?? humanize(status);
   return (
-    <Badge tone={tones[status] ?? "neutral"} dot size={size} label={`${kind}: ${text}`}>
+    <Badge tone={lookup<S, Tone>(tones, status, "neutral")} dot size={size} label={`${kind}: ${text}`}>
       {text}
     </Badge>
   );

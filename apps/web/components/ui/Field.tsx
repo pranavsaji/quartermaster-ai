@@ -6,6 +6,7 @@ import {
   type SelectHTMLAttributes,
   type TextareaHTMLAttributes,
 } from "react";
+import { currencySymbol } from "@/lib/format";
 import { cn } from "./cn";
 
 const control =
@@ -13,9 +14,17 @@ const control =
   "transition-colors focus:border-accent focus:outline-none focus:ring-3 focus:ring-accent/15 " +
   "disabled:cursor-not-allowed disabled:bg-canvas disabled:text-ink-3 aria-[invalid=true]:border-block";
 
+/** Props a Field hands its control: spread them onto the input (`<Input {...control} />`). */
+export interface FieldControlProps {
+  id: string;
+  "aria-describedby": string | undefined;
+  "aria-invalid": true | undefined;
+  "aria-required": true | undefined;
+}
+
 /**
- * Label + control + hint/error wrapper. The render prop receives the ids so the
- * control can wire up `aria-describedby` and `aria-invalid` correctly.
+ * Label + control + hint/error wrapper. The render prop receives the control's
+ * id and ARIA wiring, which only ever references text that is on screen.
  */
 export function Field({
   label,
@@ -30,12 +39,17 @@ export function Field({
   error?: string | null;
   required?: boolean;
   className?: string;
-  children: (ids: { id: string; describedBy: string | undefined; invalid: boolean }) => ReactNode;
+  children: (control: FieldControlProps) => ReactNode;
 }) {
   const id = useId();
   const hintId = `${id}-hint`;
   const errorId = `${id}-error`;
-  const describedBy = [hint ? hintId : null, error ? errorId : null].filter(Boolean).join(" ") || undefined;
+  const control: FieldControlProps = {
+    id,
+    "aria-describedby": [error ? errorId : null, hint ? hintId : null].filter(Boolean).join(" ") || undefined,
+    "aria-invalid": error ? true : undefined,
+    "aria-required": required ? true : undefined,
+  };
   return (
     <div className={cn("flex flex-col gap-1.5", className)}>
       <label htmlFor={id} className="text-[13px] font-medium text-ink-2">
@@ -46,8 +60,8 @@ export function Field({
           </span>
         ) : null}
       </label>
-      {children({ id, describedBy, invalid: Boolean(error) })}
-      {hint && !error ? (
+      {children(control)}
+      {hint ? (
         <p id={hintId} className="text-[12px] text-ink-3">
           {hint}
         </p>
@@ -68,20 +82,25 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
   return <input ref={ref} className={cn(control, "h-9", className)} {...rest} />;
 });
 
-/** Text input with a leading "$" adornment for money entry. */
-export const MoneyInput = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(function MoneyInput(
-  { className, ...rest },
-  ref,
-) {
-  return (
-    <div className="relative">
-      <span aria-hidden className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-ink-3">
-        $
-      </span>
-      <input ref={ref} inputMode="decimal" className={cn(control, "tnum h-9 pl-6", className)} {...rest} />
-    </div>
-  );
-});
+/** Text input with a leading currency-symbol adornment for money entry. */
+export const MoneyInput = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement> & { currency: string }>(
+  function MoneyInput({ className, currency, ...rest }, ref) {
+    const symbol = currencySymbol(currency);
+    return (
+      <div className="relative">
+        <span aria-hidden className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-sm text-ink-3">
+          {symbol}
+        </span>
+        <input
+          ref={ref}
+          inputMode="decimal"
+          className={cn(control, "tnum h-9", symbol.length > 1 ? "pl-12" : "pl-6", className)}
+          {...rest}
+        />
+      </div>
+    );
+  },
+);
 
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement>>(
   function Textarea({ className, ...rest }, ref) {

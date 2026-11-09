@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { SessionProvider, useLoadSession } from "@/components/session/SessionProvider";
@@ -44,15 +44,12 @@ export function ConsoleShell({ children }: { children: ReactNode }) {
   const { session, loading, error, retry } = useLoadSession();
   const [menuOpen, setMenuOpen] = useState(false);
   const pathname = usePathname();
-
-  useEffect(() => setMenuOpen(false), [pathname]);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setMenuOpen(false);
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [menuOpen]);
+  const [menuPath, setMenuPath] = useState(pathname);
+  // Close the drawer after any navigation (adjusting state during render, not in an effect).
+  if (menuPath !== pathname) {
+    setMenuPath(pathname);
+    setMenuOpen(false);
+  }
 
   if (loading || (!session && !error)) return <ShellSkeleton />;
   if (!session) {
@@ -80,31 +77,7 @@ export function ConsoleShell({ children }: { children: ReactNode }) {
           <SidebarFooter />
         </aside>
 
-        {menuOpen ? (
-          <div className="fixed inset-0 z-40 lg:hidden" role="dialog" aria-modal="true" aria-label="Navigation">
-            <button
-              type="button"
-              aria-label="Close navigation"
-              className="absolute inset-0 bg-ink/40 backdrop-blur-[2px]"
-              onClick={() => setMenuOpen(false)}
-            />
-            <div className="absolute inset-y-0 left-0 flex w-72 max-w-[85vw] flex-col bg-canvas px-3 py-4 shadow-[var(--shadow-pop)]">
-              <div className="mb-7 flex items-center justify-between px-1">
-                <Brand />
-                <button
-                  type="button"
-                  onClick={() => setMenuOpen(false)}
-                  className="rounded-md p-1.5 text-ink-2 hover:bg-ink/5"
-                  aria-label="Close navigation"
-                >
-                  <Icons.close />
-                </button>
-              </div>
-              <SidebarNav onNavigate={() => setMenuOpen(false)} />
-              <SidebarFooter />
-            </div>
-          </div>
-        ) : null}
+        <NavDrawer open={menuOpen} onClose={() => setMenuOpen(false)} />
 
         <div className="flex min-w-0 flex-1 flex-col">
           <Header onOpenMenu={() => setMenuOpen(true)} />
@@ -114,6 +87,67 @@ export function ConsoleShell({ children }: { children: ReactNode }) {
         </div>
       </div>
     </SessionProvider>
+  );
+}
+
+/**
+ * Navigation drawer below lg, on the native modal <dialog> like ui/Dialog: focus
+ * moves into it, Tab is contained, Escape closes it, the page behind is inert,
+ * and focus returns to the menu button on close.
+ */
+function NavDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  const onCloseEvent = useEffectEvent(onClose);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || !open) return;
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (!el.open) el.showModal();
+    // At lg the drawer is hidden by CSS; don't leave an invisible modal making the page inert.
+    const desktop = window.matchMedia("(min-width: 64rem)");
+    const onResize = () => desktop.matches && onCloseEvent();
+    desktop.addEventListener("change", onResize);
+    // A click on the dialog element itself is a click on the backdrop (Escape covers keyboards).
+    const onBackdropClick = (e: MouseEvent) => e.target === el && onCloseEvent();
+    el.addEventListener("click", onBackdropClick);
+    return () => {
+      desktop.removeEventListener("change", onResize);
+      el.removeEventListener("click", onBackdropClick);
+      if (el.open) el.close();
+      if (opener?.isConnected) opener.focus();
+    };
+  }, [open]);
+
+  return (
+    <dialog
+      ref={ref}
+      aria-label="Navigation"
+      onClose={onClose}
+      onCancel={(e) => {
+        e.preventDefault();
+        onClose();
+      }}
+      className="m-0 h-dvh max-h-dvh w-72 max-w-[85vw] bg-canvas p-0 shadow-[var(--shadow-pop)] lg:hidden"
+    >
+      {open ? (
+        <div className="flex h-full flex-col px-3 py-4">
+          <div className="mb-7 flex items-center justify-between px-1">
+            <Brand />
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-md p-1.5 text-ink-2 hover:bg-ink/5"
+              aria-label="Close navigation"
+            >
+              <Icons.close />
+            </button>
+          </div>
+          <SidebarNav onNavigate={onClose} />
+          <SidebarFooter />
+        </div>
+      ) : null}
+    </dialog>
   );
 }
 

@@ -1,5 +1,5 @@
 import type { DataSource } from "@qm/contracts";
-import { DATA_SOURCE_LABELS } from "@/lib/labels";
+import { DATA_SOURCE_LABELS, lookup } from "@/lib/labels";
 import { cn } from "./cn";
 
 const STYLES: Record<DataSource, string> = {
@@ -26,7 +26,7 @@ export function SourceLabel({
     <span
       className={cn(
         "inline-flex items-center gap-1 rounded border px-1.5 py-px font-mono text-[10.5px] font-medium tracking-wide uppercase",
-        STYLES[source],
+        lookup(STYLES, source, STYLES.SYNTHETIC),
         className,
       )}
     >
@@ -35,7 +35,7 @@ export function SourceLabel({
       </svg>
       <span>
         <span className="sr-only">Data source: </span>
-        {children ?? DATA_SOURCE_LABELS[source]}
+        {children ?? lookup(DATA_SOURCE_LABELS, source, source)}
       </span>
     </span>
   );

@@ -5,6 +5,7 @@ import type { CustomCellRendererProps } from "ag-grid-react";
 import type { DeliveryDto, PurchaseOrderDto } from "@qm/contracts";
 import Link from "next/link";
 import { useMemo } from "react";
+import { ActionCell, controlColumn } from "@/components/grid/ActionCell";
 import { DataGrid } from "@/components/grid/DataGrid";
 import { dateTimeColumn, moneyColumn, statusColumn } from "@/components/grid/columns";
 import { StatusBadge } from "@/components/ui/Badge";
@@ -38,12 +39,15 @@ export function OrdersGrid({
         headerName: "PO",
         pinned: "left",
         minWidth: 140,
+        ...controlColumn<OrderRow>(),
         cellRenderer: (p: CustomCellRendererProps<OrderRow>) =>
           p.data ? (
             p.data.request_id ? (
-              <Link href={`/procurement/${p.data.request_id}#proposals`} className="font-mono text-[12.5px] text-accent hover:underline">
-                {p.data.number}
-              </Link>
+              <ActionCell eGridCell={p.eGridCell}>
+                <Link href={`/procurement/${p.data.request_id}#proposals`} className="font-mono text-[12.5px] text-accent hover:underline">
+                  {p.data.number}
+                </Link>
+              </ActionCell>
             ) : (
               <span className="font-mono text-[12.5px]">{p.data.number}</span>
             )
@@ -93,12 +97,13 @@ export function OrdersGrid({
         pinned: "right",
         sortable: false,
         minWidth: 250,
+        ...controlColumn<OrderRow>(),
         cellRenderer: (p: CustomCellRendererProps<OrderRow>) => {
           const row = p.data;
           if (!row) return null;
           const open = row.delivery_view !== null && OPEN_DELIVERY.has(row.delivery_view.status);
           return (
-            <div className="flex h-full items-center gap-1.5">
+            <ActionCell eGridCell={p.eGridCell}>
               {canManage && open ? (
                 <>
                   <Button size="sm" variant="secondary" onClick={() => onReceive(row)} aria-label={`Mark ${row.number} received`}>
@@ -114,7 +119,7 @@ export function OrdersGrid({
                   Invoice
                 </Button>
               ) : null}
-            </div>
+            </ActionCell>
           );
         },
       });

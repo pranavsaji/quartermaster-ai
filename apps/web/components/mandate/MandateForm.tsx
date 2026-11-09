@@ -3,24 +3,26 @@
 import {
   PRODUCT_CATEGORIES,
   SpendMandateInput,
+  type MandateUpdateResponse,
   type ProductCategory,
   type SpendMandateDto,
   type SupplierDto,
 } from "@qm/contracts";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useId, useState, type FormEvent, type ReactNode } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardFooter, CardHeader } from "@/components/ui/Card";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Checkbox, Field, Input, MoneyInput, Select } from "@/components/ui/Field";
 import { SourceLabel } from "@/components/ui/SourceLabel";
-import { api, type MandateUpdateResponse } from "@/lib/api";
+import { api } from "@/lib/api";
 import { ApiRequestError } from "@/lib/http";
 import { inputToMinor, minorToInput, money } from "@/lib/format";
 import { useAction } from "@/lib/hooks";
 import { CATEGORY_LABELS } from "@/lib/labels";
+import { checkNumber, type NumberRule } from "@/lib/numbers";
 
-interface FormState {
+export interface FormState {
   weekly: string;
   perOrder: string;
   autoApproval: string;
@@ -35,7 +37,76 @@ interface FormState {
   qtyMultiple: string;
 }
 
-type Errors = Partial<Record<keyof SpendMandateInput | "form", string>>;
+export type Errors = Partial<Record<keyof SpendMandateInput, string>>;
+
+const NUMBER_FIELDS = {
+  max_market_price_premium_pct: { field: "premiumPct", rule: { min: 0, max: 500, integer: true } },
+  duplicate_window_hours: { field: "dupHours", rule: { min: 0, max: 720, integer: true } },
+  certificate_ttl_minutes: { field: "ttl", rule: { min: 5, max: 60, integer: true } },
+  max_quantity_multiple_of_need: { field: "qtyMultiple", rule: { min: 1, max: 10 } },
+} as const satisfies Partial<Record<keyof SpendMandateInput, { field: keyof FormState; rule: NumberRule }>>;
+
+/** What to say when the schema rejects a field for a reason the checks above don't cover. */
+const SCHEMA_MESSAGES: Errors = {
+  weekly_budget_minor: "Enter an amount up to 1,000,000.",
+  per_order_limit_minor: "Enter an amount up to 1,000,000.",
+  auto_approval_limit_minor: "Enter an amount up to 1,000,000.",
+  approved_supplier_ids: "Choose at most 200 suppliers.",
+  allowed_categories: "Select at least one category.",
+};
+
+/**
+ * Turns the form into an API body, or field-level errors in plain language.
+ * Blank or non-numeric fields are errors, never silently 0.
+ */
+export function validateMandateForm(
+  form: FormState,
+  mandate: Pick<SpendMandateDto, "currency" | "version">,
+): { body: SpendMandateInput; errors: null } | { body: null; errors: Errors } {
+  const errors: Errors = {};
+  const amount = (key: keyof SpendMandateInput, raw: string): number => {
+    const minor = inputToMinor(raw, mandate.currency);
+    if (minor === null) {
+      errors[key] = raw.trim() === "" ? "This field is required." : `Enter an amount in ${mandate.currency} using digits only.`;
+    }
+    return minor ?? -1;
+  };
+  const numbers = {} as Record<keyof typeof NUMBER_FIELDS, number>;
+  for (const key of Object.keys(NUMBER_FIELDS) as (keyof typeof NUMBER_FIELDS)[]) {
+    const { field, rule } = NUMBER_FIELDS[key];
+    const checked = checkNumber(form[field], rule);
+    if (checked.ok) numbers[key] = checked.value;
+    else {
+      errors[key] = checked.error;
+      numbers[key] = -1;
+    }
+  }
+
+  const parsed = SpendMandateInput.safeParse({
+    currency: mandate.currency,
+    weekly_budget_minor: amount("weekly_budget_minor", form.weekly),
+    per_order_limit_minor: amount("per_order_limit_minor", form.perOrder),
+    auto_approval_limit_minor: amount("auto_approval_limit_minor", form.autoApproval),
+    human_approval_required: true,
+    approved_supplier_ids: [...form.suppliers],
+    allowed_categories: PRODUCT_CATEGORIES.filter((c) => form.categories.has(c)),
+    market_price_action: form.marketAction,
+    duplicate_action: form.dupAction,
+    subscriptions_allowed: form.subscriptions,
+    expected_version: mandate.version,
+    ...numbers,
+  });
+  if (!parsed.success) {
+    for (const issue of parsed.error.issues) {
+      const key = issue.path[0] as keyof SpendMandateInput | undefined;
+      if (!key || key in errors) continue;
+      // Our own cross-field refinements carry readable messages; built-in zod messages don't.
+      errors[key] = issue.code === "custom" ? `${issue.message}.` : (SCHEMA_MESSAGES[key] ?? "Check this value.");
+    }
+  }
+  if (!parsed.success || Object.keys(errors).length > 0) return { body: null, errors };
+  return { body: parsed.data, errors: null };
+}
 
 function fromMandate(m: SpendMandateDto): FormState {
   return {
@@ -54,15 +125,44 @@ function fromMandate(m: SpendMandateDto): FormState {
   };
 }
 
-function Section({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
+/** A group of related settings; its description and group-level error are announced with it. */
+function Section({
+  title,
+  description,
+  error,
+  children,
+}: {
+  title: string;
+  description?: string;
+  error?: string;
+  children: ReactNode;
+}) {
+  const id = useId();
+  const describedBy = [error ? `${id}-error` : null, description ? `${id}-desc` : null].filter(Boolean).join(" ");
   return (
-    <fieldset className="grid grid-cols-1 gap-x-8 gap-y-4 border-t border-line py-6 first:border-t-0 first:pt-0 lg:grid-cols-[240px_1fr]">
+    <fieldset
+      aria-describedby={describedBy || undefined}
+      className="grid grid-cols-1 gap-x-8 gap-y-4 border-t border-line py-6 first:border-t-0 first:pt-0 lg:grid-cols-[240px_1fr]"
+    >
       <legend className="sr-only">{title}</legend>
-      <div aria-hidden>
-        <p className="text-[14px] font-semibold text-ink">{title}</p>
-        {description ? <p className="mt-1 text-[12.5px] leading-relaxed text-ink-3">{description}</p> : null}
+      <div>
+        <p aria-hidden className="text-[14px] font-semibold text-ink">
+          {title}
+        </p>
+        {description ? (
+          <p id={`${id}-desc`} className="mt-1 text-[12.5px] leading-relaxed text-ink-3">
+            {description}
+          </p>
+        ) : null}
       </div>
-      <div className="space-y-4">{children}</div>
+      <div className="space-y-4">
+        {error ? (
+          <p id={`${id}-error`} className="text-[12px] font-medium text-block">
+            {error}
+          </p>
+        ) : null}
+        {children}
+      </div>
     </fieldset>
   );
 }
@@ -98,40 +198,15 @@ export function MandateForm({
 
   function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const next: Errors = {};
-    const weekly = inputToMinor(form.weekly, cur);
-    const perOrder = inputToMinor(form.perOrder, cur);
-    const autoApproval = inputToMinor(form.autoApproval, cur);
-    if (weekly === null) next.weekly_budget_minor = "Enter a dollar amount.";
-    if (perOrder === null) next.per_order_limit_minor = "Enter a dollar amount.";
-    if (autoApproval === null) next.auto_approval_limit_minor = "Enter a dollar amount.";
+    const result = validateMandateForm(form, mandate);
+    setErrors(result.errors ?? {});
+    if (result.body) void save.run(result.body);
+  }
 
-    const parsed = SpendMandateInput.safeParse({
-      currency: cur,
-      weekly_budget_minor: weekly ?? -1,
-      per_order_limit_minor: perOrder ?? -1,
-      auto_approval_limit_minor: autoApproval ?? -1,
-      human_approval_required: true,
-      approved_supplier_ids: [...form.suppliers],
-      allowed_categories: PRODUCT_CATEGORIES.filter((c) => form.categories.has(c)),
-      max_market_price_premium_pct: Number(form.premiumPct),
-      market_price_action: form.marketAction,
-      duplicate_window_hours: Number(form.dupHours),
-      duplicate_action: form.dupAction,
-      subscriptions_allowed: form.subscriptions,
-      certificate_ttl_minutes: Number(form.ttl),
-      max_quantity_multiple_of_need: Number(form.qtyMultiple),
-      expected_version: mandate.version,
-    });
-    if (!parsed.success) {
-      for (const issue of parsed.error.issues) {
-        const key = issue.path[0];
-        if (typeof key === "string" && !(key in next)) next[key as keyof SpendMandateInput] = issue.message;
-      }
-    }
-    setErrors(next);
-    if (!parsed.success || Object.keys(next).length > 0) return;
-    void save.run(parsed.data);
+  function reset() {
+    setForm(fromMandate(mandate));
+    setErrors({});
+    save.reset();
   }
 
   const conflict = save.error instanceof ApiRequestError && save.error.status === 409;
@@ -150,18 +225,18 @@ export function MandateForm({
             <Section title="Budget" description={`Amounts in ${cur}. Converted to integer cents before they reach the API.`}>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <Field label="Weekly budget" required error={errors.weekly_budget_minor}>
-                  {({ id, describedBy, invalid }) => (
-                    <MoneyInput id={id} value={form.weekly} onChange={(e) => set("weekly", e.target.value)} aria-describedby={describedBy} aria-invalid={invalid} />
+                  {(control) => (
+                    <MoneyInput {...control} currency={cur} value={form.weekly} onChange={(e) => set("weekly", e.target.value)} />
                   )}
                 </Field>
                 <Field label="Per-order limit" required error={errors.per_order_limit_minor} hint="≤ weekly budget">
-                  {({ id, describedBy, invalid }) => (
-                    <MoneyInput id={id} value={form.perOrder} onChange={(e) => set("perOrder", e.target.value)} aria-describedby={describedBy} aria-invalid={invalid} />
+                  {(control) => (
+                    <MoneyInput {...control} currency={cur} value={form.perOrder} onChange={(e) => set("perOrder", e.target.value)} />
                   )}
                 </Field>
                 <Field label="Auto-approval limit" required error={errors.auto_approval_limit_minor} hint="≤ per-order limit">
-                  {({ id, describedBy, invalid }) => (
-                    <MoneyInput id={id} value={form.autoApproval} onChange={(e) => set("autoApproval", e.target.value)} aria-describedby={describedBy} aria-invalid={invalid} />
+                  {(control) => (
+                    <MoneyInput {...control} currency={cur} value={form.autoApproval} onChange={(e) => set("autoApproval", e.target.value)} />
                   )}
                 </Field>
               </div>
@@ -176,8 +251,11 @@ export function MandateForm({
               </div>
             </Section>
 
-            <Section title="Approved suppliers" description="Carts from any other supplier are blocked.">
-              {errors.approved_supplier_ids ? <p className="text-[12px] font-medium text-block">{errors.approved_supplier_ids}</p> : null}
+            <Section
+              title="Approved suppliers"
+              description="Carts from any other supplier are blocked."
+              error={errors.approved_supplier_ids}
+            >
               <ul className="grid grid-cols-1 gap-2 md:grid-cols-2">
                 {suppliers.map((s) => (
                   <li key={s.id} className="rounded-lg border border-line px-3 py-2.5">
@@ -205,10 +283,11 @@ export function MandateForm({
               {suppliers.length === 0 ? <p className="text-[13px] text-ink-3">No suppliers found.</p> : null}
             </Section>
 
-            <Section title="Allowed categories" description="Line items outside these categories are blocked (e.g. gift cards slipped into a cart).">
-              {errors.allowed_categories ? (
-                <p className="text-[12px] font-medium text-block">Select at least one category.</p>
-              ) : null}
+            <Section
+              title="Allowed categories"
+              description="Line items outside these categories are blocked (e.g. gift cards slipped into a cart)."
+              error={errors.allowed_categories}
+            >
               <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
                 {PRODUCT_CATEGORIES.map((c) => (
                   <li key={c}>
@@ -224,14 +303,20 @@ export function MandateForm({
 
             <Section title="Market price guard" description="Compares delivered unit cost with Channel3 reference prices.">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <Field label="Max premium over market (%)" error={errors.max_market_price_premium_pct} hint="0–500">
-                  {({ id, describedBy, invalid }) => (
-                    <Input id={id} type="number" min={0} max={500} step={1} value={form.premiumPct} onChange={(e) => set("premiumPct", e.target.value)} aria-describedby={describedBy} aria-invalid={invalid} className="tnum" />
+                <Field label="Max premium over market (%)" required error={errors.max_market_price_premium_pct} hint="0–500">
+                  {(control) => (
+                    <Input
+                      {...control}
+                      inputMode="numeric"
+                      value={form.premiumPct}
+                      onChange={(e) => set("premiumPct", e.target.value)}
+                      className="tnum"
+                    />
                   )}
                 </Field>
                 <Field label="When exceeded">
-                  {({ id }) => (
-                    <Select id={id} value={form.marketAction} onChange={(e) => set("marketAction", e.target.value as "REVIEW" | "BLOCK")}>
+                  {(control) => (
+                    <Select {...control} value={form.marketAction} onChange={(e) => set("marketAction", e.target.value as "REVIEW" | "BLOCK")}>
                       <option value="REVIEW">Require review</option>
                       <option value="BLOCK">Block</option>
                     </Select>
@@ -242,22 +327,34 @@ export function MandateForm({
 
             <Section title="Duplicates & quantities" description="Stops repeat orders and over-buying.">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <Field label="Duplicate window (hours)" error={errors.duplicate_window_hours} hint="0–720">
-                  {({ id, describedBy, invalid }) => (
-                    <Input id={id} type="number" min={0} max={720} step={1} value={form.dupHours} onChange={(e) => set("dupHours", e.target.value)} aria-describedby={describedBy} aria-invalid={invalid} className="tnum" />
+                <Field label="Duplicate window (hours)" required error={errors.duplicate_window_hours} hint="0–720">
+                  {(control) => (
+                    <Input
+                      {...control}
+                      inputMode="numeric"
+                      value={form.dupHours}
+                      onChange={(e) => set("dupHours", e.target.value)}
+                      className="tnum"
+                    />
                   )}
                 </Field>
                 <Field label="On duplicate">
-                  {({ id }) => (
-                    <Select id={id} value={form.dupAction} onChange={(e) => set("dupAction", e.target.value as "REVIEW" | "BLOCK")}>
+                  {(control) => (
+                    <Select {...control} value={form.dupAction} onChange={(e) => set("dupAction", e.target.value as "REVIEW" | "BLOCK")}>
                       <option value="REVIEW">Require review</option>
                       <option value="BLOCK">Block</option>
                     </Select>
                   )}
                 </Field>
-                <Field label="Max quantity × need" error={errors.max_quantity_multiple_of_need} hint="1–10, e.g. 1.5">
-                  {({ id, describedBy, invalid }) => (
-                    <Input id={id} type="number" min={1} max={10} step={0.1} value={form.qtyMultiple} onChange={(e) => set("qtyMultiple", e.target.value)} aria-describedby={describedBy} aria-invalid={invalid} className="tnum" />
+                <Field label="Max quantity × need" required error={errors.max_quantity_multiple_of_need} hint="1–10, e.g. 1.5">
+                  {(control) => (
+                    <Input
+                      {...control}
+                      inputMode="decimal"
+                      value={form.qtyMultiple}
+                      onChange={(e) => set("qtyMultiple", e.target.value)}
+                      className="tnum"
+                    />
                   )}
                 </Field>
               </div>
@@ -270,9 +367,15 @@ export function MandateForm({
             </Section>
 
             <Section title="Intent certificates" description="How long a signed approval stays payable.">
-              <Field label="Certificate lifetime (minutes)" error={errors.certificate_ttl_minutes} hint="5–60" className="max-w-56">
-                {({ id, describedBy, invalid }) => (
-                  <Input id={id} type="number" min={5} max={60} step={1} value={form.ttl} onChange={(e) => set("ttl", e.target.value)} aria-describedby={describedBy} aria-invalid={invalid} className="tnum" />
+              <Field label="Certificate lifetime (minutes)" required error={errors.certificate_ttl_minutes} hint="5–60" className="max-w-56">
+                {(control) => (
+                  <Input
+                    {...control}
+                    inputMode="numeric"
+                    value={form.ttl}
+                    onChange={(e) => set("ttl", e.target.value)}
+                    className="tnum"
+                  />
                 )}
               </Field>
             </Section>
@@ -290,7 +393,7 @@ export function MandateForm({
               Saving creates version {mandate.version + 1} and revokes active certificates signed under v{mandate.version}.
             </p>
             <div className="flex gap-2">
-              <Button variant="ghost" onClick={() => { setForm(fromMandate(mandate)); setErrors({}); save.reset(); }} disabled={save.pending}>
+              <Button variant="ghost" onClick={reset} disabled={save.pending}>
                 Reset
               </Button>
               <Button type="submit" variant="primary" loading={save.pending}>
