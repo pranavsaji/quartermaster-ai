@@ -1,6 +1,16 @@
-import { sign } from "node:crypto";
+import { sign, verify } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { generateSigningKey, issueCertificate, loadSigningKey, signingInput, verifyCertificate, type SignedCertificate, type VerificationContext } from "@qm/trustrail";
+import {
+  canonicalize,
+  generateSigningKey,
+  issueCertificate,
+  keyIdMatchesKey,
+  loadSigningKey,
+  signingInput,
+  verifyCertificate,
+  type SignedCertificate,
+  type VerificationContext,
+} from "@qm/trustrail";
 
 const key = generateSigningKey("trk_test");
 const approvedAt = new Date("2026-11-10T18:00:00Z");
@@ -90,6 +100,64 @@ describe("Intent Certificates", () => {
     expect(verifyCertificate(c, ctx(c, { now: new Date("2026-11-10T18:15:00Z") })).status).toBe("EXPIRED");
   });
 
+  describe("key ids and rotation", () => {
+    it("rejects a certificate whose envelope key id differs from the signed payload's", () => {
+      const c = issue();
+      const r = verifyCertificate({ ...c, key_id: "trk_other" }, ctx(c, { resolve_public_key: () => key.public_key }));
+      expect(r.status).toBe("UNKNOWN_KEY");
+      expect(r.checks.find((x) => x.code === "KEY_KNOWN")?.detail).toMatch(/differs from envelope/);
+    });
+
+    it("verifies certificates signed by a rotated-out key, resolved by its id", () => {
+      const oldKey = generateSigningKey();
+      const newKey = generateSigningKey();
+      const registry = new Map([
+        [oldKey.key_id, oldKey.public_key],
+        [newKey.key_id, newKey.public_key],
+      ]);
+      const resolve = (id: string) => registry.get(id) ?? null;
+      const old = issueCertificate({ ...issue().payload, approved_at: approvedAt, ttl_minutes: 15 } as never, oldKey);
+      const fresh = issueCertificate({ ...issue().payload, approved_at: approvedAt, ttl_minutes: 15 } as never, newKey);
+      expect(verifyCertificate(old, ctx(old, { resolve_public_key: resolve })).status).toBe("VALID");
+      expect(verifyCertificate(fresh, ctx(fresh, { resolve_public_key: resolve })).status).toBe("VALID");
+      // Swapping in the other key's id fails: the signature no longer matches the resolved key.
+      const swapped = { ...old, key_id: newKey.key_id, payload: { ...old.payload, key_id: newKey.key_id } };
+      expect(verifyCertificate(swapped, ctx(swapped, { resolve_public_key: resolve })).valid).toBe(false);
+    });
+
+    it("binds fingerprint-shaped key ids to the key they name", () => {
+      const a = generateSigningKey();
+      const b = generateSigningKey();
+      expect(a.key_id).toMatch(/^trk_[0-9a-f]{16}$/);
+      expect(keyIdMatchesKey(a.key_id, a.public_key)).toBe(true);
+      expect(keyIdMatchesKey(a.key_id, b.public_key)).toBe(false);
+      expect(keyIdMatchesKey("trk_test", b.public_key)).toBe(true); // custom ids are registry-bound
+      // A registry that maps a's fingerprint to b's key cannot validate anything b signed as "a".
+      const forgedIssuer = { ...b, key_id: a.key_id };
+      const c = issueCertificate({ ...issue().payload, approved_at: approvedAt, ttl_minutes: 15 } as never, forgedIssuer);
+      const r = verifyCertificate(c, ctx(c, { resolve_public_key: (id) => (id === a.key_id ? b.public_key : null) }));
+      expect(r.status).toBe("UNKNOWN_KEY");
+      expect(r.checks.find((x) => x.code === "KEY_KNOWN")?.detail).toMatch(/not the fingerprint/);
+    });
+
+    it("refuses to load a key under another key's fingerprint", () => {
+      const a = generateSigningKey();
+      const b = generateSigningKey();
+      expect(() => loadSigningKey(b.private_key_pem, a.key_id)).toThrow(/fingerprint/);
+      expect(() => generateSigningKey("trk_0000000000000000")).toThrow(/fingerprint/);
+      expect(loadSigningKey(b.private_key_pem, b.key_id).key_id).toBe(b.key_id);
+      expect(loadSigningKey(b.private_key_pem, "prod-2026").key_id).toBe("prod-2026");
+    });
+  });
+
+  it("detects a currency-only change after approval", () => {
+    const c = issue();
+    const r = verifyCertificate(c, ctx(c, { current_currency: "EUR" }));
+    expect(r.status).toBe("CART_MODIFIED");
+    expect(r.checks.find((x) => x.code === "AMOUNT")?.passed).toBe(false);
+    expect(r.checks.find((x) => x.code === "CART_HASH")?.passed).toBe(true);
+  });
+
   describe("signature encoding and algorithm", () => {
     it("accepts only the canonical base64url encoding of the signature", () => {
       const c = issue();
@@ -177,7 +245,13 @@ describe("Intent Certificates", () => {
   });
 
   it("domain-separates the signing input", () => {
-    expect(signingInput(issue().payload).toString("utf8").startsWith("trustrail.intent-certificate.v1\n")).toBe(true);
+    const c = issue();
+    expect(signingInput(c.payload).toString("utf8")).toBe(`trustrail.intent-certificate.v1\n${canonicalize(c.payload)}`);
+    // The signature does not verify over the bare canonical payload…
+    expect(verify(null, Buffer.from(canonicalize(c.payload), "utf8"), key.public_key, Buffer.from(c.signature, "base64url"))).toBe(false);
+    // …and a signature over the bare payload is not accepted as a certificate signature.
+    const bare = sign(null, Buffer.from(canonicalize(c.payload), "utf8"), key.private_key).toString("base64url");
+    expect(verifyCertificate({ ...c, signature: bare }, ctx(c)).status).toBe("SIGNATURE_INVALID");
   });
 
   it("refuses non-positive amounts and out-of-range TTLs", () => {

@@ -1,7 +1,7 @@
 import { randomBytes, sign, verify, type KeyObject } from "node:crypto";
 import type { CertificateVerificationStatus, IntentCertificatePayload } from "@qm/contracts";
 import { canonicalize } from "../canonical";
-import type { SigningKey } from "./keys";
+import { keyIdMatchesKey, type SigningKey } from "./keys";
 
 export const CERTIFICATE_DOMAIN = "trustrail.intent-certificate.v1";
 export const MAX_CERTIFICATE_TTL_MINUTES = 60;
@@ -111,8 +111,13 @@ export function verifyCertificate(cert: SignedCertificate, ctx: VerificationCont
 
   const key = ctx.resolve_public_key(cert.key_id);
   const keyMatches = cert.payload.key_id === cert.key_id;
-  if (!key || !keyMatches) {
-    checks.push({ code: "KEY_KNOWN", passed: false, detail: !key ? `Unknown signing key ${cert.key_id}.` : "Key id in payload differs from envelope." });
+  const keyBound = !!key && keyIdMatchesKey(cert.key_id, key);
+  if (!key || !keyMatches || !keyBound) {
+    checks.push({
+      code: "KEY_KNOWN",
+      passed: false,
+      detail: !key ? `Unknown signing key ${cert.key_id}.` : !keyMatches ? "Key id in payload differs from envelope." : `Key ${cert.key_id} is not the fingerprint of the resolved public key.`,
+    });
     fail("UNKNOWN_KEY");
   } else {
     checks.push({ code: "KEY_KNOWN", passed: true, detail: `Signed by ${cert.key_id}.` });
