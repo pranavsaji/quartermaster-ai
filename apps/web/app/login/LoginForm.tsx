@@ -10,6 +10,12 @@ import { api } from "@/lib/api";
 import { useAction } from "@/lib/hooks";
 import { safeNext } from "@/lib/redirect";
 
+/**
+ * Seeded demo logins. /config/public has no demo-mode flag, so deployments
+ * with real users hide them with NEXT_PUBLIC_DEMO_ACCOUNTS=false (read at build time).
+ */
+const SHOW_DEMO_ACCOUNTS = process.env.NEXT_PUBLIC_DEMO_ACCOUNTS !== "false";
+
 const DEMO_ACCOUNTS = [
   { role: "Owner", email: "owner@demo.quartermaster.dev" },
   { role: "Manager", email: "manager@demo.quartermaster.dev" },
@@ -56,7 +62,7 @@ export function LoginForm() {
             autoFocus
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="owner@demo.quartermaster.dev"
+            placeholder={SHOW_DEMO_ACCOUNTS ? "owner@demo.quartermaster.dev" : "you@restaurant.com"}
           />
         )}
       </Field>
@@ -78,26 +84,34 @@ export function LoginForm() {
         Sign in
       </Button>
 
-      <div className="rounded-lg border border-line bg-canvas px-3.5 py-3 text-[12.5px] text-ink-3">
-        <p className="font-medium text-ink-2">
-          Demo accounts: owner@demo.quartermaster.dev / manager@… / viewer@…
-        </p>
-        <ul className="mt-2 flex flex-wrap gap-1.5">
-          {DEMO_ACCOUNTS.map((a) => (
-            <li key={a.email}>
-              <button
-                type="button"
-                onClick={() => setEmail(a.email)}
-                className="rounded-md border border-line-strong bg-surface px-2 py-1 font-mono text-[11.5px] text-ink-2 hover:border-accent-line hover:text-accent-strong"
-                aria-label={`Use the ${a.role} demo account email`}
-              >
-                {a.role.toLowerCase()}@…
-              </button>
-            </li>
-          ))}
-        </ul>
-        <p className="mt-2">All demo accounts share the <code className="font-mono">DEMO_USER_PASSWORD</code> set when seeding.</p>
-      </div>
+      {SHOW_DEMO_ACCOUNTS ? <DemoAccounts onPick={setEmail} /> : null}
     </form>
+  );
+}
+
+function DemoAccounts({ onPick }: { onPick: (email: string) => void }) {
+  return (
+    <div className="rounded-lg border border-line bg-canvas px-3.5 py-3 text-[12.5px] text-ink-3">
+      <p className="font-medium text-ink-2">
+        Demo accounts: owner@demo.quartermaster.dev / manager@… / viewer@…
+      </p>
+      <ul className="mt-2 flex flex-wrap gap-1.5">
+        {DEMO_ACCOUNTS.map((a) => (
+          <li key={a.email}>
+            <button
+              type="button"
+              onClick={() => onPick(a.email)}
+              className="rounded-md border border-line-strong bg-surface px-2 py-1 font-mono text-[11.5px] text-ink-2 hover:border-accent-line hover:text-accent-strong"
+              aria-label={`Use the ${a.role} demo account email`}
+            >
+              {a.role.toLowerCase()}@…
+            </button>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-2">
+        All demo accounts share the <code className="font-mono">DEMO_USER_PASSWORD</code> set when seeding.
+      </p>
+    </div>
   );
 }
