@@ -71,7 +71,9 @@ const EnvSchema = z.object({
   AGENT_TOKEN_BUDGET: z.coerce.number().int().min(500).max(200_000).default(12_000),
   MARKET_REFERENCE_MAX_AGE_HOURS: z.coerce.number().int().min(1).max(24 * 30).default(72),
 
-  SWEEPER_INTERVAL_SECONDS: z.coerce.number().int().min(0).max(3600).default(60),
+  /** How long shutdown waits for in-flight requests and a running sweep (research runs take ~45s). */
+  SHUTDOWN_GRACE_MS: z.coerce.number().int().min(0).max(600_000).default(60_000),
+  SWEEPER_INTERVAL_SECONDS:z.coerce.number().int().min(0).max(3600).default(60),
   /** Demo-only delivery simulation. Defaults to false in production, true elsewhere. */
   ALLOW_SYNTHETIC_DELIVERY_ACTIONS: optionalBool(),
 });
@@ -103,6 +105,7 @@ export interface AppConfig {
   zapierWebhookUrl: string | null;
   agent: { maxResearchCalls: number; deadlineMs: number; tokenBudget: number; marketReferenceMaxAgeHours: number };
   sweeperIntervalSeconds: number;
+  shutdownGraceMs: number;
   allowSyntheticDeliveryActions: boolean;
 }
 
@@ -204,6 +207,7 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
       marketReferenceMaxAgeHours: e.MARKET_REFERENCE_MAX_AGE_HOURS,
     },
     sweeperIntervalSeconds: e.SWEEPER_INTERVAL_SECONDS,
+    shutdownGraceMs: e.SHUTDOWN_GRACE_MS,
     allowSyntheticDeliveryActions: e.ALLOW_SYNTHETIC_DELIVERY_ACTIONS ?? !production,
   };
 }

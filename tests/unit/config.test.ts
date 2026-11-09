@@ -30,6 +30,14 @@ describe("production configuration", () => {
   });
 });
 
+describe("shutdown grace period", () => {
+  it("defaults to 60s, longer than a research run", () => {
+    expect(loadConfig({}).shutdownGraceMs).toBe(60_000);
+    expect(loadConfig({ SHUTDOWN_GRACE_MS: "90000" }).shutdownGraceMs).toBe(90_000);
+    expect(() => loadConfig({ SHUTDOWN_GRACE_MS: "-1" })).toThrow(/SHUTDOWN_GRACE_MS/);
+  });
+});
+
 describe("TRUST_PROXY", () => {
   it("accepts a hop count", () => {
     expect(parseTrustProxy("0")).toBe(0);
