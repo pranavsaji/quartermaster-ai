@@ -7,7 +7,8 @@ import type { NextConfig } from "next";
  * Note: rewrites are resolved when the server starts / the app is built, so
  * `API_URL` must be present in the environment at that time.
  */
-const apiUrl = (process.env.API_URL ?? "http://localhost:4000").replace(/\/+$/, "");
+// On Render, the API's private-network address arrives as API_HOSTPORT ("host:port").
+const apiUrl = (process.env.API_URL ?? (process.env.API_HOSTPORT ? `http://${process.env.API_HOSTPORT}` : "http://localhost:4000")).replace(/\/+$/, "");
 
 const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
