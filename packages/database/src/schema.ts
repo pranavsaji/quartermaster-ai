@@ -643,6 +643,8 @@ export const refunds = pgTable(
     status: text("status", { enum: REFUND_STATUSES }).notNull(),
     reason: text("reason").notNull(),
     createdBy: uuid("created_by"),
+    /** When the sweeper last checked this refund; oldest-checked first so none is starved. */
+    lastReconciledAt: ts("last_reconciled_at"),
     createdAt: createdAt(),
   },
   (t) => [

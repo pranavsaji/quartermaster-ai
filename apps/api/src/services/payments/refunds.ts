@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, asc, eq, inArray, isNull, lt } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, lt, sql } from "drizzle-orm";
 import { isSettledPayment, minorToDecimalString, type PaymentDto, type PaymentStatus, type RefundStatus } from "@qm/contracts";
 import { refunds, type DbOrTx } from "@qm/database";
 import type { PayPalRefund } from "@qm/payments";
@@ -202,24 +202,28 @@ export async function refundPayment(
  */
 export async function reconcileRefunds(ctx: AppContext, now: Date, staleMs = 2 * 60_000): Promise<{ examined: number; errors: number }> {
   const cutoff = new Date(now.getTime() - staleMs);
+  // Least recently checked first, so refunds that stay PENDING at PayPal for days never starve
+  // newer ones out of the batch.
   const open = await ctx.db
     .select()
     .from(refunds)
     .where(and(inArray(refunds.status, ["REQUESTED", "UNKNOWN", "PENDING"]), lt(refunds.createdAt, cutoff)))
-    .orderBy(asc(refunds.createdAt))
+    .orderBy(sql`${refunds.lastReconciledAt} asc nulls first`, asc(refunds.createdAt))
     .limit(25);
   let errors = 0;
   for (const r of open) {
     try {
-      if (r.status === "PENDING") {
-        if (!r.paypalRefundId) continue;
+      await ctx.db.update(refunds).set({ lastReconciledAt: now }).where(eq(refunds.id, r.id));
+      if (r.paypalRefundId) {
+        // PayPal knows this refund: read its state (covers PENDING ones and webhook-reported
+        // refunds whose status was not final).
         const remote = await ctx.paypal.getRefund(r.paypalRefundId);
         const status = toRefundStatus(remote.status);
         if (status === "PENDING" || status === "UNKNOWN") continue;
         await ctx.db.transaction(async (tx) => {
           const [fresh] = await tx.select().from(refunds).where(eq(refunds.id, r.id));
           const p = await loadPaymentForSystem(tx, r.paymentAttemptId, true);
-          if (!fresh || !p || fresh.status !== "PENDING") return;
+          if (!fresh || !p || !IN_FLIGHT_REFUND.includes(fresh.status)) return;
           await settleRefund(tx, p, fresh, status, r.paypalRefundId, ctx.now());
           await appendAudit(tx, {
             organizationId: p.organizationId,
@@ -231,6 +235,7 @@ export async function reconcileRefunds(ctx: AppContext, now: Date, staleMs = 2 *
           });
         });
       } else if (r.requestKey) {
+        // Never reached PayPal as far as we know: re-send with the original request id.
         await issueRefund(ctx, r.id, { type: "SYSTEM" });
       }
     } catch (err) {

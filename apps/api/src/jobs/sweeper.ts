@@ -118,7 +118,9 @@ export async function sweep(ctx: AppContext): Promise<SweepReport> {
       .from(intentCertificates)
       .leftJoin(paymentAttempts, eq(paymentAttempts.intentId, intentCertificates.id))
       .where(and(eq(intentCertificates.status, "ACTIVE"), lt(intentCertificates.expiresAt, now)))
-      .orderBy(intentCertificates.expiresAt)
+      // Certificates whose payment PayPal was asked about least recently go first, so ones that keep
+      // being skipped (a capture still pending) cannot starve the rest of the batch.
+      .orderBy(sql`${paymentAttempts.lastReconciledAt} asc nulls first`, intentCertificates.expiresAt)
       .limit(100);
     for (const { cert, payment } of expired) {
       try {
