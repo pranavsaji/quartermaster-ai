@@ -146,5 +146,24 @@ export const PRE_CAPTURE_PAYMENT_STATUSES = ["CREATED", "ORDER_CREATED", "PAYER_
 /** Payments where money has moved. */
 export const SETTLED_PAYMENT_STATUSES = ["COMPLETED", "PARTIALLY_REFUNDED", "REFUNDED"] as const satisfies readonly PaymentStatus[];
 
+export type CommittedPurchaseOrderStatus = (typeof COMMITTED_PO_STATUSES)[number];
+export type PayablePurchaseOrderStatus = (typeof PAYABLE_PO_STATUSES)[number];
+export type PreCapturePaymentStatus = (typeof PRE_CAPTURE_PAYMENT_STATUSES)[number];
+export type SettledPaymentStatus = (typeof SETTLED_PAYMENT_STATUSES)[number];
+
+/** Membership test for a status group that narrows a plain string (e.g. a text column) to the group. */
+function inGroup<T extends string>(group: readonly T[], status: string): status is T {
+  return (group as readonly string[]).includes(status);
+}
+
+/** True for an order that holds or has spent budget (see COMMITTED_PO_STATUSES). */
+export const isCommittedOrder = (status: string): status is CommittedPurchaseOrderStatus => inGroup(COMMITTED_PO_STATUSES, status);
+/** True for an order that may still be paid for (see PAYABLE_PO_STATUSES). */
+export const isPayableOrder = (status: string): status is PayablePurchaseOrderStatus => inGroup(PAYABLE_PO_STATUSES, status);
+/** True for a payment that has not reached PayPal capture yet (see PRE_CAPTURE_PAYMENT_STATUSES). */
+export const isPreCapturePayment = (status: string): status is PreCapturePaymentStatus => inGroup(PRE_CAPTURE_PAYMENT_STATUSES, status);
+/** True for a payment where money has moved (see SETTLED_PAYMENT_STATUSES). */
+export const isSettledPayment = (status: string): status is SettledPaymentStatus => inGroup(SETTLED_PAYMENT_STATUSES, status);
+
 export const REFUND_STATUSES = ["REQUESTED", "UNKNOWN", "PENDING", "COMPLETED", "FAILED", "CANCELLED"] as const;
 export type RefundStatus = (typeof REFUND_STATUSES)[number];

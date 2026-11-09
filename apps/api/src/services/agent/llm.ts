@@ -52,7 +52,34 @@ export async function interpretInstruction(
     return { intent, mode: "LLM" };
   } catch (err) {
     openai.reportFallback("procurement_intent", fallbackReason(err));
-    return { intent: fallback(), mode: "DETERMINISTIC_FALLBACK", note: err instanceof OpenAIError ? err.message : "Model call failed." };
+    return { intent: fallback(), mode: "DETERMINISTIC_FALLBACK", note: fallbackNote(err) };
+  }
+}
+
+/**
+ * Client-visible reason for a model fallback, authored from the error's kind and status. The
+ * error's message is never used: it can quote provider text (e.g. a rejected API key).
+ */
+export function fallbackNote(err: unknown): string {
+  if (!(err instanceof OpenAIError)) return "Model call failed.";
+  const status = err.status ? ` (HTTP ${err.status})` : "";
+  switch (err.kind) {
+    case "not_configured":
+      return "No language model configured.";
+    case "http":
+      return `Model provider returned an error${status}.`;
+    case "aborted":
+      return "Model call stopped at the agent deadline.";
+    case "network":
+      return "Model provider could not be reached.";
+    case "refused":
+      return "Model declined the request.";
+    case "truncated":
+    case "empty":
+    case "invalid_json":
+    case "invalid_output":
+    case "invalid_response":
+      return "Model returned an unusable response.";
   }
 }
 
@@ -153,7 +180,7 @@ export async function explainRecommendation(
   facts: ExplanationFacts,
 ): Promise<{ summary: string; rationale: string[]; mode: "LLM" | "DETERMINISTIC_FALLBACK" }> {
   const fallback = deterministicExplanation(facts);
-  if (!openai.enabled || !run.canSpendTokens(1500) || run.remainingMs < 4000) return { ...fallback, mode: "DETERMINISTIC_FALLBACK" };
+  if (!openai.enabled || !run.canSpendTokens(1500) || run.budgetMs < 4000) return { ...fallback, mode: "DETERMINISTIC_FALLBACK" };
   try {
     const res = await openai.structured({
       name: "recommendation_explanation",
@@ -197,7 +224,7 @@ export async function classifyInjection(
   label: string,
   text: string,
 ): Promise<{ injection: boolean; confidence: number; reason: string } | null> {
-  if (!openai.enabled || !run.canSpendTokens(800) || run.remainingMs < 5000) return null;
+  if (!openai.enabled || !run.canSpendTokens(800) || run.budgetMs < 5000) return null;
   try {
     const res = await openai.structured({
       name: "injection_classification",

@@ -52,7 +52,20 @@ export function referenceFromQuotes(itemId: string, quotes: QuoteRow[], now: Dat
 export interface MarketResearchResult {
   reference: MarketReferenceDto;
   suspicious: { quote: QuoteRow; signals: string[]; score: number }[];
+  /** Client-safe reason the live search failed (shown in the agent step), or null. */
   error: string | null;
+}
+
+/**
+ * Client-visible reason for a failed Channel3 search, authored from the HTTP status. The error's
+ * message is never used: it carries third-party response text and is for the logs only.
+ */
+export function marketSearchFailure(err: unknown): string {
+  if (!(err instanceof Channel3Error)) return "Market search failed; using cached listings.";
+  if (err.status === null) return "Market search did not complete (network error or deadline); using cached listings.";
+  if (err.status === 401 || err.status === 403) return "Market search was not authorised by Channel3; using cached listings.";
+  if (err.status === 429) return "Market search was rate limited by Channel3; using cached listings.";
+  return `Market search failed (Channel3 HTTP ${err.status}); using cached listings.`;
 }
 
 export async function researchItem(
@@ -95,7 +108,7 @@ export async function researchItem(
     offers = flattenOffers(result.products).slice(0, 24);
   } catch (err) {
     log?.warn({ err, inventory_item_id: args.item.id }, "Channel3 market search failed; using cached quotes");
-    error = err instanceof Channel3Error ? err.message : "Market search failed";
+    error = marketSearchFailure(err);
   }
   for (const o of offers) {
     if (o.currency !== args.currency) continue;
@@ -103,6 +116,10 @@ export async function researchItem(
     const units = parsed.units !== null && parsed.units > 0 ? parsed.units : null;
     const priceMinor = floatToMinor(o.price, o.currency);
     const comparable = units !== null && parsed.confidence === "HIGH" && priceMinor > 0;
+    // Deliberate exception to "money is integer minor units": the normalised unit price is a
+    // comparison metric (minor units per usable unit, e.g. 4.375¢ per container), stored as
+    // double precision. It is never charged, summed into a cart or signed; it is only compared
+    // against a candidate's per-unit price by TrustRail's market-premium check.
     const verdict = detectPromptInjection(`${o.title}\n${o.description ?? ""}`);
     const [row] = await db
       .insert(marketQuotes)

@@ -1,27 +1,18 @@
 import { and, eq, inArray } from "drizzle-orm";
 import {
   PAYABLE_PO_STATUSES,
-  PRE_CAPTURE_PAYMENT_STATUSES,
+  isPreCapturePayment,
   type ProductCategory,
   type SpendMandateDto,
   type SpendMandateInput,
 } from "@qm/contracts";
-import {
-  budgetAccounts,
-  intentCertificates,
-  organizations,
-  paymentAttempts,
-  purchaseOrders,
-  spendMandates,
-  suppliers,
-  type DbOrTx,
-} from "@qm/database";
+import { budgetAccounts, intentCertificates, organizations, paymentAttempts, spendMandates, suppliers, type DbOrTx } from "@qm/database";
 import { mandateTightened, type SpendMandate } from "@qm/trustrail";
 import { badRequest, conflict, notFound } from "../errors";
 import { appendAudit } from "./audit";
 import { budgetPeriod, releaseReservation } from "./budget";
+import { setOrderStatus } from "./order-status";
 import { transitionPayment } from "./payments/shared";
-import { refreshRequestStatus } from "./procurement/status";
 
 export type MandateRow = typeof spendMandates.$inferSelect;
 
@@ -81,8 +72,6 @@ export async function getActiveMandateRow(db: DbOrTx, organizationId: string, lo
   const [row] = lock ? await q.for("update") : await q;
   return row ?? null;
 }
-
-/** Statuses of a payment that has not yet reached PayPal capture; safe to invalidate. */
 
 /**
  * Creates a new mandate version (mandates are immutable once issued). If the change tightens
@@ -147,7 +136,7 @@ export async function updateMandate(
       // Lock order matches capture and finalisation: payment, then certificate. Status is
       // re-read under the lock so a capture authorised in the meantime is never voided.
       const [payment] = await tx.select().from(paymentAttempts).where(eq(paymentAttempts.intentId, c.id)).for("update");
-      if (payment && !(PRE_CAPTURE_PAYMENT_STATUSES as readonly string[]).includes(payment.status)) continue;
+      if (payment && !isPreCapturePayment(payment.status)) continue;
       const [cert] = await tx.select().from(intentCertificates).where(eq(intentCertificates.id, c.id)).for("update");
       if (cert?.status !== "ACTIVE") continue;
       const changed = await tx
@@ -165,15 +154,8 @@ export async function updateMandate(
           { failureCode: "MANDATE_CHANGED", failureMessage: "The spend mandate changed before payment." },
           args.now,
         );
-      await tx
-        .update(purchaseOrders)
-        .set({ status: "PROPOSED", updatedAt: args.now })
-        .where(and(eq(purchaseOrders.id, c.purchaseOrderId), inArray(purchaseOrders.status, [...PAYABLE_PO_STATUSES])));
-      const [po] = await tx
-        .select({ requestId: purchaseOrders.requestId })
-        .from(purchaseOrders)
-        .where(eq(purchaseOrders.id, c.purchaseOrderId));
-      if (po?.requestId) await refreshRequestStatus(tx, po.requestId, args.now);
+      // The approval is void: the order goes back to review under the new mandate.
+      await setOrderStatus(tx, c.purchaseOrderId, PAYABLE_PO_STATUSES, "PROPOSED", args.now);
       revokedIds.push(c.id);
       revoked++;
     }

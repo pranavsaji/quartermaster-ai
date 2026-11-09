@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { redactSecrets } from "../redact";
 
 /**
  * Channel3 product search client (https://channel3.ai/docs). Used for market price evidence only:
@@ -54,6 +55,10 @@ export interface Channel3SearchParams {
   signal?: AbortSignal;
 }
 
+/**
+ * `message` is for logs only: it may carry a short, redacted provider reason. Client-facing text
+ * must be derived from `status`, never from `message`.
+ */
 export class Channel3Error extends Error {
   constructor(
     message: string,
@@ -99,8 +104,9 @@ export class Channel3Client {
         signal: params.signal ? AbortSignal.any([timeout, params.signal]) : timeout,
       });
       if (!res.ok) {
-        const text = await res.text().catch(() => "");
-        throw new Channel3Error(`Channel3 search failed (${res.status}): ${text.slice(0, 200)}`, res.status);
+        // The body is third-party text: keep only a short, redacted reason for the logs.
+        const reason = redactSecrets(await res.text().catch(() => ""), 120);
+        throw new Channel3Error(`Channel3 search failed (HTTP ${res.status})${reason ? `: ${reason}` : ""}`, res.status);
       }
       const envelope = SearchEnvelope.safeParse(await res.json().catch(() => null));
       if (!envelope.success) throw new Channel3Error("Channel3 returned an unexpected response", res.status);
@@ -116,7 +122,7 @@ export class Channel3Client {
     } catch (err) {
       if (err instanceof Channel3Error) throw err;
       if (params.signal?.aborted) throw new Channel3Error("Channel3 request aborted", null);
-      throw new Channel3Error(`Channel3 request failed: ${err instanceof Error ? err.message : String(err)}`, null);
+      throw new Channel3Error(`Channel3 request failed: ${redactSecrets(err instanceof Error ? err.message : String(err), 120)}`, null);
     }
   }
 }

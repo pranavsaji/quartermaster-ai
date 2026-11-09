@@ -1,4 +1,5 @@
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { z } from "zod";
 import type {
   AgentStepDto,
   CandidateDto,
@@ -27,6 +28,18 @@ import { toFindingDto } from "../findings";
 import { toForecastDto } from "../inventory";
 import { orderDtos } from "../orders";
 import { afterCursor, decodeCursor, newestFirst, toPage } from "../pagination";
+
+const minor = z.number().int().refine(Number.isSafeInteger, "not a safe integer");
+
+/** A candidate's stored quote: the integer amounts shown to the owner. */
+const CandidateQuote = z.object({
+  subtotal_minor: minor,
+  shipping_minor: minor,
+  tax_minor: minor,
+  fees_minor: minor,
+  total_minor: minor,
+  supplier_approved: z.boolean().optional(),
+});
 
 export async function getRequestDto(db: DbOrTx, organizationId: string, id: string): Promise<ProcurementRequestDto> {
   const [req] = await db
@@ -68,18 +81,15 @@ export async function getRequestDto(db: DbOrTx, organizationId: string, id: stri
   const catalogById = new Map(catalog.map((c) => [c.id, c]));
   const proposals = await orderDtos(db, organizationId, pos);
 
-  const candidateDtos: CandidateDto[] = candidates.map((c) => {
+  // Candidates are review evidence only (never charged or signed): one whose stored quote is
+  // malformed is left out of the comparison rather than shown with made-up amounts.
+  const candidateDtos: CandidateDto[] = candidates.flatMap((c) => {
+    const parsed = CandidateQuote.safeParse(c.quote);
+    if (!parsed.success) return [];
+    const quote = parsed.data;
     const s = supplierById.get(c.supplierId);
     const item = catalogById.get(c.catalogItemId);
-    const quote = c.quote as {
-      subtotal_minor: number;
-      shipping_minor: number;
-      tax_minor: number;
-      fees_minor: number;
-      total_minor: number;
-      supplier_approved?: boolean;
-    };
-    return {
+    const dto: CandidateDto = {
       id: c.id,
       inventory_item_id: c.inventoryItemId,
       supplier_id: c.supplierId,
@@ -105,6 +115,7 @@ export async function getRequestDto(db: DbOrTx, organizationId: string, id: stri
       quarantined: c.quarantined,
       data_source: (s?.dataSource as DataSource) ?? "SANDBOX_SUPPLIER",
     };
+    return [dto];
   });
 
   const steps2: AgentStepDto[] = steps.map((t) => ({
@@ -112,7 +123,9 @@ export async function getRequestDto(db: DbOrTx, organizationId: string, id: stri
     tool: t.tool,
     status: t.status,
     duration_ms: t.durationMs,
-    summary: t.error ? `${t.summary} — ${t.error}` : t.summary,
+    // Authored text only. `error` is an internal diagnostic (possibly provider text) and is
+    // deliberately never returned: every member of the organization, viewers included, sees steps.
+    summary: t.summary,
     started_at: t.startedAt.toISOString(),
   }));
 

@@ -1,5 +1,6 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
+import { z } from "zod";
 import type {
   PurchaseOrderStatus,
   Page,
@@ -23,7 +24,7 @@ import {
   type DbOrTx,
 } from "@qm/database";
 import { computeCartHash, type Cart, type CartLine } from "@qm/trustrail";
-import { notFound } from "../errors";
+import { AppError, notFound } from "../errors";
 import { afterCursor, decodeCursor, newestFirst, toPage } from "./pagination";
 
 export type PurchaseOrderRow = typeof purchaseOrders.$inferSelect;
@@ -153,11 +154,47 @@ export function toDecisionDto(d: typeof policyDecisions.$inferSelect): PolicyDec
   };
 }
 
+/**
+ * The signed payload as stored. Only the shape is checked here (types, no unknown keys, so the
+ * bytes that were signed are the bytes verified); the values (bindings, amounts, validity
+ * window) are judged by TrustRail's verifier, which fails closed on anything it cannot accept.
+ */
+const StoredCertificatePayload = z.strictObject({
+  certificate_version: z.literal(1),
+  intent_id: z.string(),
+  organization_id: z.string(),
+  buyer_id: z.string(),
+  purchase_order_id: z.string(),
+  supplier_id: z.string(),
+  cart_hash: z.string(),
+  mandate_id: z.string(),
+  mandate_version: z.number(),
+  policy_decision_id: z.string(),
+  currency: z.string(),
+  approved_amount_minor: z.number(),
+  approved_at: z.string(),
+  expires_at: z.string(),
+  nonce: z.string(),
+  key_id: z.string(),
+}) satisfies z.ZodType<IntentCertificatePayload>;
+
+/** The stored certificate payload, or null when it is not a well-formed payload. */
+export function parseCertificatePayload(raw: unknown): IntentCertificatePayload | null {
+  const r = StoredCertificatePayload.safeParse(raw);
+  return r.success ? r.data : null;
+}
+
+/** A stored certificate whose payload is malformed: data corruption or tampering, never usable. */
+export const certificateMalformed = () =>
+  new AppError(500, "CERTIFICATE_MALFORMED", "A stored intent certificate is malformed and cannot be used.");
+
 export function toCertificateDto(c: typeof intentCertificates.$inferSelect): IntentCertificateDto {
+  const payload = parseCertificatePayload(c.payload);
+  if (!payload) throw certificateMalformed();
   return {
     id: c.id,
     status: c.status,
-    payload: c.payload as unknown as IntentCertificatePayload,
+    payload,
     key_id: c.keyId,
     signature: c.signature,
     algorithm: "Ed25519",
