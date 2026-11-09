@@ -15,6 +15,13 @@
       "when": 1794206705090,
       "tag": "0001_job_leases",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794210716715,
+      "tag": "0002_refund_request_keys",
+      "breakpoints": true
     }
   ]
 }

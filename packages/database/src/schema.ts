@@ -529,13 +529,15 @@ export const refunds = pgTable(
     organizationId: orgId(),
     paymentAttemptId: uuid("payment_attempt_id").notNull().references(() => paymentAttempts.id),
     paypalRefundId: text("paypal_refund_id"),
+    /** Stable per logical refund (derived from the client's Idempotency-Key); reused on retry. */
+    requestKey: text("request_key"),
     amountMinor: money("amount_minor").notNull(),
     status: text("status").notNull(),
     reason: text("reason").notNull(),
     createdBy: uuid("created_by"),
     createdAt: createdAt(),
   },
-  (t) => [uniqueIndex("refunds_paypal_id_uq").on(t.paypalRefundId)],
+  (t) => [uniqueIndex("refunds_paypal_id_uq").on(t.paypalRefundId), uniqueIndex("refunds_request_key_uq").on(t.requestKey)],
 );
 
 /* ============================================================= Fulfillment */
