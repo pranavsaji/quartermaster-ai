@@ -176,6 +176,31 @@ export function humanize(code: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+/** A calendar date (YYYY-MM-DD) moved by `days`, without time zones or DST getting involved. */
+export function addDaysIso(isoDate: string, days: number): string {
+  const [y, m, d] = isoDate.split("-").map(Number);
+  const moved = new Date(Date.UTC(y ?? 1970, (m ?? 1) - 1, (d ?? 1) + days));
+  return moved.toISOString().slice(0, 10);
+}
+
+/** Whole calendar days from `fromIso` to `toIso` (both YYYY-MM-DD); negative when `toIso` is earlier. */
+export function daysBetweenIso(fromIso: string, toIso: string): number {
+  const utc = (iso: string) => {
+    const [y, m, d] = iso.split("-").map(Number);
+    return Date.UTC(y ?? 1970, (m ?? 1) - 1, d ?? 1);
+  };
+  return Math.round((utc(toIso) - utc(fromIso)) / 86_400_000);
+}
+
+/**
+ * A calendar date relative to the organisation's today: "today", "tomorrow", "in 3 days",
+ * "2 days ago". For date-only values (a delivery's expected date), where hours would be meaningless.
+ */
+export function relativeDay(isoDate: string | null | undefined, timeZone?: string, now: Date | number = Date.now()): string {
+  if (!isoDate || !/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) return isoDate ?? "—";
+  return relFmt.format(daysBetweenIso(todayIso(timeZone, now), isoDate), "day");
+}
+
 /**
  * Today's calendar date (YYYY-MM-DD) in `timeZone` — the organisation's, so a
  * manager in another zone (or a laptop on UTC) sees the restaurant's "today" for

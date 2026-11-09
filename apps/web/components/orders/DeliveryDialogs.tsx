@@ -9,7 +9,7 @@ import { Field, Input, Textarea } from "@/components/ui/Field";
 import { ErrorSummary, useErrorFocus } from "@/components/ui/FormErrors";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import { api } from "@/lib/api";
-import { date, num, todayIso } from "@/lib/format";
+import { addDaysIso, date, num, todayIso } from "@/lib/format";
 import { useAction } from "@/lib/hooks";
 import { checkNumber, parseNumberInput } from "@/lib/numbers";
 
@@ -166,6 +166,10 @@ export function DelayDialog({
   onDone: (delivery: DeliveryDto) => void;
 }) {
   const today = todayIso(timeZone);
+  // The API only accepts a date strictly after the current expected date (a delay moves it later),
+  // and a delivery can't be expected in the past.
+  const dayAfterExpected = addDaysIso(target.delivery.expected_date, 1);
+  const earliest = dayAfterExpected > today ? dayAfterExpected : today;
   const [newDate, setNewDate] = useState("");
   const [reason, setReason] = useState("");
   const [errors, setErrors] = useState<{ date?: string; reason?: string }>({});
@@ -180,6 +184,8 @@ export function DelayDialog({
   function submit() {
     const next: typeof errors = {};
     if (!newDate) next.date = "Pick the new expected date.";
+    else if (newDate < dayAfterExpected)
+      next.date = `Pick a date after ${date(target.delivery.expected_date)}, when it's currently expected.`;
     else if (newDate < today) next.date = "Pick today or a later date.";
     if (!reason.trim()) next.reason = "Say why the delivery is late.";
     const parsed = DelayDeliveryRequest.safeParse({ new_expected_date: newDate, reason: reason.trim() });
@@ -212,9 +218,14 @@ export function DelayDialog({
     >
       <div ref={containerRef} className="space-y-4">
         <SourceLabel source="SYNTHETIC">Synthetic fulfillment data</SourceLabel>
-        <Field label="New expected date" required error={errors.date}>
+        <Field
+          label="New expected date"
+          required
+          error={errors.date}
+          hint={`After ${date(target.delivery.expected_date)}, the current expected date.`}
+        >
           {(control) => (
-            <Input {...control} type="date" min={today} value={newDate} onChange={(e) => setNewDate(e.target.value)} className="tnum" />
+            <Input {...control} type="date" min={earliest} value={newDate} onChange={(e) => setNewDate(e.target.value)} className="tnum" />
           )}
         </Field>
         <Field label="Reason" required error={errors.reason}>
