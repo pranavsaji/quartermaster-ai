@@ -1,23 +1,18 @@
-import { eq } from "drizzle-orm";
+import { and, eq, gt, sql } from "drizzle-orm";
 import { z } from "zod";
-import { decimalStringToMinor, isSettledPayment, type RefundStatus } from "@qm/contracts";
-import { paymentAttempts, paypalWebhookEvents } from "@qm/database";
+import { decimalStringToMinor, isSettledPayment } from "@qm/contracts";
+import { paymentAttempts, paypalWebhookEvents, securityFindings } from "@qm/database";
 import { PayPalNotConfiguredError, type WebhookEvent, type WebhookHeaders } from "@qm/payments";
 import type { AppContext } from "../context";
 import { AppError, badRequest, unavailable } from "../errors";
 import { appendAudit } from "./audit";
 import { recordFinding } from "./findings";
-import { reconcilePayment, recordReportedRefund } from "./payments";
+import { reconcilePayment, recordReportedRefund, toRefundStatus } from "./payments";
 
 export type WebhookOutcome = "PROCESSED" | "DUPLICATE" | "IGNORED";
 
 /** Events that move money back to the buyer; handled against the capture they reference. */
 const REFUND_EVENTS = new Set(["PAYMENT.CAPTURE.REFUNDED", "PAYMENT.CAPTURE.REVERSED"]);
-
-function refundStatusOf(status: unknown): RefundStatus {
-  // Only an explicit COMPLETED counts money; anything unexpected stays unresolved for the sweeper.
-  return status === "COMPLETED" || status === "PENDING" || status === "FAILED" || status === "CANCELLED" ? status : "UNKNOWN";
-}
 
 /** Structural validation of a webhook body before anything is read from it. */
 const WebhookEventShape = z.object({
@@ -26,17 +21,21 @@ const WebhookEventShape = z.object({
   resource: z.record(z.string(), z.unknown()),
 });
 
-/** Rate-limits findings for invalid signatures so a flood cannot fill the security log. */
-let lastInvalidFindingAt = 0;
+/** At most one invalid-signature finding per organisation per minute, so a flood cannot fill the log. */
+const INVALID_FINDING_INTERVAL_MS = 60_000;
+
+const RelatedIds = z.object({ related_ids: z.object({ order_id: z.string().max(64) }) });
+const Links = z.array(z.object({ href: z.string().max(2048), rel: z.string().max(64) }).loose());
 
 function relatedOrderId(resource: Record<string, unknown>): string | null {
-  const supp = resource.supplementary_data as { related_ids?: { order_id?: string } } | undefined;
-  return supp?.related_ids?.order_id ?? null;
+  const parsed = RelatedIds.safeParse(resource.supplementary_data);
+  return parsed.success ? parsed.data.related_ids.order_id : null;
 }
 
 function upLinkCaptureId(resource: Record<string, unknown>): string | null {
-  const links = (resource.links as { href: string; rel: string }[] | undefined) ?? [];
-  const up = links.find((l) => l.rel === "up" && /\/captures\//.test(l.href));
+  const parsed = Links.safeParse(resource.links ?? []);
+  if (!parsed.success) return null;
+  const up = parsed.data.find((l) => l.rel === "up" && /\/captures\//.test(l.href));
   return up ? (up.href.split("/captures/")[1]?.split(/[/?]/)[0] ?? null) : null;
 }
 
@@ -72,10 +71,23 @@ export async function handlePayPalWebhook(ctx: AppContext, headers: WebhookHeade
     // pre-empt the genuine event). Record a rate-limited finding instead.
     const resourceId = typeof event.resource.id === "string" ? event.resource.id : null;
     const orderId = relatedOrderId(event.resource) ?? resourceId;
-    if (ctx.now().getTime() - lastInvalidFindingAt > 60_000 && orderId) {
-      lastInvalidFindingAt = ctx.now().getTime();
-      const [p] = await ctx.db.select().from(paymentAttempts).where(eq(paymentAttempts.paypalOrderId, orderId));
-      if (p) {
+    const [p] = orderId ? await ctx.db.select().from(paymentAttempts).where(eq(paymentAttempts.paypalOrderId, orderId)) : [];
+    if (p) {
+      // Throttled per organisation (in the database, so it holds across instances): one tenant
+      // being targeted never suppresses another tenant's findings.
+      const [recent] = await ctx.db
+        .select({ id: securityFindings.id })
+        .from(securityFindings)
+        .where(
+          and(
+            eq(securityFindings.organizationId, p.organizationId),
+            eq(securityFindings.type, "WEBHOOK_SIGNATURE_INVALID"),
+            // Findings are timestamped by the database, so the window is measured on its clock.
+            gt(securityFindings.createdAt, sql`now() - ${INVALID_FINDING_INTERVAL_MS} * interval '1 millisecond'`),
+          ),
+        )
+        .limit(1);
+      if (!recent) {
         await recordFinding(ctx.db, {
           organizationId: p.organizationId,
           type: "WEBHOOK_SIGNATURE_INVALID",
@@ -172,7 +184,7 @@ export async function handlePayPalWebhook(ctx: AppContext, headers: WebhookHeade
             paypalRefundId: resourceId,
             amountMinor: decimalStringToMinor(amount.value, amount.currency_code),
             // A reversal moves money back immediately; a refund event carries the refund's status.
-            status: reversal ? "COMPLETED" : refundStatusOf(event.resource.status),
+            status: reversal ? "COMPLETED" : toRefundStatus(event.resource.status),
             kind: reversal ? "REVERSAL" : "REFUND",
             eventId: event.id,
           });

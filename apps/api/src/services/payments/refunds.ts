@@ -26,7 +26,8 @@ type RefundRow = typeof refunds.$inferSelect;
 /** Refunds whose outcome is not final yet: no other refund may start while one exists. */
 const IN_FLIGHT_REFUND: RefundStatus[] = ["REQUESTED", "UNKNOWN", "PENDING"];
 
-const toRefundStatus = (s: string | undefined): RefundStatus =>
+/** PayPal refund status → ours; anything unexpected stays unresolved (never counted as money). */
+export const toRefundStatus = (s: unknown): RefundStatus =>
   s === "COMPLETED" || s === "PENDING" || s === "FAILED" || s === "CANCELLED" ? s : "UNKNOWN";
 
 /**

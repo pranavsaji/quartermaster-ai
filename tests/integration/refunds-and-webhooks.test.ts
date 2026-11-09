@@ -233,5 +233,18 @@ describe("webhook verification", () => {
       .where(and(eq(securityFindings.relatedPurchaseOrderId, o.proposal.id), eq(securityFindings.type, "WEBHOOK_SIGNATURE_INVALID")));
     expect(findings).toHaveLength(1);
     expect((await payment(o.paymentId)).status).toBe("ORDER_CREATED");
+
+    // The throttle is a window per organisation, not a process-wide switch: a minute later the
+    // next forgery is recorded again.
+    await h.ctx.db
+      .update(securityFindings)
+      .set({ createdAt: new Date(Date.now() - 2 * 60_000) })
+      .where(eq(securityFindings.id, findings[0]!.id));
+    expect((await forged()).body.error.code).toBe("WEBHOOK_SIGNATURE_INVALID");
+    const after = await h.ctx.db
+      .select()
+      .from(securityFindings)
+      .where(and(eq(securityFindings.relatedPurchaseOrderId, o.proposal.id), eq(securityFindings.type, "WEBHOOK_SIGNATURE_INVALID")));
+    expect(after).toHaveLength(2);
   });
 });
