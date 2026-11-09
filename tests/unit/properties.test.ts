@@ -1,6 +1,6 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import { decimalStringToMinor, minorToDecimalString, POLICY_DECISIONS } from "@qm/contracts";
+import { applyBps, decimalStringToMinor, floatToMinor, minorToDecimalString, POLICY_DECISIONS } from "@qm/contracts";
 import { normalizeInvoiceNumber, parsePackQuantity } from "@qm/quartermaster";
 import {
   buildCart,
@@ -99,6 +99,54 @@ describe("property: money", () => {
           expect(minorToDecimalString(decimalStringToMinor(s, "USD"), "USD")).toBe(s);
         },
       ),
+      RUNS,
+    );
+  });
+
+  /** Reference: exact rational rounding, half up (towards +∞), entirely in BigInt. */
+  const bpsReference = (minor: bigint, bps: bigint): bigint => {
+    const twice = 2n * minor * bps + 10_000n; // 2·(minor·bps/10 000 + ½) scaled by 10 000
+    const den = 20_000n;
+    // floor division for possibly negative numerators
+    const q = twice / den;
+    return twice % den !== 0n && twice < 0n ? q - 1n : q;
+  };
+
+  it("applyBps equals a BigInt reference implementation for every safe amount and rate", () => {
+    const amount = fc.oneof(fc.maxSafeInteger(), fc.integer({ min: -1_000_000, max: 1_000_000 }));
+    fc.assert(
+      fc.property(amount, fc.integer({ min: 0, max: 10_000 }), (minor, bps) => {
+        const expected = bpsReference(BigInt(minor), BigInt(bps));
+        if (expected > BigInt(Number.MAX_SAFE_INTEGER) || expected < BigInt(Number.MIN_SAFE_INTEGER)) {
+          expect(() => applyBps(minor, bps)).toThrow();
+          return;
+        }
+        const actual = applyBps(minor, bps);
+        expect(BigInt(actual)).toBe(expected);
+        expect(Object.is(actual, -0)).toBe(false);
+      }),
+      { numRuns: 2_000 },
+    );
+  });
+
+  it("floatToMinor recovers the cents of every decimal price with up to 15 significant digits", () => {
+    fc.assert(
+      fc.property(fc.integer({ min: -(10 ** 15) + 1, max: 10 ** 15 - 1 }), (cents) => {
+        const price = Number(minorToDecimalString(cents, "USD"));
+        expect(floatToMinor(price, "USD")).toBe(cents);
+      }),
+      RUNS,
+    );
+  });
+
+  it("floatToMinor rounds every written half-cent away from zero", () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 0, max: 10 ** 13 }), fc.boolean(), (cents, negative) => {
+        // "<cents/100>5", e.g. 100 → "1.005": exactly half a cent above `cents`.
+        const text = `${negative ? "-" : ""}${minorToDecimalString(cents, "USD")}5`;
+        const expected = cents + 1;
+        expect(floatToMinor(Number(text), "USD")).toBe(negative ? -expected : expected);
+      }),
       RUNS,
     );
   });
