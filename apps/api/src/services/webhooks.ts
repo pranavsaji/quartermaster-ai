@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { z } from "zod";
-import { SETTLED_PAYMENT_STATUSES, decimalStringToMinor, type RefundStatus } from "@qm/contracts";
+import { decimalStringToMinor, isSettledPayment, type RefundStatus } from "@qm/contracts";
 import { paymentAttempts, paypalWebhookEvents } from "@qm/database";
 import { PayPalNotConfiguredError, type WebhookEvent, type WebhookHeaders } from "@qm/payments";
 import type { AppContext } from "../context";
@@ -145,9 +145,9 @@ export async function handlePayPalWebhook(ctx: AppContext, headers: WebhookHeade
         orgId = p.organizationId;
         // A refund can be reported before our capture finalisation has been applied. Reconcile
         // first; if the payment is still not settled, fail so PayPal redelivers later.
-        if (!(SETTLED_PAYMENT_STATUSES as readonly string[]).includes(p.status)) {
+        if (!isSettledPayment(p.status)) {
           const status = await reconcilePayment(ctx, p.id);
-          if (!(SETTLED_PAYMENT_STATUSES as readonly string[]).includes(status)) {
+          if (!isSettledPayment(status)) {
             throw new AppError(503, "REFUND_BEFORE_CAPTURE", "Capture not yet recorded; retry later.");
           }
         }

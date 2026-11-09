@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { and, asc, eq, inArray, isNull, lt } from "drizzle-orm";
-import { SETTLED_PAYMENT_STATUSES, minorToDecimalString, type PaymentDto, type PaymentStatus, type RefundStatus } from "@qm/contracts";
+import { isSettledPayment, minorToDecimalString, type PaymentDto, type PaymentStatus, type RefundStatus } from "@qm/contracts";
 import { refunds, type DbOrTx } from "@qm/database";
 import type { PayPalRefund } from "@qm/payments";
 import type { AppContext } from "../../context";
@@ -255,7 +255,7 @@ export async function recordReportedRefund(
     // Lock the payment first so the API refund path and this handler serialise.
     const payment = await loadPaymentForSystem(tx, paymentId, true);
     if (!payment) return "DUPLICATE";
-    if (!(SETTLED_PAYMENT_STATUSES as readonly string[]).includes(payment.status)) {
+    if (!isSettledPayment(payment.status)) {
       throw conflict("REFUND_BEFORE_CAPTURE", "Capture not yet recorded; retry later.");
     }
     let [row] = await tx.select().from(refunds).where(eq(refunds.paypalRefundId, report.paypalRefundId));

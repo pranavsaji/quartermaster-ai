@@ -1,6 +1,6 @@
-import { and, eq } from "drizzle-orm";
-import { PAYABLE_PO_STATUSES, type PaymentDto } from "@qm/contracts";
-import { paymentAttempts, purchaseOrders, suppliers } from "@qm/database";
+import { eq } from "drizzle-orm";
+import { isPayableOrder, type PaymentDto } from "@qm/contracts";
+import { paymentAttempts, suppliers } from "@qm/database";
 import { PayPalNotConfiguredError, buildCreateOrderRequest, toProviderOrderView, type PayPalOrder } from "@qm/payments";
 import type { AppContext } from "../../context";
 import { badGateway, conflict, forbidden, unavailable, unprocessable } from "../../errors";
@@ -8,8 +8,8 @@ import { appendAudit } from "../audit";
 import { loadCertificate, verifyStoredCertificate } from "../certificates";
 import { DeferredFailure, retryOnConflict, withDeferredFailures, type Actor } from "../common";
 import { recordFinding } from "../findings";
+import { setOrderStatus } from "../order-status";
 import { cartFromRows, loadOrder, toPaymentDto } from "../orders";
-import { refreshRequestStatus } from "../procurement/status";
 import { applyTerminalFailure } from "./settle";
 import {
   failureMessageFor,
@@ -71,8 +71,7 @@ export async function createPayPalOrder(
           );
         }
         const { po, items } = await loadOrder(tx, actor.organizationId, cert.purchaseOrderId, true);
-        if (!(PAYABLE_PO_STATUSES as readonly string[]).includes(po.status))
-          throw conflict("ORDER_NOT_PAYABLE", `Purchase order is ${po.status}.`);
+        if (!isPayableOrder(po.status)) throw conflict("ORDER_NOT_PAYABLE", `Purchase order is ${po.status}.`);
         const [supplier] = await tx.select({ name: suppliers.name }).from(suppliers).where(eq(suppliers.id, po.supplierId));
         const attempt =
           existing ??
@@ -160,11 +159,7 @@ export async function createPayPalOrder(
     const now = ctx.now();
     const attempt = await loadPayment(tx, actor.organizationId, prepared.attempt.id, true);
     await transitionPayment(tx, attempt, "ORDER_CREATED", { paypalOrderId: order.id, failureCode: null, failureMessage: null }, now);
-    await tx
-      .update(purchaseOrders)
-      .set({ status: "PAYMENT_PENDING", updatedAt: now })
-      .where(and(eq(purchaseOrders.id, po.id), eq(purchaseOrders.status, "APPROVED")));
-    if (po.requestId) await refreshRequestStatus(tx, po.requestId, now);
+    await setOrderStatus(tx, po.id, ["APPROVED"], "PAYMENT_PENDING", now);
     await appendAudit(tx, {
       organizationId: actor.organizationId,
       action: "payment.order_created",

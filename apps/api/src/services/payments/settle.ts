@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { PAYABLE_PO_STATUSES, minorToDecimalString, type PaymentStatus } from "@qm/contracts";
 import { deliveries, intentCertificates, organizations, paymentAttempts, purchaseOrders, suppliers } from "@qm/database";
 import { captureAmountMinor, extractCapture, type PayPalOrder } from "@qm/payments";
@@ -9,6 +9,7 @@ import { appendAudit, type ActorType } from "../audit";
 import { consumeReservation, localDate, recordUnreservedSpend, releaseReservation } from "../budget";
 import { AfterCommit, retryOnConflict } from "../common";
 import { recordFinding } from "../findings";
+import { setOrderStatus } from "../order-status";
 import { loadOrder } from "../orders";
 import { refreshRequestStatus } from "../procurement/status";
 import { loadPaymentForSystem, patchPayment, statusOf, transitionPayment } from "./shared";
@@ -80,15 +81,7 @@ export async function applyTerminalFailure(
         .update(intentCertificates)
         .set({ status: "REVOKED", revokedReason: `PAYMENT_${status}` })
         .where(and(eq(intentCertificates.id, p.intentId), eq(intentCertificates.status, "ACTIVE")));
-      await tx
-        .update(purchaseOrders)
-        .set({ status: "CANCELLED", updatedAt: now })
-        .where(and(eq(purchaseOrders.id, p.purchaseOrderId), inArray(purchaseOrders.status, [...PAYABLE_PO_STATUSES])));
-      const [po] = await tx
-        .select({ requestId: purchaseOrders.requestId })
-        .from(purchaseOrders)
-        .where(eq(purchaseOrders.id, p.purchaseOrderId));
-      if (po?.requestId) await refreshRequestStatus(tx, po.requestId, now);
+      await setOrderStatus(tx, p.purchaseOrderId, PAYABLE_PO_STATUSES, "CANCELLED", now);
       await appendAudit(tx, {
         organizationId: p.organizationId,
         action: `payment.${status.toLowerCase()}`,

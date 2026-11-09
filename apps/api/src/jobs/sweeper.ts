@@ -1,4 +1,4 @@
-import { PAYABLE_PO_STATUSES, PRE_CAPTURE_PAYMENT_STATUSES } from "@qm/contracts";
+import { PAYABLE_PO_STATUSES, isPreCapturePayment } from "@qm/contracts";
 import { and, eq, gt, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import {
@@ -7,7 +7,6 @@ import {
   intentCertificates,
   jobLeases,
   paymentAttempts,
-  purchaseOrders,
   purchaseRequests,
   rateLimitHits,
   sessions,
@@ -17,8 +16,8 @@ import type { AppContext } from "../context";
 import { appendAudit } from "../services/audit";
 import { retryOnConflict } from "../services/common";
 import { releaseReservation } from "../services/budget";
+import { setOrderStatus } from "../services/order-status";
 import { reconcilePayment, reconcileRefunds, transitionPayment, voidAbandonedCapture } from "../services/payments";
-import { refreshRequestStatus } from "../services/procurement/status";
 
 export interface SweepReport {
   reconciled: number;
@@ -138,7 +137,7 @@ export async function sweep(ctx: AppContext): Promise<SweepReport> {
             if (payment) {
               const [locked] = await tx.select().from(paymentAttempts).where(eq(paymentAttempts.id, payment.id)).for("update");
               // A capture may have started since PayPal was checked: never release its reservation.
-              if (locked && !(PRE_CAPTURE_PAYMENT_STATUSES as readonly string[]).includes(locked.status)) return false;
+              if (locked && !isPreCapturePayment(locked.status)) return false;
               const [fresh] = await tx.select().from(intentCertificates).where(eq(intentCertificates.id, cert.id)).for("update");
               if (fresh?.status !== "ACTIVE") return false;
               if (locked) {
@@ -156,15 +155,7 @@ export async function sweep(ctx: AppContext): Promise<SweepReport> {
             }
             await tx.update(intentCertificates).set({ status: "EXPIRED" }).where(eq(intentCertificates.id, cert.id));
             await releaseReservation(tx, cert.id, "CERTIFICATE_EXPIRED", now);
-            await tx
-              .update(purchaseOrders)
-              .set({ status: "EXPIRED", updatedAt: now })
-              .where(and(eq(purchaseOrders.id, cert.purchaseOrderId), inArray(purchaseOrders.status, [...PAYABLE_PO_STATUSES])));
-            const [po] = await tx
-              .select({ requestId: purchaseOrders.requestId })
-              .from(purchaseOrders)
-              .where(eq(purchaseOrders.id, cert.purchaseOrderId));
-            if (po?.requestId) await refreshRequestStatus(tx, po.requestId, now);
+            await setOrderStatus(tx, cert.purchaseOrderId, PAYABLE_PO_STATUSES, "EXPIRED", now);
             await appendAudit(tx, {
               organizationId: cert.organizationId,
               action: "certificate.expired",
