@@ -1,5 +1,5 @@
 import { and, eq, inArray } from "drizzle-orm";
-import type { ProductCategory, SpendMandateDto, SpendMandateInput } from "@qm/contracts";
+import { PAYABLE_PO_STATUSES, PRE_CAPTURE_PAYMENT_STATUSES, type ProductCategory, type SpendMandateDto, type SpendMandateInput } from "@qm/contracts";
 import {
   budgetAccounts,
   intentCertificates,
@@ -73,7 +73,6 @@ export async function getActiveMandateRow(db: DbOrTx, organizationId: string, lo
 }
 
 /** Statuses of a payment that has not yet reached PayPal capture; safe to invalidate. */
-const PRE_CAPTURE = ["CREATED", "ORDER_CREATED", "PAYER_APPROVED"];
 
 /**
  * Creates a new mandate version (mandates are immutable once issued). If the change tightens
@@ -146,7 +145,7 @@ export async function updateMandate(
       // Lock order matches capture and finalisation: payment, then certificate. Status is
       // re-read under the lock so a capture authorised in the meantime is never voided.
       const [payment] = await tx.select().from(paymentAttempts).where(eq(paymentAttempts.intentId, c.id)).for("update");
-      if (payment && !PRE_CAPTURE.includes(payment.status)) continue;
+      if (payment && !(PRE_CAPTURE_PAYMENT_STATUSES as readonly string[]).includes(payment.status)) continue;
       const [cert] = await tx.select().from(intentCertificates).where(eq(intentCertificates.id, c.id)).for("update");
       if (cert?.status !== "ACTIVE") continue;
       const changed = await tx
@@ -160,12 +159,12 @@ export async function updateMandate(
         await tx
           .update(paymentAttempts)
           .set({ status: "VOIDED", failureCode: "MANDATE_CHANGED", updatedAt: args.now })
-          .where(and(eq(paymentAttempts.id, payment.id), inArray(paymentAttempts.status, PRE_CAPTURE)));
+          .where(and(eq(paymentAttempts.id, payment.id), inArray(paymentAttempts.status, [...PRE_CAPTURE_PAYMENT_STATUSES])));
       }
       await tx
         .update(purchaseOrders)
         .set({ status: "PROPOSED", updatedAt: args.now })
-        .where(and(eq(purchaseOrders.id, c.purchaseOrderId), inArray(purchaseOrders.status, ["APPROVED", "PAYMENT_PENDING"])));
+        .where(and(eq(purchaseOrders.id, c.purchaseOrderId), inArray(purchaseOrders.status, [...PAYABLE_PO_STATUSES])));
       const [po] = await tx.select({ requestId: purchaseOrders.requestId }).from(purchaseOrders).where(eq(purchaseOrders.id, c.purchaseOrderId));
       if (po?.requestId) await tx.update(purchaseRequests).set({ status: "READY_FOR_REVIEW", updatedAt: args.now }).where(eq(purchaseRequests.id, po.requestId));
       revokedIds.push(c.id);

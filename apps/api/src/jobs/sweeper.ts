@@ -1,3 +1,4 @@
+import { PAYABLE_PO_STATUSES, PRE_CAPTURE_PAYMENT_STATUSES } from "@qm/contracts";
 import { and, eq, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { idempotencyKeys, intentCertificates, jobLeases, paymentAttempts, purchaseOrders, sessions, type Database } from "@qm/database";
@@ -101,8 +102,8 @@ export async function sweep(ctx: AppContext): Promise<SweepReport> {
           if (fresh?.status !== "ACTIVE") return;
           await tx.update(intentCertificates).set({ status: "EXPIRED" }).where(eq(intentCertificates.id, cert.id));
           await releaseReservation(tx, cert.id, "CERTIFICATE_EXPIRED", now);
-          if (payment) await tx.update(paymentAttempts).set({ status: "VOIDED", failureCode: "CERTIFICATE_EXPIRED", updatedAt: now }).where(and(eq(paymentAttempts.id, payment.id), inArray(paymentAttempts.status, ["CREATED", "ORDER_CREATED", "PAYER_APPROVED"])));
-          await tx.update(purchaseOrders).set({ status: "EXPIRED", updatedAt: now }).where(and(eq(purchaseOrders.id, cert.purchaseOrderId), inArray(purchaseOrders.status, ["APPROVED", "PAYMENT_PENDING"])));
+          if (payment) await tx.update(paymentAttempts).set({ status: "VOIDED", failureCode: "CERTIFICATE_EXPIRED", updatedAt: now }).where(and(eq(paymentAttempts.id, payment.id), inArray(paymentAttempts.status, [...PRE_CAPTURE_PAYMENT_STATUSES])));
+          await tx.update(purchaseOrders).set({ status: "EXPIRED", updatedAt: now }).where(and(eq(purchaseOrders.id, cert.purchaseOrderId), inArray(purchaseOrders.status, [...PAYABLE_PO_STATUSES])));
           const [po] = await tx.select({ requestId: purchaseOrders.requestId }).from(purchaseOrders).where(eq(purchaseOrders.id, cert.purchaseOrderId));
           if (po?.requestId) await refreshRequestStatus(tx, po.requestId, now);
           await appendAudit(tx, { organizationId: cert.organizationId, action: "certificate.expired", actorType: "SYSTEM", entityType: "intent_certificate", entityId: cert.id, data: { expired_at: cert.expiresAt, reservation_released: true } });

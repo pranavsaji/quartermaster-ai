@@ -1,5 +1,5 @@
 import { and, eq, inArray } from "drizzle-orm";
-import type { MarketReferenceDto } from "@qm/contracts";
+import { COMMITTED_PO_STATUSES, type MarketReferenceDto } from "@qm/contracts";
 import { purchaseCandidates, purchaseOrders, purchaseRequests, supplierCatalogItems } from "@qm/database";
 import {
   buildSupplierQuote,
@@ -52,7 +52,7 @@ export async function researchRequest(ctx: AppContext, user: { id: string; organ
   const committed = await ctx.db
     .select({ id: purchaseOrders.id })
     .from(purchaseOrders)
-    .where(and(eq(purchaseOrders.requestId, requestId), inArray(purchaseOrders.status, ["APPROVED", "PAYMENT_PENDING", "PAID", "FULFILLED"])));
+    .where(and(eq(purchaseOrders.requestId, requestId), inArray(purchaseOrders.status, [...COMMITTED_PO_STATUSES])));
   if (committed.length > 0) {
     await refreshRequestStatus(ctx.db, requestId, now);
     throw conflict("REQUEST_HAS_APPROVED_ORDERS", "Research cannot be re-run after an order has been approved.");

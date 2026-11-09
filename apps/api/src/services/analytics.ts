@@ -1,5 +1,5 @@
 import { and, eq, gte, inArray, sql } from "drizzle-orm";
-import type { AnalyticsSummaryDto, FindingType, PolicyDecisionKind } from "@qm/contracts";
+import { COMMITTED_PO_STATUSES, type AnalyticsSummaryDto, type FindingType, type PolicyDecisionKind } from "@qm/contracts";
 import {
   budgetAccounts,
   deliveries,
@@ -76,7 +76,7 @@ export async function analyticsSummary(ctx: AppContext, organizationId: string):
     currency: org!.currency,
     budget: toBudgetDto(account),
     totals: {
-      approved_spend_minor: pos.filter((p) => ["APPROVED", "PAYMENT_PENDING", "PAID", "FULFILLED"].includes(p.status)).reduce((a, p) => a + p.total, 0),
+      approved_spend_minor: pos.filter((p) => (COMMITTED_PO_STATUSES as readonly string[]).includes(p.status)).reduce((a, p) => a + p.total, 0),
       captured_spend_minor: completed.reduce((a, p) => a + (p.capturedAmountMinor ?? 0), 0),
       refunded_minor: completed.reduce((a, p) => a + p.refundedAmountMinor, 0),
       orders_paid: pos.filter((p) => p.status === "PAID" || p.status === "FULFILLED").length,

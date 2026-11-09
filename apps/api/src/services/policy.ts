@@ -1,5 +1,5 @@
 import { and, eq, gte, inArray, ne } from "drizzle-orm";
-import type { ForecastLineDto, MarketReferenceDto, ProductCategory } from "@qm/contracts";
+import { COMMITTED_PO_STATUSES, type ForecastLineDto, type MarketReferenceDto, type ProductCategory } from "@qm/contracts";
 import {
   budgetReservations,
   forecastRuns,
@@ -17,7 +17,6 @@ import { getActiveMandateRow, rowToMandate } from "./mandates";
 import { cartFromRows, type PurchaseOrderItemRow, type PurchaseOrderRow } from "./orders";
 import { loadCatalogForSupplier } from "./suppliers";
 
-const COMMITTED_STATUSES = ["APPROVED", "PAYMENT_PENDING", "PAID", "FULFILLED"];
 
 export interface EvaluateOptions {
   stage: "EVALUATE" | "APPROVE" | "CAPTURE";
@@ -78,7 +77,7 @@ export async function evaluateOrder(
         const others = await tx
           .select({ total: purchaseOrders.totalMinor })
           .from(purchaseOrders)
-          .where(and(eq(purchaseOrders.requestId, req.id), ne(purchaseOrders.id, po.id), inArray(purchaseOrders.status, COMMITTED_STATUSES)));
+          .where(and(eq(purchaseOrders.requestId, req.id), ne(purchaseOrders.id, po.id), inArray(purchaseOrders.status, [...COMMITTED_PO_STATUSES])));
         requestLimit = cap - others.reduce((a, o) => a + o.total, 0);
       }
       if (req.forecastRunId) {
@@ -119,7 +118,7 @@ export async function evaluateOrder(
               eq(purchaseOrders.organizationId, organizationId),
               eq(purchaseOrders.supplierId, po.supplierId),
               ne(purchaseOrders.id, po.id),
-              inArray(purchaseOrders.status, COMMITTED_STATUSES),
+              inArray(purchaseOrders.status, [...COMMITTED_PO_STATUSES]),
               gte(purchaseOrders.createdAt, new Date(opts.now.getTime() - windowHours * 3_600_000)),
             ),
           )

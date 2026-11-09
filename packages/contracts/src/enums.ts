@@ -131,3 +131,17 @@ export type DataSource = (typeof DATA_SOURCES)[number];
 
 export const AI_MODES = ["LLM", "DETERMINISTIC_FALLBACK"] as const;
 export type AiMode = (typeof AI_MODES)[number];
+
+/* ------------------------------------------------------------ Status groups */
+
+/** Orders that hold or have spent budget: they count towards spend and duplicate checks. */
+export const COMMITTED_PO_STATUSES = ["APPROVED", "PAYMENT_PENDING", "PAID", "FULFILLED"] as const satisfies readonly PurchaseOrderStatus[];
+/** Orders that may still be paid for. */
+export const PAYABLE_PO_STATUSES = ["APPROVED", "PAYMENT_PENDING"] as const satisfies readonly PurchaseOrderStatus[];
+/** Payments where no capture has been requested yet: safe to void without asking PayPal. */
+export const PRE_CAPTURE_PAYMENT_STATUSES = ["CREATED", "ORDER_CREATED", "PAYER_APPROVED"] as const satisfies readonly PaymentStatus[];
+/** Payments where money has moved. */
+export const SETTLED_PAYMENT_STATUSES = ["COMPLETED", "PARTIALLY_REFUNDED", "REFUNDED"] as const satisfies readonly PaymentStatus[];
+
+export const REFUND_STATUSES = ["REQUESTED", "UNKNOWN", "PENDING", "COMPLETED", "FAILED", "CANCELLED"] as const;
+export type RefundStatus = (typeof REFUND_STATUSES)[number];
