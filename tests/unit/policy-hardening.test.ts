@@ -153,7 +153,22 @@ describe("policy engine — pack quantities", () => {
     ];
     input.market = [];
     const r = evaluatePolicy(input);
-    expect(r.violations.filter((v) => v.code === "QUANTITY_EXCEEDS_NEED")).toEqual([]);
+    // Object.prototype.constructor is read neither as a pack size (invalid_pack_quantity) nor as
+    // a need (invalid_need): the SKU simply has no forecast.
+    const qty = r.violations.filter((v) => v.code === "QUANTITY_EXCEEDS_NEED");
+    expect(qty.map((v) => v.evidence)).toEqual([{ sku: "constructor", reason: "no_forecast", units: 1 }]);
+  });
+
+  it("asks for review instead of skipping the over-purchase check when no forecast exists", () => {
+    const r = evaluatePolicy(baseInput({ needed_units_by_sku: {} }));
+    expect(r.decision).toBe("REVIEW_REQUIRED");
+    const v = r.violations.find((x) => x.code === "QUANTITY_EXCEEDS_NEED");
+    expect(v).toMatchObject({ severity: "REVIEW", evidence: { sku: "TK-250", reason: "no_forecast", units: 500 } });
+    expect(v?.message).toMatch(/No forecast need is known for TK-250/);
+    // A forecast for another SKU does not cover this one.
+    expect(codes(evaluatePolicy(baseInput({ needed_units_by_sku: { OTHER: 10 } })))).toContain("QUANTITY_EXCEEDS_NEED");
+    // With a forecast the line is checked normally.
+    expect(codes(evaluatePolicy(baseInput()))).not.toContain("QUANTITY_EXCEEDS_NEED");
   });
 });
 
