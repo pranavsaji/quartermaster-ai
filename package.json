@@ -23,7 +23,8 @@
     "db:seed": "pnpm --filter @qm/database seed",
     "db:reset": "pnpm --filter @qm/database reset",
     "keys:generate": "tsx scripts/generate-signing-key.ts",
-    "docs:api": "tsx scripts/generate-api-docs.ts"
+    "docs:api": "tsx scripts/generate-api-docs.ts",
+    "test:coverage": "vitest run --coverage"
   },
   "devDependencies": {
     "@playwright/test": "^1.65.0",
@@ -36,6 +37,7 @@
     "@qm/trustrail": "workspace:*",
     "@types/node": "^24.0.0",
     "@types/supertest": "^7.2.1",
+    "@vitest/coverage-v8": "5.1.0",
     "drizzle-orm": "^0.45.4",
     "supertest": "^7.3.2",
     "tsx": "^4.23.15",
