@@ -77,7 +77,12 @@ export class PayPalClient {
         headers: { Authorization: `Basic ${basic}`, "Content-Type": "application/x-www-form-urlencoded" },
         body: "grant_type=client_credentials",
       });
-      const body: unknown = await res.json().catch(() => null);
+      let body: unknown = null;
+      try {
+        body = res.text ? JSON.parse(res.text) : null;
+      } catch {
+        body = null;
+      }
       if (!res.ok) throw new PayPalApiError(res.status, body, "oauth.token");
       const token = parseBody("oauth.token", res.status, OAuthTokenSchema, body, this.config.log);
       this.token = { token: token.access_token, expiresAt: Date.now() + (token.expires_in ?? 300) * 1000 };
@@ -203,7 +208,7 @@ export class PayPalClient {
       },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
-    const text = await res.text();
+    const text = res.text;
     let parsed: unknown = null;
     try {
       parsed = text ? JSON.parse(text) : null;
@@ -221,17 +226,52 @@ export class PayPalClient {
     return parseBody(operation, res.status, schema, parsed, this.config.log);
   }
 
-  private async rawFetch(operation: string, path: string, init: RequestInit): Promise<Response> {
+  /**
+   * One HTTP exchange with PayPal, including reading the body, under a single deadline. A timeout
+   * or network error at any point (connect, headers or body) is an ambiguous outcome. Bodies are
+   * capped so a misbehaving upstream cannot exhaust memory.
+   */
+  private async rawFetch(operation: string, path: string, init: RequestInit): Promise<RawResponse> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
-      return await this.fetchImpl(`${this.baseUrl}${path}`, { ...init, signal: controller.signal });
+      const res = await this.fetchImpl(`${this.baseUrl}${path}`, { ...init, signal: controller.signal });
+      const text = await readCapped(res, MAX_RESPONSE_BYTES);
+      return { status: res.status, ok: res.ok, headers: res.headers, text };
     } catch (err) {
       throw new PayPalAmbiguousError(operation, err);
     } finally {
       clearTimeout(timer);
     }
   }
+}
+
+interface RawResponse {
+  status: number;
+  ok: boolean;
+  headers: Headers;
+  text: string;
+}
+
+/** PayPal responses are a few kilobytes; anything near this is not a valid answer. */
+const MAX_RESPONSE_BYTES = 1_000_000;
+
+async function readCapped(res: Response, maxBytes: number): Promise<string> {
+  if (!res.body) return "";
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel();
+      throw new Error(`response body exceeds ${maxBytes} bytes`);
+    }
+    chunks.push(value);
+  }
+  return new TextDecoder().decode(Buffer.concat(chunks));
 }
 
 /** Validates a 2xx body; a mismatch is an ambiguous outcome, never a definite failure. */

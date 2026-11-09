@@ -89,6 +89,34 @@ describe("PayPal client", () => {
     await expect(c.getAccessToken()).rejects.toBeInstanceOf(PayPalAmbiguousError);
   });
 
+  it("times out a response whose body stalls after the headers, as ambiguous", async () => {
+    const stalled: typeof fetch = async (_u, init) =>
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode('{"access_token":'));
+            init?.signal?.addEventListener("abort", () => controller.error(new Error("aborted")));
+          },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    const c = new PayPalClient({
+      clientId: "id",
+      clientSecret: "s",
+      environment: "sandbox",
+      webhookId: null,
+      fetch: stalled,
+      timeoutMs: 30,
+    });
+    await expect(c.getAccessToken()).rejects.toBeInstanceOf(PayPalAmbiguousError);
+  });
+
+  it("refuses oversized responses as ambiguous instead of buffering them", async () => {
+    const huge: typeof fetch = async () => new Response("x".repeat(1_200_000), { status: 200 });
+    const c = new PayPalClient({ clientId: "id", clientSecret: "s", environment: "sandbox", webhookId: null, fetch: huge });
+    await expect(c.getAccessToken()).rejects.toBeInstanceOf(PayPalAmbiguousError);
+  });
+
   it("refuses to run without credentials", async () => {
     const c = new PayPalClient({ clientId: null, clientSecret: null, environment: "sandbox", webhookId: null });
     expect(c.configured).toBe(false);
