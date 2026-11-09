@@ -1,11 +1,15 @@
 import { Writable } from "node:stream";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
-import type { NextFunction, Request, Response } from "express";
 import { DEMO_CREDENTIALS, idempotencyKeys, memberships, users } from "@qm/database";
 import { idempotent } from "../../apps/api/src/http/middleware/idempotency";
 import { createLogger } from "../../apps/api/src/logger";
 import { createHarness, type Harness } from "../helpers/harness";
+
+type Middleware = ReturnType<typeof idempotent>;
+type Request = Parameters<Middleware>[0];
+type Response = Parameters<Middleware>[1];
+type NextFunction = Parameters<Middleware>[2];
 
 let h: Harness;
 let user: { id: string; organizationId: string };

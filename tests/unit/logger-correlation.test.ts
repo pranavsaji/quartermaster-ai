@@ -1,9 +1,11 @@
 import { Writable } from "node:stream";
 import { describe, expect, it } from "vitest";
-import type { Request, Response } from "express";
 import { createLogger } from "../../apps/api/src/logger";
 import { currentScope } from "../../apps/api/src/context";
 import { correlation } from "../../apps/api/src/http/middleware/security";
+
+type Request = Parameters<typeof correlation>[0];
+type Response = Parameters<typeof correlation>[1];
 
 function capture() {
   const lines: Record<string, unknown>[] = [];

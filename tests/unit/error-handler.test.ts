@@ -1,9 +1,12 @@
 import { Writable } from "node:stream";
 import { describe, expect, it } from "vitest";
-import type { Request, Response } from "express";
 import { AppError, badGateway, badRequest } from "../../apps/api/src/errors";
 import { errorHandler, publicServerErrorDetails } from "../../apps/api/src/http/middleware/errors";
 import { createLogger } from "../../apps/api/src/logger";
+
+type Handler = ReturnType<typeof errorHandler>;
+type Request = Parameters<Handler>[1];
+type Response = Parameters<Handler>[2];
 
 function run(err: unknown) {
   const logged: Record<string, unknown>[] = [];
