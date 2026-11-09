@@ -6,9 +6,8 @@ import { useMemo } from "react";
 import { ChartCard } from "@/components/charts/ChartCard";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
-import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { RefreshErrorNotice } from "@/components/ui/RefreshErrorNotice";
+import { ResourceView } from "@/components/ui/ResourceView";
 import { SkeletonCard } from "@/components/ui/Skeleton";
 import { StatTile } from "@/components/ui/StatTile";
 import { api } from "@/lib/api";
@@ -179,21 +178,17 @@ export function AnalyticsPage() {
         }
       />
 
-      {summary.error && !s ? <ErrorNotice error={summary.error} onRetry={summary.reload} /> : null}
-      <RefreshErrorNotice
-        error={summary.error}
+      <ResourceView
+        resource={summary}
         hasData={Boolean(s)}
-        updatedAt={summary.updatedAt}
-        onRetry={summary.reload}
         className="mb-6"
+        loading={
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <SkeletonCard lines={6} />
+            <SkeletonCard lines={6} />
+          </div>
+        }
       />
-
-      {!s && !summary.error ? (
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <SkeletonCard lines={6} />
-          <SkeletonCard lines={6} />
-        </div>
-      ) : null}
 
       {s && charts ? (
         <div className="space-y-6">

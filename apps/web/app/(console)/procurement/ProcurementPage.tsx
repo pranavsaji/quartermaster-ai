@@ -7,11 +7,10 @@ import { RequestList } from "@/components/procurement/RequestList";
 import { useSession } from "@/components/session/SessionProvider";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
-import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { LoadMore } from "@/components/ui/LoadMore";
 import { Notice } from "@/components/ui/Notice";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { RefreshErrorNotice } from "@/components/ui/RefreshErrorNotice";
+import { ResourceView } from "@/components/ui/ResourceView";
 import { api } from "@/lib/api";
 import { usePagedResource } from "@/lib/hooks";
 
@@ -70,21 +69,10 @@ function ProcurementContent() {
           }
         />
         <div className="p-3">
-          <RefreshErrorNotice
-            error={requests.error}
-            hasData={Boolean(requests.items)}
-            updatedAt={requests.updatedAt}
-            onRetry={requests.reload}
-            className="mb-3"
-          />
-          {requests.error && !requests.items ? (
-            <ErrorNotice error={requests.error} onRetry={requests.reload} />
-          ) : (
-            <>
-              <RequestList requests={requests.items} />
-              <LoadMore state={requests} noun="requests" />
-            </>
-          )}
+          <ResourceView resource={requests} hasData={Boolean(requests.items)}>
+            <RequestList requests={requests.items} />
+            <LoadMore state={requests} noun="requests" />
+          </ResourceView>
         </div>
       </Card>
     </>

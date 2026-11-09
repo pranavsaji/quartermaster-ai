@@ -7,11 +7,10 @@ import { DecisionsGrid } from "@/components/security/DecisionsGrid";
 import { FindingsGrid } from "@/components/security/FindingsGrid";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Select } from "@/components/ui/Field";
 import { LoadMore } from "@/components/ui/LoadMore";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { RefreshErrorNotice } from "@/components/ui/RefreshErrorNotice";
+import { ResourceView } from "@/components/ui/ResourceView";
 import { StatTile } from "@/components/ui/StatTile";
 import { tabPanelProps, Tabs } from "@/components/ui/Tabs";
 import { api } from "@/lib/api";
@@ -130,21 +129,10 @@ export function SecurityPage() {
               </div>
             </div>
           ) : null}
-          <RefreshErrorNotice
-            error={active.state.error}
-            hasData={Boolean(active.state.items) && !active.state.stale}
-            updatedAt={active.state.updatedAt}
-            onRetry={active.state.reload}
-            className="mb-3"
-          />
-          {active.state.error && (!active.state.items || active.state.stale) ? (
-            <ErrorNotice error={active.state.error} onRetry={active.state.reload} />
-          ) : (
-            <>
-              {active.node}
-              <LoadMore state={active.state} noun={tab === "audit" ? "events" : tab === "decisions" ? "decisions" : "findings"} />
-            </>
-          )}
+          <ResourceView resource={active.state} hasData={Boolean(active.state.items) && !active.state.stale}>
+            {active.node}
+            <LoadMore state={active.state} noun={tab === "audit" ? "events" : tab === "decisions" ? "decisions" : "findings"} />
+          </ResourceView>
         </div>
       </Card>
     </>

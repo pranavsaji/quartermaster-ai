@@ -8,9 +8,9 @@ import { UpcomingDeliveries } from "@/components/overview/UpcomingDeliveries";
 import { useSession } from "@/components/session/SessionProvider";
 import { ButtonLink } from "@/components/ui/ButtonLink";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
-import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Notice } from "@/components/ui/Notice";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { ResourceView } from "@/components/ui/ResourceView";
 import { SkeletonRows } from "@/components/ui/Skeleton";
 import { api } from "@/lib/api";
 import { useResource } from "@/lib/hooks";
@@ -67,13 +67,9 @@ export function OverviewPage() {
               }
             />
             <CardBody>
-              {findings.error && !findings.data ? (
-                <ErrorNotice error={findings.error} onRetry={findings.reload} />
-              ) : !findings.data ? (
-                <SkeletonRows rows={3} />
-              ) : (
-                <FindingsList findings={findings.data.items} />
-              )}
+              <ResourceView resource={findings} hasData={Boolean(findings.data)} loading={<SkeletonRows rows={3} />}>
+                <FindingsList findings={findings.data?.items ?? []} />
+              </ResourceView>
             </CardBody>
           </Card>
         </div>

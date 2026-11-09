@@ -13,7 +13,7 @@ import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { LoadMore } from "@/components/ui/LoadMore";
 import { Notice } from "@/components/ui/Notice";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { RefreshErrorNotice } from "@/components/ui/RefreshErrorNotice";
+import { ResourceView } from "@/components/ui/ResourceView";
 import { SkeletonCard } from "@/components/ui/Skeleton";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import { api } from "@/lib/api";
@@ -114,23 +114,9 @@ export function OrdersPage() {
             }
           />
           <div className="p-3">
-            <RefreshErrorNotice
-              error={orders.error}
-              hasData={Boolean(orders.items)}
-              updatedAt={orders.updatedAt}
-              onRetry={orders.reload}
-              className="mb-3"
-            />
-            <RefreshErrorNotice
-              error={deliveries.error}
-              hasData={Boolean(deliveries.data)}
-              updatedAt={deliveries.updatedAt}
-              onRetry={deliveries.reload}
-              className="mb-3"
-            />
-            {orders.error && !orders.items ? (
-              <ErrorNotice error={orders.error} onRetry={orders.reload} />
-            ) : (
+            {/* Deliveries only decorate the orders: their failure is reported without hiding the grid. */}
+            <ResourceView resource={deliveries} hasData={Boolean(deliveries.data)} errorTitle="Couldn't load deliveries" />
+            <ResourceView resource={orders} hasData={Boolean(orders.items)}>
               <OrdersGrid
                 rows={rows}
                 canManage={can("manageDeliveries")}
@@ -139,11 +125,8 @@ export function OrdersPage() {
                 onDelay={onDelay}
                 onInvoice={onInvoice}
               />
-            )}
-            <LoadMore state={orders} noun="orders" />
-            {deliveries.error && !deliveries.data ? (
-              <ErrorNotice error={deliveries.error} onRetry={deliveries.reload} title="Couldn't load deliveries" className="mt-3" />
-            ) : null}
+              <LoadMore state={orders} noun="orders" />
+            </ResourceView>
           </div>
         </Card>
 
@@ -171,18 +154,9 @@ export function OrdersPage() {
         <Card aria-labelledby="invoices-title">
           <CardHeader id="invoices-title" title="Invoices" description="Every analyzed invoice, with its match result." />
           <div className="p-3">
-            <RefreshErrorNotice
-              error={invoices.error}
-              hasData={Boolean(invoices.data)}
-              updatedAt={invoices.updatedAt}
-              onRetry={invoices.reload}
-              className="mb-3"
-            />
-            {invoices.error && !invoices.data ? (
-              <ErrorNotice error={invoices.error} onRetry={invoices.reload} />
-            ) : (
+            <ResourceView resource={invoices} hasData={Boolean(invoices.data)}>
               <InvoicesGrid invoices={invoices.data?.items} supplierNames={supplierNames} poNumbers={poNumbers} />
-            )}
+            </ResourceView>
           </div>
         </Card>
       </div>

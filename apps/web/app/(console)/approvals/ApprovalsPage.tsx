@@ -9,11 +9,10 @@ import { Button } from "@/components/ui/Button";
 import { ButtonLink } from "@/components/ui/ButtonLink";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { LoadMore } from "@/components/ui/LoadMore";
 import { Notice } from "@/components/ui/Notice";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { RefreshErrorNotice } from "@/components/ui/RefreshErrorNotice";
+import { ResourceView } from "@/components/ui/ResourceView";
 import { SkeletonRows } from "@/components/ui/Skeleton";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import { api } from "@/lib/api";
@@ -116,14 +115,7 @@ export function ApprovalsPage() {
         </Notice>
       ) : null}
 
-      {orders.error && !orders.items ? <ErrorNotice error={orders.error} onRetry={orders.reload} /> : null}
-      <RefreshErrorNotice
-        error={orders.error}
-        hasData={Boolean(orders.items)}
-        updatedAt={orders.updatedAt}
-        onRetry={orders.reload}
-        className="mb-6"
-      />
+      <ResourceView resource={orders} hasData={Boolean(orders.items)} className="mb-6" />
 
       <div className="space-y-6">
         {(
