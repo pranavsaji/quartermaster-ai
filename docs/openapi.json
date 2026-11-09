@@ -1,0 +1,1873 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Quartermaster AI + TrustRail API",
+    "version": "1.0.0",
+    "description": "Autonomous procurement secured by TrustRail. Amounts are integer minor units. Mutations require `X-Requested-With: quartermaster`; routes marked idempotent require an `Idempotency-Key` header. Response shapes are defined in packages/contracts/src/dto.ts.",
+    "license": {
+      "name": "Apache-2.0"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:4000/api/v1"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "session": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "qm_session"
+      }
+    },
+    "parameters": {
+      "IdempotencyKey": {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 128
+        }
+      },
+      "Csrf": {
+        "name": "X-Requested-With",
+        "in": "header",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "const": "quartermaster"
+        }
+      }
+    }
+  },
+  "paths": {
+    "/config/public": {
+      "get": {
+        "summary": "Feature flags and PayPal client id",
+        "tags": [
+          "System"
+        ],
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "PublicConfig"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          }
+        }
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "summary": "Sign in (sets httpOnly session cookie)",
+        "tags": [
+          "Auth"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "{ user: SessionUser }"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "maxLength": 254,
+                    "format": "email",
+                    "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 8,
+                    "maxLength": 200
+                  }
+                },
+                "required": [
+                  "email",
+                  "password"
+                ]
+              },
+              "example": {
+                "email": "owner@demo.quartermaster.dev",
+                "password": "{{password}}"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "summary": "Sign out",
+        "tags": [
+          "Auth"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "204"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          }
+        }
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "summary": "Current user and organization",
+        "tags": [
+          "Auth"
+        ],
+        "parameters": [],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "{ user: SessionUser }"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          }
+        }
+      }
+    },
+    "/inventory": {
+      "get": {
+        "summary": "Current stock, usage and alerts",
+        "tags": [
+          "Inventory"
+        ],
+        "parameters": [],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "{ items: InventoryItemDto[] }"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          }
+        }
+      }
+    },
+    "/inventory/{id}/adjustments": {
+      "post": {
+        "summary": "Record an authorized stock change",
+        "tags": [
+          "Inventory"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-required-role": "MANAGER",
+        "responses": {
+          "200": {
+            "description": "{ item: InventoryItemDto }"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          },
+          "409": {
+            "description": "Idempotency key in progress / conflict"
+          },
+          "422": {
+            "description": "Policy refusal or key reuse"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "quantity_delta": {
+                    "type": "integer",
+                    "minimum": -1000000,
+                    "maximum": 1000000
+                  },
+                  "reason": {
+                    "type": "string",
+                    "enum": [
+                      "COUNT_CORRECTION",
+                      "WASTE",
+                      "CONSUMPTION",
+                      "MANUAL_RECEIPT"
+                    ]
+                  },
+                  "note": {
+                    "type": "string",
+                    "maxLength": 500
+                  }
+                },
+                "required": [
+                  "quantity_delta",
+                  "reason"
+                ]
+              },
+              "example": {
+                "quantity_delta": -20,
+                "reason": "WASTE",
+                "note": "Damaged sleeve"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/inventory/forecast": {
+      "post": {
+        "summary": "Calculate reorder recommendations",
+        "tags": [
+          "Inventory"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-required-role": "MANAGER",
+        "responses": {
+          "200": {
+            "description": "ForecastRunDto"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "inventory_item_ids": {
+                    "maxItems": 100,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                    }
+                  },
+                  "demand_multiplier": {
+                    "default": 1,
+                    "type": "number",
+                    "minimum": 0.25,
+                    "maximum": 4
+                  },
+                  "horizon_days": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 30
+                  }
+                }
+              },
+              "example": {
+                "demand_multiplier": 1.25
+              }
+            }
+          }
+        }
+      }
+    },
+    "/suppliers": {
+      "get": {
+        "summary": "Sandbox demo suppliers with mandate approval",
+        "tags": [
+          "Suppliers"
+        ],
+        "parameters": [],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "{ items: SupplierDto[] }"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          }
+        }
+      }
+    },
+    "/procurement/requests": {
+      "get": {
+        "summary": "List procurement requests",
+        "tags": [
+          "Procurement"
+        ],
+        "parameters": [],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Page<ProcurementRequestSummaryDto>"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          }
+        }
+      },
+      "post": {
+        "summary": "Submit a natural-language request",
+        "tags": [
+          "Procurement"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Csrf"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-required-role": "MANAGER",
+        "responses": {
+          "200": {
+            "description": "ProcurementRequestDto"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          },
+          "409": {
+            "description": "Idempotency key in progress / conflict"
+          },
+          "422": {
+            "description": "Policy refusal or key reuse"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "instruction": {
+                    "type": "string",
+                    "minLength": 3,
+                    "maxLength": 2000
+                  },
+                  "currency": {
+                    "default": "USD",
+                    "type": "string",
+                    "enum": [
+                      "USD"
+                    ]
+                  },
+                  "budget_limit_minor": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "required_by": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  },
+                  "allow_alternatives": {
+                    "default": true,
+                    "type": "boolean"
+                  },
+                  "demand_multiplier": {
+                    "type": "number",
+                    "minimum": 0.25,
+                    "maximum": 4
+                  }
+                },
+                "required": [
+                  "instruction"
+                ]
+              },
+              "example": {
+                "instruction": "We're expecting a busy weekend. Restock takeaway containers and cooking oil without exceeding $300.",
+                "currency": "USD",
+                "allow_alternatives": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/procurement/requests/{id}": {
+      "get": {
+        "summary": "Request with forecast, market evidence, candidates, proposals and TrustRail decisions",
+        "tags": [
+          "Procurement"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "ProcurementRequestDto"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          }
+        }
+      }
+    },
+    "/procurement/requests/{id}/research": {
+      "post": {
+        "summary": "Run forecasting, Channel3 research, comparison, planning and TrustRail evaluation",
+        "tags": [
+          "Procurement"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-required-role": "MANAGER",
+        "responses": {
+          "200": {
+            "description": "ProcurementRequestDto"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          }
+        }
+      }
+    },
+    "/procurement/requests/{id}/evaluate": {
+      "post": {
+        "summary": "Re-run TrustRail on open proposals",
+        "tags": [
+          "Procurement"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-required-role": "MANAGER",
+        "responses": {
+          "200": {
+            "description": "ProcurementRequestDto"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          }
+        }
+      }
+    },
+    "/procurement/requests/{id}/approve": {
+      "post": {
+        "summary": "Approve an exact cart, sign an Intent Certificate and reserve budget",
+        "tags": [
+          "Procurement"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-required-role": "OWNER",
+        "responses": {
+          "200": {
+            "description": "{ purchase_order: PurchaseOrderDto, certificate: IntentCertificateDto }"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          },
+          "409": {
+            "description": "Idempotency key in progress / conflict"
+          },
+          "422": {
+            "description": "Policy refusal or key reuse"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "purchase_order_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "cart_hash": {
+                    "type": "string",
+                    "pattern": "^sha256:[a-f0-9]{64}$"
+                  },
+                  "acknowledged_review_codes": {
+                    "default": [],
+                    "maxItems": 32,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "maxLength": 64
+                    }
+                  },
+                  "note": {
+                    "type": "string",
+                    "maxLength": 500
+                  }
+                },
+                "required": [
+                  "purchase_order_id",
+                  "cart_hash"
+                ]
+              },
+              "example": {
+                "purchase_order_id": "{{purchase_order_id}}",
+                "cart_hash": "{{cart_hash}}",
+                "acknowledged_review_codes": [
+                  "MARKET_REFERENCE_UNAVAILABLE"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/procurement/requests/{id}/reject": {
+      "post": {
+        "summary": "Reject open proposals",
+        "tags": [
+          "Procurement"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-required-role": "OWNER",
+        "responses": {
+          "200": {
+            "description": "ProcurementRequestDto"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500
+                  }
+                },
+                "required": [
+                  "reason"
+                ]
+              },
+              "example": {
+                "reason": "Not needed this week"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mandates/current": {
+      "get": {
+        "summary": "Active Spend Mandate and weekly budget",
+        "tags": [
+          "TrustRail"
+        ],
+        "parameters": [],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "{ mandate: SpendMandateDto, budget: BudgetDto }"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          }
+        }
+      },
+      "put": {
+        "summary": "Publish a new mandate version (revokes approvals if tightened)",
+        "tags": [
+          "TrustRail"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Csrf"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-required-role": "OWNER",
+        "responses": {
+          "200": {
+            "description": "{ mandate, budget, revoked_certificates }"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          },
+          "409": {
+            "description": "Idempotency key in progress / conflict"
+          },
+          "422": {
+            "description": "Policy refusal or key reuse"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "currency": {
+                    "type": "string",
+                    "enum": [
+                      "USD"
+                    ]
+                  },
+                  "weekly_budget_minor": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100000000
+                  },
+                  "per_order_limit_minor": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100000000
+                  },
+                  "auto_approval_limit_minor": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100000000
+                  },
+                  "human_approval_required": {
+                    "type": "boolean",
+                    "const": true
+                  },
+                  "approved_supplier_ids": {
+                    "maxItems": 200,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                    }
+                  },
+                  "allowed_categories": {
+                    "minItems": 1,
+                    "maxItems": 8,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "food_packaging",
+                        "cleaning_supplies",
+                        "cooking_ingredients",
+                        "beverages",
+                        "kitchen_equipment",
+                        "alcohol",
+                        "gift_cards",
+                        "services"
+                      ]
+                    }
+                  },
+                  "max_market_price_premium_pct": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 500
+                  },
+                  "market_price_action": {
+                    "type": "string",
+                    "enum": [
+                      "REVIEW",
+                      "BLOCK"
+                    ]
+                  },
+                  "duplicate_window_hours": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 720
+                  },
+                  "duplicate_action": {
+                    "type": "string",
+                    "enum": [
+                      "REVIEW",
+                      "BLOCK"
+                    ]
+                  },
+                  "subscriptions_allowed": {
+                    "type": "boolean"
+                  },
+                  "certificate_ttl_minutes": {
+                    "type": "integer",
+                    "minimum": 5,
+                    "maximum": 60
+                  },
+                  "max_quantity_multiple_of_need": {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 10
+                  },
+                  "expected_version": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "currency",
+                  "weekly_budget_minor",
+                  "per_order_limit_minor",
+                  "auto_approval_limit_minor",
+                  "human_approval_required",
+                  "approved_supplier_ids",
+                  "allowed_categories",
+                  "max_market_price_premium_pct",
+                  "market_price_action",
+                  "duplicate_window_hours",
+                  "duplicate_action",
+                  "subscriptions_allowed",
+                  "certificate_ttl_minutes",
+                  "max_quantity_multiple_of_need",
+                  "expected_version"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/intents/{id}/verify": {
+      "get": {
+        "summary": "Verify an Intent Certificate against the live cart",
+        "tags": [
+          "TrustRail"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "CertificateVerificationDto"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          }
+        }
+      }
+    },
+    "/intents/{id}/paypal-order": {
+      "post": {
+        "summary": "Create (or return) the PayPal sandbox order for an intent",
+        "tags": [
+          "Payments"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-required-role": "OWNER",
+        "responses": {
+          "200": {
+            "description": "{ payment: PaymentDto, paypal_order_id }"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          },
+          "409": {
+            "description": "Idempotency key in progress / conflict"
+          },
+          "422": {
+            "description": "Policy refusal or key reuse"
+          }
+        }
+      }
+    },
+    "/payments/{id}/capture": {
+      "post": {
+        "summary": "Guarded capture of an approved PayPal order",
+        "tags": [
+          "Payments"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-required-role": "OWNER",
+        "responses": {
+          "200": {
+            "description": "{ payment: PaymentDto, purchase_order: PurchaseOrderDto }"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          },
+          "409": {
+            "description": "Idempotency key in progress / conflict"
+          },
+          "422": {
+            "description": "Policy refusal or key reuse"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "paypal_order_id": {
+                    "type": "string",
+                    "minLength": 5,
+                    "maxLength": 64,
+                    "pattern": "^[A-Z0-9-]+$"
+                  }
+                },
+                "required": [
+                  "paypal_order_id"
+                ]
+              },
+              "example": {
+                "paypal_order_id": "{{paypal_order_id}}"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/payments/{id}": {
+      "get": {
+        "summary": "Verified payment state",
+        "tags": [
+          "Payments"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "PaymentDto"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          }
+        }
+      }
+    },
+    "/payments/{id}/refund": {
+      "post": {
+        "summary": "Owner-authorized refund",
+        "tags": [
+          "Payments"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-required-role": "OWNER",
+        "responses": {
+          "200": {
+            "description": "{ payment: PaymentDto }"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          },
+          "409": {
+            "description": "Idempotency key in progress / conflict"
+          },
+          "422": {
+            "description": "Policy refusal or key reuse"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "amount_minor": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 255
+                  }
+                },
+                "required": [
+                  "reason"
+                ]
+              },
+              "example": {
+                "reason": "Damaged on arrival"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/webhooks/paypal": {
+      "post": {
+        "summary": "PayPal webhook receiver (signature-verified)",
+        "tags": [
+          "Payments"
+        ],
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "{ received: true, outcome }"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          }
+        }
+      }
+    },
+    "/purchase-orders": {
+      "get": {
+        "summary": "Order history",
+        "tags": [
+          "Orders"
+        ],
+        "parameters": [],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Page<PurchaseOrderDto>"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          }
+        }
+      }
+    },
+    "/purchase-orders/{id}": {
+      "get": {
+        "summary": "One purchase order",
+        "tags": [
+          "Orders"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "PurchaseOrderDto"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          }
+        }
+      }
+    },
+    "/deliveries": {
+      "get": {
+        "summary": "Synthetic deliveries",
+        "tags": [
+          "Orders"
+        ],
+        "parameters": [],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "{ items: DeliveryDto[] }"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          }
+        }
+      }
+    },
+    "/deliveries/{id}/receive": {
+      "post": {
+        "summary": "Confirm goods receipt (updates inventory)",
+        "tags": [
+          "Orders"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-required-role": "MANAGER",
+        "responses": {
+          "200": {
+            "description": "{ delivery: DeliveryDto }"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          },
+          "409": {
+            "description": "Idempotency key in progress / conflict"
+          },
+          "422": {
+            "description": "Policy refusal or key reuse"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "lines": {
+                    "minItems": 1,
+                    "maxItems": 200,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "purchase_order_item_id": {
+                          "type": "string",
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                        },
+                        "quantity_received": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 1000000
+                        }
+                      },
+                      "required": [
+                        "purchase_order_item_id",
+                        "quantity_received"
+                      ]
+                    }
+                  },
+                  "note": {
+                    "type": "string",
+                    "maxLength": 500
+                  }
+                },
+                "required": [
+                  "lines"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/deliveries/{id}/delay": {
+      "post": {
+        "summary": "Record a supplier delay",
+        "tags": [
+          "Orders"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-required-role": "MANAGER",
+        "responses": {
+          "200": {
+            "description": "{ delivery: DeliveryDto }"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "new_expected_date": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  },
+                  "reason": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 255
+                  }
+                },
+                "required": [
+                  "new_expected_date",
+                  "reason"
+                ]
+              },
+              "example": {
+                "new_expected_date": "2026-11-15",
+                "reason": "Carrier delay"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/invoices": {
+      "get": {
+        "summary": "Recorded invoices",
+        "tags": [
+          "Orders"
+        ],
+        "parameters": [],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "{ items: InvoiceDto[] }"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          }
+        }
+      }
+    },
+    "/invoices/analyze": {
+      "post": {
+        "summary": "Three-way match and duplicate detection",
+        "tags": [
+          "Orders"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Csrf"
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-required-role": "MANAGER",
+        "responses": {
+          "200": {
+            "description": "InvoiceDto"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          },
+          "409": {
+            "description": "Idempotency key in progress / conflict"
+          },
+          "422": {
+            "description": "Policy refusal or key reuse"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "supplier_id": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  },
+                  "purchase_order_id": {
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "invoice_number": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  },
+                  "invoice_date": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  },
+                  "currency": {
+                    "type": "string",
+                    "enum": [
+                      "USD"
+                    ]
+                  },
+                  "lines": {
+                    "minItems": 1,
+                    "maxItems": 200,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "sku": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 64
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "description": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 500
+                        },
+                        "quantity": {
+                          "type": "integer",
+                          "exclusiveMinimum": 0,
+                          "maximum": 1000000
+                        },
+                        "unit_price_minor": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "line_total_minor": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": [
+                        "description",
+                        "quantity",
+                        "unit_price_minor",
+                        "line_total_minor"
+                      ]
+                    }
+                  },
+                  "total_minor": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "notes": {
+                    "type": "string",
+                    "maxLength": 5000
+                  }
+                },
+                "required": [
+                  "supplier_id",
+                  "invoice_number",
+                  "invoice_date",
+                  "currency",
+                  "lines",
+                  "total_minor"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/security/events": {
+      "get": {
+        "summary": "TrustRail findings and evidence",
+        "tags": [
+          "Security"
+        ],
+        "parameters": [],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Page<SecurityFindingDto>"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          }
+        }
+      }
+    },
+    "/security/decisions": {
+      "get": {
+        "summary": "Policy decisions",
+        "tags": [
+          "Security"
+        ],
+        "parameters": [],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Page<PolicyDecisionDto>"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          }
+        }
+      }
+    },
+    "/security/audit": {
+      "get": {
+        "summary": "Hash-chained audit log",
+        "tags": [
+          "Security"
+        ],
+        "parameters": [],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Page<AuditEventDto>"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          }
+        }
+      }
+    },
+    "/security/audit/verify": {
+      "get": {
+        "summary": "Verify the audit hash chain",
+        "tags": [
+          "Security"
+        ],
+        "parameters": [],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "AuditChainVerificationDto"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          }
+        }
+      }
+    },
+    "/analytics/summary": {
+      "get": {
+        "summary": "Business and security outcomes",
+        "tags": [
+          "Analytics"
+        ],
+        "parameters": [],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "AnalyticsSummaryDto"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          }
+        }
+      }
+    }
+  }
+}
