@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { Database } from "./client";
 import { hashPassword } from "./passwords";
 import * as s from "./schema";
@@ -52,12 +52,15 @@ export interface SeedResult {
 export async function seedDemo(db: Database, options: SeedOptions): Promise<SeedResult> {
   const now = options.now ?? new Date();
   const existing = await db.select().from(s.organizations).where(eq(s.organizations.name, DEMO_ORG_NAME));
-  if (existing.length > 0) {
-    if (!options.reset) return { organizationId: existing[0]!.id, created: false };
-    await db.delete(s.organizations).where(eq(s.organizations.id, existing[0]!.id));
-  }
+  if (existing.length > 0 && !options.reset) return { organizationId: existing[0]!.id, created: false };
 
+  // Reset and re-seed atomically: a failure leaves the previous demo organisation intact.
   return db.transaction(async (tx) => {
+    if (existing.length > 0) {
+      // Deleting the organisation cascades to its audit log, which is otherwise append-only.
+      await tx.execute(sql`select set_config('qm.allow_audit_purge', 'on', true)`);
+      await tx.delete(s.organizations).where(eq(s.organizations.id, existing[0]!.id));
+    }
     const [org] = await tx.insert(s.organizations).values({ name: DEMO_ORG_NAME, timezone: "America/Los_Angeles", currency: "USD" }).returning();
     const orgId = org!.id;
 
