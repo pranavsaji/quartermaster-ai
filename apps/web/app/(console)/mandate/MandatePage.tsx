@@ -1,5 +1,6 @@
 "use client";
 
+import type { MandateUpdateResponse } from "@qm/contracts";
 import { useState } from "react";
 import { MandateForm } from "@/components/mandate/MandateForm";
 import { useSession } from "@/components/session/SessionProvider";
@@ -11,7 +12,7 @@ import { Notice } from "@/components/ui/Notice";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { RefreshErrorNotice } from "@/components/ui/RefreshErrorNotice";
 import { SkeletonCard } from "@/components/ui/Skeleton";
-import { api, type MandateUpdateResponse } from "@/lib/api";
+import { api } from "@/lib/api";
 import { date, dateTime } from "@/lib/format";
 import { useResource } from "@/lib/hooks";
 

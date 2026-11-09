@@ -8,21 +8,27 @@
 import type {
   AnalyticsSummaryDto,
   AnalyzeInvoiceRequest,
+  ApprovalResponse,
   ApproveRequest,
   AuditChainVerificationDto,
   AuditEventDto,
-  BudgetDto,
+  CaptureResponse,
   CertificateVerificationDto,
   CreateProcurementRequest,
   DelayDeliveryRequest,
   DeliveryDto,
+  DeliveryMutationResponse,
   ForecastRunDto,
-  IntentCertificateDto,
   InventoryAdjustmentRequest,
+  InventoryAdjustmentResponse,
   InventoryItemDto,
   InvoiceDto,
+  ItemsResponse,
+  MandateResponse,
+  MandateUpdateResponse,
   Page,
   PaymentDto,
+  PayPalOrderResponse,
   PolicyDecisionDto,
   ProcurementRequestDto,
   ProcurementRequestSummaryDto,
@@ -30,10 +36,10 @@ import type {
   PurchaseOrderDto,
   ReceiveDeliveryRequest,
   RefundRequest,
+  RefundResponse,
   RejectRequest,
   SecurityFindingDto,
-  SessionUser,
-  SpendMandateDto,
+  SessionResponse,
   SpendMandateInput,
   SupplierDto,
 } from "@qm/contracts";
@@ -58,33 +64,6 @@ export interface ForecastInput {
   horizon_days?: number;
 }
 
-export interface MandateResponse {
-  mandate: SpendMandateDto;
-  budget: BudgetDto;
-}
-
-export interface MandateUpdateResponse extends MandateResponse {
-  revoked_certificates: number;
-}
-
-export interface ApprovalResponse {
-  purchase_order: PurchaseOrderDto;
-  certificate: IntentCertificateDto;
-}
-
-export interface PayPalOrderResponse {
-  payment: PaymentDto;
-  paypal_order_id: string;
-}
-
-export interface CaptureResponse {
-  payment: PaymentDto;
-  purchase_order: PurchaseOrderDto;
-}
-
-/** The receive/delay endpoints return the updated delivery. Tolerate a wrapped shape too. */
-export type DeliveryMutationResponse = DeliveryDto | { delivery: DeliveryDto };
-
 const get = <T>(path: string, options?: RequestOptions) => request<T>("GET", path, options);
 const post = <T>(path: string, body?: unknown, options?: RequestOptions) =>
   request<T>("POST", path, { ...options, body: body ?? {} });
@@ -108,20 +87,20 @@ export const api = {
 
   auth: {
     login: (body: { email: string; password: string }) =>
-      post<{ user: SessionUser }>("/auth/login", body, { redirectOnUnauthorized: false }),
+      post<SessionResponse>("/auth/login", body, { redirectOnUnauthorized: false }),
     logout: () => post<unknown>("/auth/logout", {}, { redirectOnUnauthorized: false }),
-    me: (o?: Signal & { redirectOnUnauthorized?: boolean }) => get<{ user: SessionUser }>("/auth/me", o),
+    me: (o?: Signal & { redirectOnUnauthorized?: boolean }) => get<SessionResponse>("/auth/me", o),
   },
 
   inventory: {
-    list: (o?: Signal) => get<{ items: InventoryItemDto[] }>("/inventory", o),
+    list: (o?: Signal) => get<ItemsResponse<InventoryItemDto>>("/inventory", o),
     adjust: (itemId: string, body: InventoryAdjustmentRequest) =>
-      idempotent<{ item: InventoryItemDto }>("POST", `/inventory/${id(itemId)}/adjustments`, body),
+      idempotent<InventoryAdjustmentResponse>("POST", `/inventory/${id(itemId)}/adjustments`, body),
     forecast: (body: ForecastInput) => post<ForecastRunDto>("/inventory/forecast", body),
   },
 
   suppliers: {
-    list: (o?: Signal) => get<{ items: SupplierDto[] }>("/suppliers", o),
+    list: (o?: Signal) => get<ItemsResponse<SupplierDto>>("/suppliers", o),
   },
 
   procurement: {
@@ -154,7 +133,7 @@ export const api = {
     capture: (paymentId: string, body: { paypal_order_id: string }) =>
       idempotent<CaptureResponse>("POST", `/payments/${id(paymentId)}/capture`, body),
     refund: (paymentId: string, body: RefundRequest) =>
-      idempotent<{ payment: PaymentDto }>("POST", `/payments/${id(paymentId)}/refund`, body),
+      idempotent<RefundResponse>("POST", `/payments/${id(paymentId)}/refund`, body),
   },
 
   purchaseOrders: {
@@ -164,7 +143,7 @@ export const api = {
   },
 
   deliveries: {
-    list: (o?: Signal) => get<{ items: DeliveryDto[] }>("/deliveries", o),
+    list: (o?: Signal) => get<ItemsResponse<DeliveryDto>>("/deliveries", o),
     receive: (deliveryId: string, body: ReceiveDeliveryRequest) =>
       idempotent<DeliveryMutationResponse>("POST", `/deliveries/${id(deliveryId)}/receive`, body),
     delay: (deliveryId: string, body: DelayDeliveryRequest) =>
@@ -172,7 +151,7 @@ export const api = {
   },
 
   invoices: {
-    list: (o?: Signal) => get<{ items: InvoiceDto[] }>("/invoices", o),
+    list: (o?: Signal) => get<ItemsResponse<InvoiceDto>>("/invoices", o),
     analyze: (body: AnalyzeInvoiceRequest) => idempotent<InvoiceDto>("POST", "/invoices/analyze", body),
   },
 
@@ -210,8 +189,4 @@ export async function fetchAllPages<T>(
     cursor = page.next_cursor;
   }
   return items;
-}
-
-export function unwrapDelivery(response: DeliveryMutationResponse): DeliveryDto {
-  return "delivery" in response ? response.delivery : response;
 }

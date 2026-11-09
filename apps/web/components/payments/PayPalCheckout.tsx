@@ -1,6 +1,6 @@
 "use client";
 
-import type { PaymentDto } from "@qm/contracts";
+import type { CaptureResponse, PaymentDto } from "@qm/contracts";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { useSession } from "@/components/session/SessionProvider";
 import { Button } from "@/components/ui/Button";
@@ -8,7 +8,7 @@ import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Notice } from "@/components/ui/Notice";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Spinner } from "@/components/ui/Spinner";
-import { api, type CaptureResponse } from "@/lib/api";
+import { api } from "@/lib/api";
 import { money } from "@/lib/format";
 import { ApiRequestError, describeError } from "@/lib/http";
 import type { PayPalOneTimePaymentSession } from "@/lib/paypal";

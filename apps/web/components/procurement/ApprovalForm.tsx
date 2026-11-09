@@ -1,11 +1,11 @@
 "use client";
 
-import type { PurchaseOrderDto } from "@qm/contracts";
+import type { ApprovalResponse, PurchaseOrderDto } from "@qm/contracts";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Checkbox, Field, Textarea } from "@/components/ui/Field";
-import { api, type ApprovalResponse } from "@/lib/api";
+import { api } from "@/lib/api";
 import { money } from "@/lib/format";
 import { useAction } from "@/lib/hooks";
 import { RejectDialog } from "./RejectDialog";

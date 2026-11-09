@@ -7,7 +7,7 @@ import { Dialog } from "@/components/ui/Dialog";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Field, Input, Textarea } from "@/components/ui/Field";
 import { SourceLabel } from "@/components/ui/SourceLabel";
-import { api, unwrapDelivery } from "@/lib/api";
+import { api } from "@/lib/api";
 import { date, num, todayIso } from "@/lib/format";
 import { useAction } from "@/lib/hooks";
 import { checkNumber, parseNumberInput } from "@/lib/numbers";
@@ -38,7 +38,7 @@ export function ReceiveDialog({
 
   const receive = useAction(async (deliveryId: string, body: ReceiveDeliveryRequest) => {
     const res = await api.deliveries.receive(deliveryId, body);
-    onDone(unwrapDelivery(res));
+    onDone(res.delivery);
     onClose();
   });
 
@@ -154,7 +154,7 @@ export function DelayDialog({
 
   const delay = useAction(async (deliveryId: string, body: DelayDeliveryRequest) => {
     const res = await api.deliveries.delay(deliveryId, body);
-    onDone(unwrapDelivery(res));
+    onDone(res.delivery);
     onClose();
   });
 

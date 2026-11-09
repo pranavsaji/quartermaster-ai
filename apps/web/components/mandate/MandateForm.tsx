@@ -3,6 +3,7 @@
 import {
   PRODUCT_CATEGORIES,
   SpendMandateInput,
+  type MandateUpdateResponse,
   type ProductCategory,
   type SpendMandateDto,
   type SupplierDto,
@@ -14,7 +15,7 @@ import { Card, CardBody, CardFooter, CardHeader } from "@/components/ui/Card";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Checkbox, Field, Input, MoneyInput, Select } from "@/components/ui/Field";
 import { SourceLabel } from "@/components/ui/SourceLabel";
-import { api, type MandateUpdateResponse } from "@/lib/api";
+import { api } from "@/lib/api";
 import { ApiRequestError } from "@/lib/http";
 import { inputToMinor, minorToInput, money } from "@/lib/format";
 import { useAction } from "@/lib/hooks";
