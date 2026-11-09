@@ -97,10 +97,23 @@ export interface VerificationContext {
   allow_consumed?: boolean;
 }
 
+export interface VerificationCheck {
+  code: string;
+  passed: boolean;
+  detail: string;
+  /**
+   * True for a check reported for display only, which does not decide validity. Set when a
+   * caller verifies a CONSUMED certificate with `allow_consumed` (to show it): its expiry and
+   * consumption are facts about a payment that already happened, not reasons to reject it.
+   */
+  informational?: true;
+}
+
 export interface VerificationResult {
   status: CertificateVerificationStatus;
+  /** Invariant: `valid` is true exactly when status is VALID, and then every check without `informational` passed. */
   valid: boolean;
-  checks: { code: string; passed: boolean; detail: string }[];
+  checks: VerificationCheck[];
 }
 
 export function verifyCertificate(cert: SignedCertificate, ctx: VerificationContext): VerificationResult {
@@ -199,14 +212,29 @@ export function verifyCertificate(cert: SignedCertificate, ctx: VerificationCont
   });
   if (notYetValid) fail("PAYLOAD_MISMATCH");
   const expired = !(now < expiresAt);
-  checks.push({ code: "NOT_EXPIRED", passed: !expired, detail: expired ? `Expired at ${p.expires_at}.` : `Valid until ${p.expires_at}.` });
+  // A consumed certificate verified for display (allow_consumed) authorised a payment that already
+  // happened; whether it has since expired is reported, but does not decide validity.
+  const displayingConsumed = ctx.stored_status === "CONSUMED" && ctx.allow_consumed === true;
+  checks.push({
+    code: "NOT_EXPIRED",
+    passed: !expired,
+    detail: expired ? `Expired at ${p.expires_at}.` : `Valid until ${p.expires_at}.`,
+    ...(displayingConsumed ? { informational: true as const } : {}),
+  });
 
   if (ctx.stored_status === "REVOKED") {
     checks.push({ code: "NOT_REVOKED", passed: false, detail: `Revoked: ${ctx.revoked_reason ?? "no reason recorded"}.` });
     fail(ctx.revoked_reason?.startsWith("MANDATE") ? "MANDATE_CHANGED" : "REVOKED");
   } else if (ctx.stored_status === "CONSUMED") {
-    checks.push({ code: "NOT_CONSUMED", passed: !!ctx.allow_consumed, detail: "Certificate has already authorised a payment." });
-    if (!ctx.allow_consumed) fail("CONSUMED");
+    checks.push({
+      code: "NOT_CONSUMED",
+      passed: displayingConsumed,
+      detail: displayingConsumed
+        ? "Certificate has already authorised a payment (accepted for display)."
+        : "Certificate has already authorised a payment.",
+      ...(displayingConsumed ? { informational: true as const } : {}),
+    });
+    if (!displayingConsumed) fail("CONSUMED");
   } else if (ctx.stored_status === "EXPIRED") {
     checks.push({ code: "NOT_EXPIRED_STORED", passed: false, detail: "Certificate was marked expired." });
     fail("EXPIRED");
@@ -218,6 +246,9 @@ export function verifyCertificate(cert: SignedCertificate, ctx: VerificationCont
     fail("REVOKED");
   }
   if (expired && ctx.stored_status !== "CONSUMED") fail("EXPIRED");
+  // Defence in depth for the invariant: a failed check that decides validity can never coexist
+  // with VALID, whatever a future edit above forgets to do.
+  if (checks.some((c) => !c.passed && !c.informational)) fail("PAYLOAD_MISMATCH");
 
   return { status, valid: status === "VALID", checks };
 }
