@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type DependencyList } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type DependencyList } from "react";
 import { isAbortError } from "./http";
 
 export interface ResourceState<T> {
@@ -171,8 +171,13 @@ export function usePagedResource<T>(
       .finally(() => setLoadingMore(false));
   }, [cursor, loadingMore]);
 
+  const items = useMemo(
+    () => (first.data ? [...first.data.items, ...(extra?.items ?? [])] : undefined),
+    [first.data, extra],
+  );
+
   return {
-    items: first.data ? [...first.data.items, ...(extra?.items ?? [])] : undefined,
+    items,
     error: first.error ?? moreError,
     hasMore: Boolean(cursor),
     loadingMore,
