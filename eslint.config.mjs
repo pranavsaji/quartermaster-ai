@@ -97,6 +97,8 @@ export default tseslint.config(
       "no-restricted-syntax": [
         "error",
         { selector: "NewExpression[callee.name='Date'][arguments.length=0]", message: "Pass `now` in; pure packages have no clock." },
+        // `Date()` without `new` returns the current time as a string, whatever its arguments.
+        { selector: "CallExpression[callee.name='Date']", message: "Pass `now` in; pure packages have no clock." },
       ],
     },
   },
