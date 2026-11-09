@@ -1,17 +1,29 @@
-import { and, eq, sql } from "drizzle-orm";
-import { decimalStringToMinor } from "@qm/contracts";
-import { paymentAttempts, paypalWebhookEvents, refunds } from "@qm/database";
+import { eq } from "drizzle-orm";
+import { z } from "zod";
+import { SETTLED_PAYMENT_STATUSES, decimalStringToMinor, type RefundStatus } from "@qm/contracts";
+import { paymentAttempts, paypalWebhookEvents } from "@qm/database";
 import { PayPalNotConfiguredError, type WebhookEvent, type WebhookHeaders } from "@qm/payments";
-import { canTransition } from "@qm/trustrail";
-import type { PaymentStatus } from "@qm/contracts";
 import type { AppContext } from "../context";
 import { AppError, badRequest, unavailable } from "../errors";
 import { appendAudit } from "./audit";
-import { reduceSpend } from "./budget";
 import { recordFinding } from "./findings";
-import { reconcilePayment } from "./payments";
+import { reconcilePayment, recordReportedRefund } from "./payments";
 
 export type WebhookOutcome = "PROCESSED" | "DUPLICATE" | "IGNORED";
+
+/** Events that move money back to the buyer; handled against the capture they reference. */
+const REFUND_EVENTS = new Set(["PAYMENT.CAPTURE.REFUNDED", "PAYMENT.CAPTURE.REVERSED"]);
+
+function refundStatusOf(status: unknown): RefundStatus {
+  return status === "PENDING" || status === "FAILED" || status === "CANCELLED" ? status : "COMPLETED";
+}
+
+/** Structural validation of a webhook body before anything is read from it. */
+const WebhookEventShape = z.object({
+  id: z.string().min(1).max(128),
+  event_type: z.string().min(1).max(128),
+  resource: z.record(z.string(), z.unknown()),
+});
 
 /** Rate-limits findings for invalid signatures so a flood cannot fill the security log. */
 let lastInvalidFindingAt = 0;
@@ -34,15 +46,16 @@ function upLinkCaptureId(resource: Record<string, unknown>): string | null {
  */
 export async function handlePayPalWebhook(ctx: AppContext, headers: WebhookHeaders, rawBody: Buffer): Promise<WebhookOutcome> {
   if (!ctx.paypal.webhookConfigured) throw unavailable("WEBHOOKS_NOT_CONFIGURED", "PayPal webhooks are not configured.");
-  let event: WebhookEvent;
+  let parsed: unknown;
   try {
-    event = JSON.parse(rawBody.toString("utf8")) as WebhookEvent;
+    parsed = JSON.parse(rawBody.toString("utf8"));
   } catch {
     throw badRequest("Malformed webhook body");
   }
-  if (!event || typeof event.id !== "string" || typeof event.event_type !== "string" || typeof event.resource !== "object") {
-    throw badRequest("Malformed webhook event");
-  }
+  const shape = WebhookEventShape.safeParse(parsed);
+  if (!shape.success) throw badRequest("Malformed webhook event");
+  // Verification needs the event exactly as PayPal sent it, so keep the parsed object.
+  const event = parsed as WebhookEvent & z.infer<typeof WebhookEventShape>;
 
   let verified = false;
   try {
@@ -58,8 +71,8 @@ export async function handlePayPalWebhook(ctx: AppContext, headers: WebhookHeade
     // pre-empt the genuine event). Record a rate-limited finding instead.
     const resourceId = typeof event.resource.id === "string" ? event.resource.id : null;
     const orderId = relatedOrderId(event.resource) ?? resourceId;
-    if (Date.now() - lastInvalidFindingAt > 60_000 && orderId) {
-      lastInvalidFindingAt = Date.now();
+    if (ctx.now().getTime() - lastInvalidFindingAt > 60_000 && orderId) {
+      lastInvalidFindingAt = ctx.now().getTime();
       const [p] = await ctx.db.select().from(paymentAttempts).where(eq(paymentAttempts.paypalOrderId, orderId));
       if (p) {
         await recordFinding(ctx.db, {
@@ -93,8 +106,11 @@ export async function handlePayPalWebhook(ctx: AppContext, headers: WebhookHeade
   let resultText = "ignored";
   let orgId: string | null = null;
   try {
-    const orderId =
-      event.event_type.startsWith("CHECKOUT.ORDER.") ? resourceId : event.event_type.startsWith("PAYMENT.CAPTURE.") && event.event_type !== "PAYMENT.CAPTURE.REFUNDED" ? relatedOrderId(event.resource) : null;
+    const orderId = event.event_type.startsWith("CHECKOUT.ORDER.")
+      ? resourceId
+      : event.event_type.startsWith("PAYMENT.CAPTURE.") && !REFUND_EVENTS.has(event.event_type)
+        ? relatedOrderId(event.resource)
+        : null;
 
     if (orderId) {
       const [p] = await ctx.db.select().from(paymentAttempts).where(eq(paymentAttempts.paypalOrderId, orderId));
@@ -107,41 +123,33 @@ export async function handlePayPalWebhook(ctx: AppContext, headers: WebhookHeade
       } else {
         resultText = "no matching payment";
       }
-    } else if (event.event_type === "PAYMENT.CAPTURE.REFUNDED") {
+    } else if (REFUND_EVENTS.has(event.event_type)) {
       const captureId = upLinkCaptureId(event.resource);
       const [p] = captureId ? await ctx.db.select().from(paymentAttempts).where(eq(paymentAttempts.paypalCaptureId, captureId)) : [];
-      if (p) {
+      const amount = event.resource.amount as { value?: unknown; currency_code?: unknown } | undefined;
+      if (p && resourceId && typeof amount?.value === "string" && typeof amount.currency_code === "string") {
         orgId = p.organizationId;
-        const amount = event.resource.amount as { value?: string; currency_code?: string } | undefined;
-        const refundMinor = amount?.value && amount.currency_code ? decimalStringToMinor(amount.value, amount.currency_code) : 0;
         // A refund can be reported before our capture finalisation has been applied. Reconcile
-        // first; if the payment is still not COMPLETED, fail so PayPal redelivers later.
-        if (!["COMPLETED", "PARTIALLY_REFUNDED", "REFUNDED"].includes(p.status)) {
+        // first; if the payment is still not settled, fail so PayPal redelivers later.
+        if (!(SETTLED_PAYMENT_STATUSES as readonly string[]).includes(p.status)) {
           const status = await reconcilePayment(ctx, p.id);
-          if (!["COMPLETED", "PARTIALLY_REFUNDED", "REFUNDED"].includes(status)) {
+          if (!(SETTLED_PAYMENT_STATUSES as readonly string[]).includes(status)) {
             throw new AppError(503, "REFUND_BEFORE_CAPTURE", "Capture not yet recorded; retry later.");
           }
         }
-        await ctx.db.transaction(async (tx) => {
-          // Lock the payment first so the API refund path and this handler serialise.
-          const [locked] = await tx.select().from(paymentAttempts).where(eq(paymentAttempts.id, p.id)).for("update");
-          const ins = await tx
-            .insert(refunds)
-            .values({ organizationId: p.organizationId, paymentAttemptId: p.id, paypalRefundId: resourceId, amountMinor: refundMinor, status: String(event.resource.status ?? "COMPLETED"), reason: "Reported by PayPal webhook" })
-            .onConflictDoNothing({ target: refunds.paypalRefundId })
-            .returning();
-          if (ins.length === 0) return; // already recorded via the API path
-          const refunded = locked!.refundedAmountMinor + refundMinor;
-          const next: PaymentStatus = refunded >= (locked!.capturedAmountMinor ?? 0) ? "REFUNDED" : "PARTIALLY_REFUNDED";
-          await tx
-            .update(paymentAttempts)
-            .set({ refundedAmountMinor: sql`${paymentAttempts.refundedAmountMinor} + ${refundMinor}`, status: canTransition(locked!.status as PaymentStatus, next) ? next : locked!.status, updatedAt: ctx.now() })
-            .where(and(eq(paymentAttempts.id, p.id)));
-          await reduceSpend(tx, p.intentId, refundMinor, ctx.now());
-          await appendAudit(tx, { organizationId: p.organizationId, action: "payment.refund_reported", actorType: "PAYPAL", entityType: "payment_attempt", entityId: p.id, data: { event_id: event.id, amount_minor: refundMinor } });
+        const reversal = event.event_type === "PAYMENT.CAPTURE.REVERSED";
+        const applied = await recordReportedRefund(ctx, p.id, {
+          paypalRefundId: resourceId,
+          amountMinor: decimalStringToMinor(amount.value, amount.currency_code),
+          // A reversal moves money back immediately; a refund event carries the refund's status.
+          status: reversal ? "COMPLETED" : refundStatusOf(event.resource.status),
+          kind: reversal ? "REVERSAL" : "REFUND",
+          eventId: event.id,
         });
         outcome = "PROCESSED";
-        resultText = "refund recorded";
+        resultText = `${reversal ? "reversal" : "refund"} ${applied.toLowerCase()}`;
+      } else {
+        resultText = p ? "refund event without amount" : "no matching payment";
       }
     }
   } catch (err) {
