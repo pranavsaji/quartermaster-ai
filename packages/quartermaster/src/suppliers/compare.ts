@@ -64,15 +64,43 @@ export function compareOffers(input: CompareInput): CandidateEvaluation[] {
     };
   });
 
-  const ranked = evaluations
-    .filter((e) => e.eligible)
-    .sort(
-      (a, b) =>
-        a.delivered_unit_cost_minor - b.delivered_unit_cost_minor ||
-        a.quote.total_minor - b.quote.total_minor ||
-        a.supplier.lead_time_days - b.supplier.lead_time_days ||
-        a.offer.sku.localeCompare(b.offer.sku),
-    );
+  const ranked = evaluations.filter((e) => e.eligible).sort(byOfferMerit);
   ranked.forEach((e, i) => (e.rank = i + 1));
-  return evaluations.sort((a, b) => (a.rank ?? 999) - (b.rank ?? 999) || a.delivered_unit_cost_minor - b.delivered_unit_cost_minor);
+  // Ranked offers first in rank order, then every unranked (ineligible) offer by the same merit
+  // order. No sentinel rank: the order is right for any number of offers.
+  return evaluations.sort((a, b) => {
+    if (a.rank !== null && b.rank !== null) return a.rank - b.rank;
+    if (a.rank !== null) return -1;
+    if (b.rank !== null) return 1;
+    return byOfferMerit(a, b);
+  });
+}
+
+/**
+ * Total order on numbers for sorting: ascending, with equal infinities equal (Infinity −
+ * Infinity is NaN, which a comparator must never return) and NaN after every number.
+ */
+function compareNumbers(a: number, b: number): number {
+  const aNaN = Number.isNaN(a);
+  const bNaN = Number.isNaN(b);
+  if (aNaN || bNaN) return aNaN === bNaN ? 0 : aNaN ? 1 : -1;
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+/** Code-unit string order: unlike `localeCompare`, independent of the runtime's ICU data and locale. */
+const compareCodeUnits = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+
+/**
+ * Cheapest delivered unit cost, then cheapest order, then shortest lead time, then SKU, supplier
+ * and offer id, so the ranking is a deterministic total order whatever the input order.
+ */
+function byOfferMerit(a: CandidateEvaluation, b: CandidateEvaluation): number {
+  return (
+    compareNumbers(a.delivered_unit_cost_minor, b.delivered_unit_cost_minor) ||
+    compareNumbers(a.quote.total_minor, b.quote.total_minor) ||
+    compareNumbers(a.supplier.lead_time_days, b.supplier.lead_time_days) ||
+    compareCodeUnits(a.offer.sku, b.offer.sku) ||
+    compareCodeUnits(a.supplier.id, b.supplier.id) ||
+    compareCodeUnits(a.offer.id, b.offer.id)
+  );
 }
