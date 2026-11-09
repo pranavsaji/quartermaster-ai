@@ -10,9 +10,17 @@
 | Migrations (pre-deploy)     | `node apps/api/dist/migrate.js`                   | exits 0                                                                 |
 | Demo seed (once)            | `DEMO_USER_PASSWORD=… node apps/api/dist/seed.js` | logs `demo seed`                                                        |
 
-All logs are structured JSON (pino) with `correlation_id`. Every API response carries
-`x-correlation-id`; the same id is stored on audit events, so a support request can be traced from
-HTTP request to audit trail.
+All logs are structured JSON (pino). Every line written while handling a request carries
+`correlation_id`, `organization_id` and `user_id`; every API response carries `x-correlation-id`, and
+the same id is stored on audit events, so a support request can be traced from HTTP request to audit
+trail. Model fallbacks log `openai.fallback` with an error kind (never prompt text).
+
+On SIGTERM the API stops accepting connections, waits up to `SHUTDOWN_GRACE_MS` (60 s) for in-flight
+requests and a running sweep, then closes the database. Uncaught exceptions and unhandled rejections
+are logged as fatal, drained the same way, and exit non-zero so the platform restarts the process.
+
+The sweeper also fails research runs abandoned by a crashed or redeployed process (status `FAILED`,
+"Research was interrupted") and keeps checking recently voided payments for late PayPal captures.
 
 ## First deployment on Render
 
@@ -26,6 +34,11 @@ HTTP request to audit trail.
    `PAYPAL_WEBHOOK_ID`.
 4. Open a shell on the API service and run the seed command once.
 5. Check `GET /readyz` reports `paypal: true` and sign in as the demo owner.
+
+Production refuses to boot when PayPal is configured without `PAYPAL_WEBHOOK_ID` and
+`PAYPAL_MERCHANT_ID`, or with `DATABASE_SSL=disable` (unless `DATABASE_ALLOW_INSECURE_TRANSPORT=true`
+for a private network). Synthetic delivery actions default to off in production. Render deploys only
+after CI passes (`autoDeployTrigger: checksPass`). A Dockerfile builds the same API for other hosts.
 
 Choose a paid Postgres plan: the judging window extends beyond a free database's lifetime.
 
@@ -42,9 +55,17 @@ Choose a paid Postgres plan: the judging window extends beyond a free database's
 `CAPTURE_PENDING`; the next sweep (or the user retrying "Pay") reads the order from PayPal and
 finalises it. Never create a new order for the same intent — the API will refuse to anyway.
 
+**Webhooks answered 400 `WEBHOOK_STALE` / `WEBHOOK_MALFORMED`, 413 or 429.** The guard rejected the
+delivery before contacting PayPal: check the server clock (transmission time must be within ±5
+minutes) and `WEBHOOK_RATE_LIMIT_PER_MINUTE`. PayPal retries rejected deliveries.
+
 **Webhook signature failures in Security Center.** Confirm `PAYPAL_WEBHOOK_ID` matches the webhook
 configured for this environment's app. Repeated failures from unknown sources are rejected and
 rate-limited; no state changes occur.
+
+**Security Center shows "PayPal reversed a captured payment".** A chargeback or reversal moved money
+back to the buyer. The payment's refunded amount and the week's spend were adjusted; follow up with
+the supplier.
 
 **Budget looks wrong.** Reservations are visible in `budget_reservations`. ACTIVE reservations for
 expired certificates are released by the sweeper after it confirms with PayPal that no capture
@@ -60,6 +81,7 @@ certificates (they are short-lived — 30 minutes by default). Public keys of ol
 
 ## Backups and data
 
-Render Postgres provides daily backups on paid plans. `audit_events` is append-only by convention and
-hash-chained; do not edit rows (verification will report the first altered sequence). `.tmp/` and
+Render Postgres provides daily backups on paid plans. `audit_events` is append-only (a trigger refuses
+UPDATE and DELETE) and hash-chained; verification reports the first altered sequence. Deleting an
+organisation requires `select set_config('qm.allow_audit_purge', 'on', true)` in the same transaction. `.tmp/` and
 `.data/` are disposable local state.
