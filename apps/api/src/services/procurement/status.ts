@@ -2,6 +2,17 @@ import { eq } from "drizzle-orm";
 import type { RequestStatus } from "@qm/contracts";
 import { purchaseOrders, purchaseRequests, type DbOrTx } from "@qm/database";
 
+/**
+ * Request statuses under which a proposal may be approved. A request with any PROPOSED order
+ * derives to READY_FOR_REVIEW; any other status (RESEARCHING, FAILED, REJECTED, …) means its
+ * proposals are not the owner's current choice and must not be approved.
+ */
+export const APPROVABLE_REQUEST_STATUSES = ["READY_FOR_REVIEW"] as const satisfies readonly RequestStatus[];
+
+export function isApprovableRequestStatus(status: string): boolean {
+  return (APPROVABLE_REQUEST_STATUSES as readonly string[]).includes(status);
+}
+
 /** Request status is derived from its proposals so it can never drift from them. */
 export function deriveRequestStatus(statuses: string[], fallback: RequestStatus): RequestStatus {
   const live = statuses.filter((s) => s !== "SUPERSEDED");
