@@ -38,8 +38,13 @@ export interface DataGridProps<T extends { id: string }>
   extends Omit<AgGridReactProps<T>, "rowData" | "columnDefs" | "theme" | "getRowId"> {
   rows: T[] | undefined;
   columns: ColDef<T>[];
-  /** Fixed pixel height; omit to grow with content (autoHeight layout). */
+  /**
+   * Maximum pixel height. Grids with few rows grow with their content instead
+   * (autoHeight layout) so short lists don't leave a tall empty box.
+   */
   height?: number;
+  /** Row count up to which the grid sizes to its content. Default 10. */
+  autoHeightRows?: number;
   emptyMessage?: string;
   /** Accessible name for the grid region. */
   ariaLabel: string;
@@ -56,6 +61,7 @@ export function DataGrid<T extends { id: string }>({
   emptyMessage = "Nothing to show yet.",
   ariaLabel,
   defaultColDef,
+  autoHeightRows = 10,
   ...rest
 }: DataGridProps<T>) {
   const getRowId = useCallback((p: GetRowIdParams<T>) => p.data.id, []);
@@ -63,7 +69,7 @@ export function DataGrid<T extends { id: string }>({
     () => ({ sortable: true, resizable: true, suppressMovable: true, minWidth: 90, ...defaultColDef }),
     [defaultColDef],
   );
-  const autoHeight = height === undefined;
+  const autoHeight = height === undefined || (rows?.length ?? 0) <= autoHeightRows;
 
   return (
     <div role="region" aria-label={ariaLabel} style={autoHeight ? undefined : { height }} className="w-full">
