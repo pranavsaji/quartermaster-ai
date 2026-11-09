@@ -1,3 +1,5 @@
+import { isCalendarDate } from "@qm/contracts";
+
 /**
  * Turns a natural-language procurement instruction into a structured intent.
  *
@@ -45,17 +47,8 @@ export const INTENT_JSON_SCHEMA = {
   },
 } as const;
 
-/**
- * True only for a real `YYYY-MM-DD` calendar date. `Date.parse("2026-02-30")` succeeds (it rolls
- * over to March 2), so the components are round-tripped through UTC instead.
- */
-export function isCalendarDate(value: string): boolean {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  if (!m) return false;
-  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
-  const t = new Date(Date.UTC(y, mo - 1, d));
-  return t.getUTCFullYear() === y && t.getUTCMonth() === mo - 1 && t.getUTCDate() === d;
-}
+/** Real-calendar-date check, shared with the request schemas (single implementation in contracts). */
+export { isCalendarDate };
 
 /** Validates and clamps model output. Unknown ids are dropped, never trusted. */
 export function sanitizeIntent(raw: unknown, inventory: InventoryRef[]): InterpretedIntent | null {
