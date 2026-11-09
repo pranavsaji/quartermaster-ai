@@ -2,7 +2,14 @@ import { and, eq } from "drizzle-orm";
 import type { KeyObject } from "node:crypto";
 import type { CertificateVerificationDto, IntentCertificatePayload } from "@qm/contracts";
 import { intentCertificates, signingKeys, type Database, type DbOrTx } from "@qm/database";
-import { computeCartHash, publicKeyFromPem, verifyCertificate, type SignedCertificate, type SigningKey, type VerificationResult } from "@qm/trustrail";
+import {
+  computeCartHash,
+  publicKeyFromPem,
+  verifyCertificate,
+  type SignedCertificate,
+  type SigningKey,
+  type VerificationResult,
+} from "@qm/trustrail";
 import { notFound } from "../errors";
 import { cartFromRows, loadOrder, toCertificateDto } from "./orders";
 
@@ -54,13 +61,21 @@ export async function verifyStoredCertificate(
 }
 
 export async function loadCertificate(db: DbOrTx, organizationId: string, intentId: string, lock = false): Promise<CertificateRow> {
-  const q = db.select().from(intentCertificates).where(and(eq(intentCertificates.id, intentId), eq(intentCertificates.organizationId, organizationId)));
+  const q = db
+    .select()
+    .from(intentCertificates)
+    .where(and(eq(intentCertificates.id, intentId), eq(intentCertificates.organizationId, organizationId)));
   const [row] = lock ? await q.for("update") : await q;
   if (!row) throw notFound("Intent certificate");
   return row;
 }
 
-export async function verificationDto(db: DbOrTx, organizationId: string, intentId: string, now: Date): Promise<CertificateVerificationDto> {
+export async function verificationDto(
+  db: DbOrTx,
+  organizationId: string,
+  intentId: string,
+  now: Date,
+): Promise<CertificateVerificationDto> {
   const cert = await loadCertificate(db, organizationId, intentId);
   const v = await verifyStoredCertificate(db, organizationId, cert, now, { allowConsumed: true });
   return {

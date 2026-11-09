@@ -24,7 +24,9 @@ export function param(req: Request, name: string): string {
 }
 
 /** Wraps an async handler so rejections reach the error middleware. */
-export function asyncHandler(fn: (req: Parameters<RequestHandler>[0], res: Parameters<RequestHandler>[1]) => Promise<unknown>): RequestHandler {
+export function asyncHandler(
+  fn: (req: Parameters<RequestHandler>[0], res: Parameters<RequestHandler>[1]) => Promise<unknown>,
+): RequestHandler {
   return (req, res, next) => {
     fn(req, res).catch(next);
   };
@@ -37,7 +39,9 @@ export function asyncHandler(fn: (req: Parameters<RequestHandler>[0], res: Param
  */
 export function publicServerErrorDetails(details: unknown): Record<string, boolean | number | null> | undefined {
   if (!details || typeof details !== "object" || Array.isArray(details)) return undefined;
-  const safe = Object.entries(details as Record<string, unknown>).filter(([, v]) => v === null || typeof v === "boolean" || (typeof v === "number" && Number.isFinite(v)));
+  const safe = Object.entries(details as Record<string, unknown>).filter(
+    ([, v]) => v === null || typeof v === "boolean" || (typeof v === "number" && Number.isFinite(v)),
+  );
   return safe.length ? (Object.fromEntries(safe) as Record<string, boolean | number | null>) : undefined;
 }
 
@@ -47,12 +51,16 @@ export function errorHandler(log: Logger): ErrorRequestHandler {
     if (err instanceof AppError) {
       if (err.status >= 500) {
         log.error({ err, details: err.details, correlation_id }, err.message);
-        return res.status(err.status).json({ error: { code: err.code, message: err.message, details: publicServerErrorDetails(err.details), correlation_id } });
+        return res
+          .status(err.status)
+          .json({ error: { code: err.code, message: err.message, details: publicServerErrorDetails(err.details), correlation_id } });
       }
       return res.status(err.status).json({ error: { code: err.code, message: err.message, details: err.details, correlation_id } });
     }
     if (err instanceof ZodError) {
-      return res.status(400).json({ error: { code: "BAD_REQUEST", message: "Request validation failed", details: err.issues, correlation_id } });
+      return res
+        .status(400)
+        .json({ error: { code: "BAD_REQUEST", message: "Request validation failed", details: err.issues, correlation_id } });
     }
     if (err && typeof err === "object" && "type" in err && (err as { type: string }).type === "entity.parse.failed") {
       return res.status(400).json({ error: { code: "MALFORMED_JSON", message: "Request body is not valid JSON", correlation_id } });
@@ -62,9 +70,12 @@ export function errorHandler(log: Logger): ErrorRequestHandler {
     }
     // Unique-constraint races surface as conflicts, not 500s.
     // Drizzle wraps driver errors, so the SQLSTATE may be on `cause`.
-    const sqlState = (err as { code?: string; cause?: { code?: string } } | null)?.code ?? (err as { cause?: { code?: string } } | null)?.cause?.code;
+    const sqlState =
+      (err as { code?: string; cause?: { code?: string } } | null)?.code ?? (err as { cause?: { code?: string } } | null)?.cause?.code;
     if (sqlState === "23505") {
-      return res.status(409).json({ error: { code: "CONFLICT", message: "The resource was modified concurrently. Retry the request.", correlation_id } });
+      return res
+        .status(409)
+        .json({ error: { code: "CONFLICT", message: "The resource was modified concurrently. Retry the request.", correlation_id } });
     }
     log.error({ err, correlation_id, path: req.path }, "unhandled error");
     res.status(500).json({ error: { code: "INTERNAL", message: "An unexpected error occurred.", correlation_id } });

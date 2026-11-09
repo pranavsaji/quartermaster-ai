@@ -12,7 +12,17 @@ import { recordFinding } from "../findings";
 import { loadOrder } from "../orders";
 import { evaluateOrder } from "../policy";
 import { finalizeFromOrder, reconcilePayment } from "./settle";
-import { failureMessageFor, isAmbiguousPayPalFailure, loadPayment, patchPayment, paymentResult, paypalFailureCode, requirePayPal, statusOf, transitionPayment } from "./shared";
+import {
+  failureMessageFor,
+  isAmbiguousPayPalFailure,
+  loadPayment,
+  patchPayment,
+  paymentResult,
+  paypalFailureCode,
+  requirePayPal,
+  statusOf,
+  transitionPayment,
+} from "./shared";
 
 /** A capture is treated as in progress (not abandoned) for this long after it was authorised. */
 const CAPTURE_IN_PROGRESS_MS = 60_000;
@@ -62,13 +72,22 @@ export async function capturePayment(ctx: AppContext, actor: Actor, paymentId: s
   try {
     await finalizeFromOrder(ctx, paymentId, captured, "USER", actor.id);
   } catch (err) {
-    ctx.log.error({ err, payment_id: paymentId, paypal_order_id: paypalOrderId }, "PayPal captured the payment but recording it failed; left CAPTURE_PENDING for reconciliation");
+    ctx.log.error(
+      { err, payment_id: paymentId, paypal_order_id: paypalOrderId },
+      "PayPal captured the payment but recording it failed; left CAPTURE_PENDING for reconciliation",
+    );
   }
   return paymentResult(ctx, actor.organizationId, paymentId);
 }
 
 /** Runs TrustRail's capture guard under locks and marks the payment CAPTURE_PENDING. */
-async function authorizeCapture(ctx: AppContext, actor: Actor, paymentId: string, paypalOrderId: string, providerOrder: PayPalOrder): Promise<void> {
+async function authorizeCapture(
+  ctx: AppContext,
+  actor: Actor,
+  paymentId: string,
+  paypalOrderId: string,
+  providerOrder: PayPalOrder,
+): Promise<void> {
   await withDeferredFailures(ctx, () =>
     ctx.db.transaction(async (tx) => {
       const now = ctx.now();
@@ -99,7 +118,13 @@ async function authorizeCapture(ctx: AppContext, actor: Actor, paymentId: string
         verification,
         authenticated_user_id: actor.id,
         authenticated_org_id: actor.organizationId,
-        payment: { id: payment.id, status: statusOf(payment), paypal_order_id: payment.paypalOrderId, amount_minor: payment.amountMinor, currency: payment.currency },
+        payment: {
+          id: payment.id,
+          status: statusOf(payment),
+          paypal_order_id: payment.paypalOrderId,
+          amount_minor: payment.amountMinor,
+          currency: payment.currency,
+        },
         requested_paypal_order_id: paypalOrderId,
         provider_order: toProviderOrderView(providerOrder),
         reservation: reservation ? { status: reservation.status, amount_minor: reservation.amountMinor } : null,
@@ -110,28 +135,31 @@ async function authorizeCapture(ctx: AppContext, actor: Actor, paymentId: string
       });
       if (!guard.allowed) {
         const amountProblem = guard.failures.some((f) => f.code === "AMOUNT_MISMATCH" || f.code === "PAYEE_MISMATCH");
-        throw new DeferredFailure(unprocessable("CAPTURE_REFUSED", "TrustRail refused to capture this payment.", { failures: guard.failures }), async (db) => {
-          await recordFinding(db, {
-            organizationId: actor.organizationId,
-            type: amountProblem ? "PAYMENT_AMOUNT_MISMATCH" : "CERTIFICATE_VERIFICATION_FAILED",
-            severity: amountProblem ? "CRITICAL" : "HIGH",
-            title: "Capture refused by TrustRail",
-            description: guard.failures.map((f) => f.detail).join(" "),
-            sourceKind: "payment_attempt",
-            sourceId: payment.id,
-            evidence: { failures: guard.failures, paypal_order_id: paypalOrderId },
-            relatedPurchaseOrderId: payment.purchaseOrderId,
-          });
-          await appendAudit(db, {
-            organizationId: actor.organizationId,
-            action: "payment.capture_refused",
-            actorType: "USER",
-            actorId: actor.id,
-            entityType: "payment_attempt",
-            entityId: payment.id,
-            data: { failures: guard.failures.map((f) => f.code) },
-          });
-        });
+        throw new DeferredFailure(
+          unprocessable("CAPTURE_REFUSED", "TrustRail refused to capture this payment.", { failures: guard.failures }),
+          async (db) => {
+            await recordFinding(db, {
+              organizationId: actor.organizationId,
+              type: amountProblem ? "PAYMENT_AMOUNT_MISMATCH" : "CERTIFICATE_VERIFICATION_FAILED",
+              severity: amountProblem ? "CRITICAL" : "HIGH",
+              title: "Capture refused by TrustRail",
+              description: guard.failures.map((f) => f.detail).join(" "),
+              sourceKind: "payment_attempt",
+              sourceId: payment.id,
+              evidence: { failures: guard.failures, paypal_order_id: paypalOrderId },
+              relatedPurchaseOrderId: payment.purchaseOrderId,
+            });
+            await appendAudit(db, {
+              organizationId: actor.organizationId,
+              action: "payment.capture_refused",
+              actorType: "USER",
+              actorId: actor.id,
+              entityType: "payment_attempt",
+              entityId: payment.id,
+              data: { failures: guard.failures.map((f) => f.code) },
+            });
+          },
+        );
       }
       const patch = { payerId: providerOrder.payer?.payer_id ?? null };
       // A stale CAPTURE_PENDING (previous attempt abandoned) is re-armed rather than transitioned.
@@ -159,17 +187,28 @@ async function handleCaptureError(ctx: AppContext, actor: Actor, paymentId: stri
     // rather than assume. If PayPal is unreachable the payment stays CAPTURE_PENDING and the
     // sweeper reconciles it.
     ctx.log.warn({ err, payment_id: paymentId, code }, "capture outcome unknown; reconciling");
-    await reconcilePayment(ctx, paymentId).catch((e: unknown) => ctx.log.warn({ err: e, payment_id: paymentId }, "reconcile after capture failed"));
+    await reconcilePayment(ctx, paymentId).catch((e: unknown) =>
+      ctx.log.warn({ err: e, payment_id: paymentId }, "reconcile after capture failed"),
+    );
     return paymentResult(ctx, actor.organizationId, paymentId);
   }
   // A definitive rejection from PayPal: nothing was captured, so the buyer may try again.
   ctx.log.info({ err, payment_id: paymentId, code }, "PayPal rejected the capture");
   await ctx.db.transaction(async (tx) => {
     const p = await loadPayment(tx, actor.organizationId, paymentId, true);
-    await transitionPayment(tx, p, "ORDER_CREATED", { failureCode: code, failureMessage: failureMessageFor(code) }, ctx.now(), "CAPTURE_REJECTED");
+    await transitionPayment(
+      tx,
+      p,
+      "ORDER_CREATED",
+      { failureCode: code, failureMessage: failureMessageFor(code) },
+      ctx.now(),
+      "CAPTURE_REJECTED",
+    );
   });
   if (err instanceof PayPalApiError && err.issue && BUYER_FIXABLE.has(err.issue)) {
-    throw new AppError(422, err.issue, "PayPal declined the funding source. Choose another payment method and try again.", { restart: true });
+    throw new AppError(422, err.issue, "PayPal declined the funding source. Choose another payment method and try again.", {
+      restart: true,
+    });
   }
   throw badGateway("PAYPAL_CAPTURE_FAILED", "PayPal could not capture the payment.", { code });
 }

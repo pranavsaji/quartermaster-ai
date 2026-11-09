@@ -16,14 +16,25 @@ const client = (fake: FakePayPal, extra: Partial<ConstructorParameters<typeof Pa
   new PayPalClient({ clientId: "id", clientSecret: "secret", environment: "sandbox", webhookId: "WH", fetch: fake.fetch, ...extra });
 
 const cart = buildCart(SUPPLIER, "USD", [product(), shipping(0), tax(1_320)]);
-const binding = { purchase_order_id: "po_1", intent_id: "intent_1", purchase_order_number: "PO-1", supplier_name: "Harbor", brand_name: "QM" };
+const binding = {
+  purchase_order_id: "po_1",
+  intent_id: "intent_1",
+  purchase_order_number: "PO-1",
+  supplier_name: "Harbor",
+  brand_name: "QM",
+};
 
 describe("PayPal client", () => {
   it("builds an Orders v2 body whose breakdown matches the approved cart", () => {
     const body = buildCreateOrderRequest(cart, binding);
     const unit = body.purchase_units[0]!;
     expect(unit.amount).toMatchObject({ currency_code: "USD", value: "173.20" });
-    expect(unit.amount.breakdown).toMatchObject({ item_total: { value: "160.00" }, tax_total: { value: "13.20" }, shipping: { value: "0.00" }, handling: { value: "0.00" } });
+    expect(unit.amount.breakdown).toMatchObject({
+      item_total: { value: "160.00" },
+      tax_total: { value: "13.20" },
+      shipping: { value: "0.00" },
+      handling: { value: "0.00" },
+    });
     expect(unit.items[0]).toMatchObject({ quantity: "2", unit_amount: { value: "80.00" }, sku: "TK-250" });
     expect(unit.custom_id).toBe("intent_1");
     expect(unit.reference_id).toBe("po_1");
@@ -59,12 +70,21 @@ describe("PayPal client", () => {
   });
 
   it("reports network failures as ambiguous outcomes", async () => {
-    const c = new PayPalClient({ clientId: "id", clientSecret: "s", environment: "sandbox", webhookId: null, fetch: async () => { throw new TypeError("ECONNRESET"); } });
+    const c = new PayPalClient({
+      clientId: "id",
+      clientSecret: "s",
+      environment: "sandbox",
+      webhookId: null,
+      fetch: async () => {
+        throw new TypeError("ECONNRESET");
+      },
+    });
     await expect(c.getAccessToken()).rejects.toBeInstanceOf(PayPalAmbiguousError);
   });
 
   it("times out slow requests as ambiguous", async () => {
-    const slow: typeof fetch = (_u, init) => new Promise((_r, reject) => init?.signal?.addEventListener("abort", () => reject(new Error("aborted"))));
+    const slow: typeof fetch = (_u, init) =>
+      new Promise((_r, reject) => init?.signal?.addEventListener("abort", () => reject(new Error("aborted"))));
     const c = new PayPalClient({ clientId: "id", clientSecret: "s", environment: "sandbox", webhookId: null, fetch: slow, timeoutMs: 20 });
     await expect(c.getAccessToken()).rejects.toBeInstanceOf(PayPalAmbiguousError);
   });
@@ -95,8 +115,17 @@ describe("PayPal client", () => {
   });
 
   it("maps provider orders into minor units and flags malformed amounts", () => {
-    const view = toProviderOrderView({ id: "O", status: "APPROVED", purchase_units: [{ reference_id: "po", custom_id: "i", amount: { currency_code: "USD", value: "173.20" }, payee: { merchant_id: "M" } }] });
+    const view = toProviderOrderView({
+      id: "O",
+      status: "APPROVED",
+      purchase_units: [
+        { reference_id: "po", custom_id: "i", amount: { currency_code: "USD", value: "173.20" }, payee: { merchant_id: "M" } },
+      ],
+    });
     expect(view).toMatchObject({ amount_minor: 17_320, currency: "USD", payee_merchant_id: "M" });
-    expect(toProviderOrderView({ id: "O", status: "APPROVED", purchase_units: [{ amount: { currency_code: "USD", value: "1.234" } }] }).amount_minor).toBe(-1);
+    expect(
+      toProviderOrderView({ id: "O", status: "APPROVED", purchase_units: [{ amount: { currency_code: "USD", value: "1.234" } }] })
+        .amount_minor,
+    ).toBe(-1);
   });
 });

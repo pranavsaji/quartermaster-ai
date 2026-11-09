@@ -17,7 +17,12 @@ export type LoginRequest = z.infer<typeof LoginRequest>;
 /* ------------------------------------------------------------- Inventory */
 
 export const InventoryAdjustmentRequest = z.object({
-  quantity_delta: z.number().int().min(-1_000_000).max(1_000_000).refine((v) => v !== 0, "Delta must be non-zero"),
+  quantity_delta: z
+    .number()
+    .int()
+    .min(-1_000_000)
+    .max(1_000_000)
+    .refine((v) => v !== 0, "Delta must be non-zero"),
   reason: z.enum(["COUNT_CORRECTION", "WASTE", "CONSUMPTION", "MANUAL_RECEIPT"]),
   note: z.string().trim().max(500).optional(),
 });
@@ -72,7 +77,11 @@ export const SpendMandateInput = z
     allowed_categories: z.array(z.enum(PRODUCT_CATEGORIES)).min(1).max(PRODUCT_CATEGORIES.length),
     max_market_price_premium_pct: z.number().int().min(0).max(500),
     market_price_action: z.enum(["REVIEW", "BLOCK"]),
-    duplicate_window_hours: z.number().int().min(0).max(24 * 30),
+    duplicate_window_hours: z
+      .number()
+      .int()
+      .min(0)
+      .max(24 * 30),
     duplicate_action: z.enum(["REVIEW", "BLOCK"]),
     subscriptions_allowed: z.boolean(),
     certificate_ttl_minutes: z.number().int().min(5).max(60),
@@ -93,7 +102,11 @@ export type SpendMandateInput = z.infer<typeof SpendMandateInput>;
 /* -------------------------------------------------------------- Payments */
 
 export const CapturePaymentRequest = z.object({
-  paypal_order_id: z.string().min(5).max(64).regex(/^[A-Z0-9-]+$/i),
+  paypal_order_id: z
+    .string()
+    .min(5)
+    .max(64)
+    .regex(/^[A-Z0-9-]+$/i),
 });
 export type CapturePaymentRequest = z.infer<typeof CapturePaymentRequest>;
 

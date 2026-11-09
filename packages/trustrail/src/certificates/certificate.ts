@@ -49,7 +49,8 @@ export function issueCertificate(input: IssueCertificateInput, key: SigningKey):
   if (!Number.isInteger(input.ttl_minutes) || input.ttl_minutes < 1 || input.ttl_minutes > MAX_CERTIFICATE_TTL_MINUTES) {
     throw new Error(`Certificate TTL must be a whole number of minutes between 1 and ${MAX_CERTIFICATE_TTL_MINUTES}`);
   }
-  if (!(input.approved_at instanceof Date) || Number.isNaN(input.approved_at.getTime())) throw new Error("Certificate approval time is invalid");
+  if (!(input.approved_at instanceof Date) || Number.isNaN(input.approved_at.getTime()))
+    throw new Error("Certificate approval time is invalid");
   const expires = new Date(input.approved_at.getTime() + input.ttl_minutes * 60_000);
   const payload: IntentCertificatePayload = {
     certificate_version: 1,
@@ -116,7 +117,11 @@ export function verifyCertificate(cert: SignedCertificate, ctx: VerificationCont
     checks.push({
       code: "KEY_KNOWN",
       passed: false,
-      detail: !key ? `Unknown signing key ${cert.key_id}.` : !keyMatches ? "Key id in payload differs from envelope." : `Key ${cert.key_id} is not the fingerprint of the resolved public key.`,
+      detail: !key
+        ? `Unknown signing key ${cert.key_id}.`
+        : !keyMatches
+          ? "Key id in payload differs from envelope."
+          : `Key ${cert.key_id} is not the fingerprint of the resolved public key.`,
     });
     fail("UNKNOWN_KEY");
   } else {
@@ -137,7 +142,11 @@ export function verifyCertificate(cert: SignedCertificate, ctx: VerificationCont
     checks.push({
       code: "SIGNATURE",
       passed: sigOk,
-      detail: sigOk ? "Ed25519 signature is valid." : !encodingOk ? "Signature is not a canonical base64url Ed25519 signature." : "Signature does not verify.",
+      detail: sigOk
+        ? "Ed25519 signature is valid."
+        : !encodingOk
+          ? "Signature is not a canonical base64url Ed25519 signature."
+          : "Signature does not verify.",
     });
     if (!sigOk) fail("SIGNATURE_INVALID");
   }
@@ -149,13 +158,25 @@ export function verifyCertificate(cert: SignedCertificate, ctx: VerificationCont
     p.organization_id === ctx.expected.organization_id &&
     p.purchase_order_id === ctx.expected.purchase_order_id &&
     p.supplier_id === ctx.expected.supplier_id;
-  checks.push({ code: "BINDINGS", passed: bindingsOk, detail: bindingsOk ? "Certificate is bound to this order, supplier and organization." : "Certificate bindings do not match the order." });
+  checks.push({
+    code: "BINDINGS",
+    passed: bindingsOk,
+    detail: bindingsOk ? "Certificate is bound to this order, supplier and organization." : "Certificate bindings do not match the order.",
+  });
   if (!bindingsOk) fail("PAYLOAD_MISMATCH");
 
   const cartOk = p.cart_hash === ctx.current_cart_hash;
-  checks.push({ code: "CART_HASH", passed: cartOk, detail: cartOk ? "Cart is unchanged since approval." : "Cart contents changed after approval." });
+  checks.push({
+    code: "CART_HASH",
+    passed: cartOk,
+    detail: cartOk ? "Cart is unchanged since approval." : "Cart contents changed after approval.",
+  });
   const amountOk = p.approved_amount_minor === ctx.current_total_minor && p.currency === ctx.current_currency;
-  checks.push({ code: "AMOUNT", passed: amountOk, detail: amountOk ? "Amount and currency match the approval." : "Amount or currency differs from the approval." });
+  checks.push({
+    code: "AMOUNT",
+    passed: amountOk,
+    detail: amountOk ? "Amount and currency match the approval." : "Amount or currency differs from the approval.",
+  });
   if (!cartOk || !amountOk) fail("CART_MODIFIED");
 
   // Validity window [approved_at − skew, expires_at). Every comparison is written so that a
@@ -164,10 +185,18 @@ export function verifyCertificate(cert: SignedCertificate, ctx: VerificationCont
   const approvedAt = Date.parse(p.approved_at);
   const expiresAt = Date.parse(p.expires_at);
   const windowOk = expiresAt > approvedAt && expiresAt - approvedAt <= MAX_CERTIFICATE_TTL_MINUTES * 60_000;
-  checks.push({ code: "VALIDITY_WINDOW", passed: windowOk, detail: windowOk ? "Approval and expiry times are well-formed." : "Approval or expiry time is malformed." });
+  checks.push({
+    code: "VALIDITY_WINDOW",
+    passed: windowOk,
+    detail: windowOk ? "Approval and expiry times are well-formed." : "Approval or expiry time is malformed.",
+  });
   if (!windowOk) fail("PAYLOAD_MISMATCH");
   const notYetValid = !(now >= approvedAt - CERTIFICATE_CLOCK_SKEW_MS);
-  checks.push({ code: "NOT_BEFORE", passed: !notYetValid, detail: notYetValid ? `Not valid before ${p.approved_at}.` : "Certificate is within its validity period." });
+  checks.push({
+    code: "NOT_BEFORE",
+    passed: !notYetValid,
+    detail: notYetValid ? `Not valid before ${p.approved_at}.` : "Certificate is within its validity period.",
+  });
   if (notYetValid) fail("PAYLOAD_MISMATCH");
   const expired = !(now < expiresAt);
   checks.push({ code: "NOT_EXPIRED", passed: !expired, detail: expired ? `Expired at ${p.expires_at}.` : `Valid until ${p.expires_at}.` });

@@ -26,11 +26,20 @@ export async function listFindings(
   return { items: page.map(toFindingDto), next_cursor: nextCursor };
 }
 
-export async function listDecisions(db: DbOrTx, organizationId: string, q: { limit: number; cursor?: string }): Promise<Page<PolicyDecisionDto>> {
+export async function listDecisions(
+  db: DbOrTx,
+  organizationId: string,
+  q: { limit: number; cursor?: string },
+): Promise<Page<PolicyDecisionDto>> {
   const rows = await db
     .select()
     .from(policyDecisions)
-    .where(and(eq(policyDecisions.organizationId, organizationId), afterCursor(policyDecisions.createdAt, policyDecisions.id, decodeCursor(q.cursor))))
+    .where(
+      and(
+        eq(policyDecisions.organizationId, organizationId),
+        afterCursor(policyDecisions.createdAt, policyDecisions.id, decodeCursor(q.cursor)),
+      ),
+    )
     .orderBy(...newestFirst(policyDecisions.createdAt, policyDecisions.id))
     .limit(q.limit + 1);
   const { page, nextCursor } = toPage(rows, q.limit);
@@ -53,7 +62,11 @@ export interface AuditEventDto {
 }
 
 /** Audit events newest first; the cursor is the last sequence number seen. */
-export async function listAuditEvents(db: DbOrTx, organizationId: string, q: { limit: number; cursor?: string }): Promise<Page<AuditEventDto>> {
+export async function listAuditEvents(
+  db: DbOrTx,
+  organizationId: string,
+  q: { limit: number; cursor?: string },
+): Promise<Page<AuditEventDto>> {
   const beforeSeq = q.cursor && /^\d{1,15}$/.test(q.cursor) ? Number(q.cursor) : null;
   const rows = await db
     .select()

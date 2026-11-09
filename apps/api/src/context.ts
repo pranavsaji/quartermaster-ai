@@ -28,7 +28,13 @@ export interface ContextOverrides {
   now?: () => Date;
 }
 
-export function buildContext(config: AppConfig, log: Logger, database: DatabaseHandle, signingKey: SigningKey, overrides: ContextOverrides = {}): AppContext {
+export function buildContext(
+  config: AppConfig,
+  log: Logger,
+  database: DatabaseHandle,
+  signingKey: SigningKey,
+  overrides: ContextOverrides = {},
+): AppContext {
   const paypal = new PayPalClient({
     clientId: config.paypal.clientId,
     clientSecret: config.paypal.clientSecret,
@@ -56,7 +62,18 @@ export function buildContext(config: AppConfig, log: Logger, database: DatabaseH
     fetch: overrides.fetch,
     log: (event, data) => log.warn({ ...data, event }, "notifier"),
   });
-  return { config, log, database, db: database.db, paypal, channel3, openai, notifier, signingKey, now: overrides.now ?? (() => new Date()) };
+  return {
+    config,
+    log,
+    database,
+    db: database.db,
+    paypal,
+    channel3,
+    openai,
+    notifier,
+    signingKey,
+    now: overrides.now ?? (() => new Date()),
+  };
 }
 
 /** Per-request context propagated through async calls (correlation id, actor). */

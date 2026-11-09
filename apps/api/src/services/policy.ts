@@ -17,7 +17,6 @@ import { getActiveMandateRow, rowToMandate } from "./mandates";
 import { cartFromRows, type PurchaseOrderItemRow, type PurchaseOrderRow } from "./orders";
 import { loadCatalogForSupplier } from "./suppliers";
 
-
 export interface EvaluateOptions {
   stage: "EVALUATE" | "APPROVE" | "CAPTURE";
   now: Date;
@@ -42,7 +41,10 @@ export async function evaluateOrder(
   const mandateRow = await getActiveMandateRow(tx, organizationId);
   const mandate = mandateRow ? rowToMandate(mandateRow) : null;
   const [org] = await tx.select().from(organizations).where(eq(organizations.id, organizationId));
-  const [supplier] = await tx.select().from(suppliers).where(and(eq(suppliers.id, po.supplierId), eq(suppliers.organizationId, organizationId)));
+  const [supplier] = await tx
+    .select()
+    .from(suppliers)
+    .where(and(eq(suppliers.id, po.supplierId), eq(suppliers.organizationId, organizationId)));
   const catalogRows = await loadCatalogForSupplier(tx, organizationId, po.supplierId);
 
   const account = await currentAccount(tx, {
@@ -58,7 +60,13 @@ export async function evaluateOrder(
     const [own] = await tx
       .select()
       .from(budgetReservations)
-      .where(and(eq(budgetReservations.intentId, opts.excludeOwnReservationForIntent), eq(budgetReservations.status, "ACTIVE"), eq(budgetReservations.budgetAccountId, account.id)));
+      .where(
+        and(
+          eq(budgetReservations.intentId, opts.excludeOwnReservationForIntent),
+          eq(budgetReservations.status, "ACTIVE"),
+          eq(budgetReservations.budgetAccountId, account.id),
+        ),
+      );
     if (own) reserved -= own.amountMinor;
   }
 
@@ -77,7 +85,13 @@ export async function evaluateOrder(
         const others = await tx
           .select({ total: purchaseOrders.totalMinor })
           .from(purchaseOrders)
-          .where(and(eq(purchaseOrders.requestId, req.id), ne(purchaseOrders.id, po.id), inArray(purchaseOrders.status, [...COMMITTED_PO_STATUSES])));
+          .where(
+            and(
+              eq(purchaseOrders.requestId, req.id),
+              ne(purchaseOrders.id, po.id),
+              inArray(purchaseOrders.status, [...COMMITTED_PO_STATUSES]),
+            ),
+          );
         requestLimit = cap - others.reduce((a, o) => a + o.total, 0);
       }
       if (req.forecastRunId) {
@@ -111,7 +125,12 @@ export async function evaluateOrder(
   const prior =
     windowHours > 0
       ? await tx
-          .select({ id: purchaseOrders.id, supplierId: purchaseOrders.supplierId, status: purchaseOrders.status, createdAt: purchaseOrders.createdAt })
+          .select({
+            id: purchaseOrders.id,
+            supplierId: purchaseOrders.supplierId,
+            status: purchaseOrders.status,
+            createdAt: purchaseOrders.createdAt,
+          })
           .from(purchaseOrders)
           .where(
             and(
@@ -127,7 +146,15 @@ export async function evaluateOrder(
     ? await tx
         .select({ poId: purchaseOrderItems.purchaseOrderId, sku: purchaseOrderItems.sku })
         .from(purchaseOrderItems)
-        .where(and(inArray(purchaseOrderItems.purchaseOrderId, prior.map((p) => p.id)), eq(purchaseOrderItems.kind, "PRODUCT")))
+        .where(
+          and(
+            inArray(
+              purchaseOrderItems.purchaseOrderId,
+              prior.map((p) => p.id),
+            ),
+            eq(purchaseOrderItems.kind, "PRODUCT"),
+          ),
+        )
     : [];
 
   const catalog: CatalogEntry[] = catalogRows.map((c) => ({
@@ -142,7 +169,9 @@ export async function evaluateOrder(
   const input: PolicyInput = {
     mandate,
     cart: cartFromRows(po, items),
-    supplier: supplier ? { id: supplier.id, active: supplier.active, fee_terms: supplier.feeTerms, tax_rate_bps: supplier.taxRateBps } : null,
+    supplier: supplier
+      ? { id: supplier.id, active: supplier.active, fee_terms: supplier.feeTerms, tax_rate_bps: supplier.taxRateBps }
+      : null,
     catalog,
     budget: { limit_minor: account.limitMinor, spent_minor: account.spentMinor, reserved_minor: Math.max(0, reserved) },
     request_budget_limit_minor: requestLimit,

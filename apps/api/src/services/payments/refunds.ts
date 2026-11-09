@@ -10,7 +10,16 @@ import { reduceSpend } from "../budget";
 import type { Actor } from "../common";
 import { recordFinding } from "../findings";
 import { toPaymentDto } from "../orders";
-import { isAmbiguousPayPalFailure, loadPayment, loadPaymentForSystem, patchPayment, paypalFailureCode, requirePayPal, type PaymentRow, transitionPayment } from "./shared";
+import {
+  isAmbiguousPayPalFailure,
+  loadPayment,
+  loadPaymentForSystem,
+  patchPayment,
+  paypalFailureCode,
+  requirePayPal,
+  type PaymentRow,
+  transitionPayment,
+} from "./shared";
 
 type RefundRow = typeof refunds.$inferSelect;
 
@@ -83,7 +92,15 @@ export async function refundPayment(
     if (amount <= 0 || amount > refundable) throw unprocessable("REFUND_AMOUNT_INVALID", `Refund must be between 1 and ${refundable}.`);
     const [r] = await tx
       .insert(refunds)
-      .values({ organizationId: actor.organizationId, paymentAttemptId: p.id, requestKey, amountMinor: amount, status: "REQUESTED", reason, createdBy: actor.id })
+      .values({
+        organizationId: actor.organizationId,
+        paymentAttemptId: p.id,
+        requestKey,
+        amountMinor: amount,
+        status: "REQUESTED",
+        reason,
+        createdBy: actor.id,
+      })
       .returning();
     return { done: false as const, refund: r!, payment: p };
   });
@@ -102,7 +119,10 @@ export async function refundPayment(
     const status: RefundStatus = isAmbiguousPayPalFailure(err) ? "UNKNOWN" : "FAILED";
     ctx.log.warn({ err, payment_id: paymentId, refund_id: prepared.refund.id, code, status }, "PayPal refund failed");
     await ctx.db.update(refunds).set({ status }).where(eq(refunds.id, prepared.refund.id));
-    throw badGateway("PAYPAL_REFUND_FAILED", "PayPal did not confirm the refund. Retry with the same request to resolve it.", { code, outcome: status });
+    throw badGateway("PAYPAL_REFUND_FAILED", "PayPal did not confirm the refund. Retry with the same request to resolve it.", {
+      code,
+      outcome: status,
+    });
   }
 
   return ctx.db.transaction(async (tx) => {

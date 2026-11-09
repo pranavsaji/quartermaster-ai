@@ -31,17 +31,32 @@ export function idempotent(ctx: AppContext, route: string, handler: (req: Reques
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
       const key = req.get("idempotency-key");
-      if (!key || !KEY.test(key)) throw new AppError(400, "IDEMPOTENCY_KEY_REQUIRED", "An Idempotency-Key header (8–128 characters) is required.");
+      if (!key || !KEY.test(key))
+        throw new AppError(400, "IDEMPOTENCY_KEY_REQUIRED", "An Idempotency-Key header (8–128 characters) is required.");
       const user = req.user!;
-      const requestHash = createHash("sha256").update(`${req.method} ${route} ${stableStringify(req.params)} ${stableStringify(req.body ?? null)}`).digest("hex");
-      const scope = and(eq(idempotencyKeys.organizationId, user.organizationId), eq(idempotencyKeys.userId, user.id), eq(idempotencyKeys.key, key));
+      const requestHash = createHash("sha256")
+        .update(`${req.method} ${route} ${stableStringify(req.params)} ${stableStringify(req.body ?? null)}`)
+        .digest("hex");
+      const scope = and(
+        eq(idempotencyKeys.organizationId, user.organizationId),
+        eq(idempotencyKeys.userId, user.id),
+        eq(idempotencyKeys.key, key),
+      );
 
       // `lease` (the row's created_at) identifies which execution owns an IN_PROGRESS key, so a
       // stale takeover, completion and cleanup all act only on the execution that owns it.
       const startedAt = ctx.now();
       const inserted = await ctx.db
         .insert(idempotencyKeys)
-        .values({ organizationId: user.organizationId, userId: user.id, key, route, requestHash, status: "IN_PROGRESS", createdAt: startedAt })
+        .values({
+          organizationId: user.organizationId,
+          userId: user.id,
+          key,
+          route,
+          requestHash,
+          status: "IN_PROGRESS",
+          createdAt: startedAt,
+        })
         .onConflictDoNothing()
         .returning({ id: idempotencyKeys.id, createdAt: idempotencyKeys.createdAt });
       let lease = inserted[0]?.createdAt ?? startedAt;
@@ -87,7 +102,10 @@ export function idempotent(ctx: AppContext, route: string, handler: (req: Reques
         // Another execution took the key over as stale while this one ran, so both may have
         // performed the operation and this response is not replayable. The response still goes
         // out (the work is done), but this needs investigation.
-        ctx.log.error({ idempotency_key: key, route, status: result.status }, "idempotency lease lost before completion; response not stored");
+        ctx.log.error(
+          { idempotency_key: key, route, status: result.status },
+          "idempotency lease lost before completion; response not stored",
+        );
       }
       res.status(result.status).json(result.body);
     } catch (err) {

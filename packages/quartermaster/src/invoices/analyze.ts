@@ -60,7 +60,10 @@ export interface InvoiceAnalysis {
  * compare equal. NFKC folds full-width and compatibility characters before stripping.
  */
 export function normalizeInvoiceNumber(n: string): string {
-  let core = String(n ?? "").normalize("NFKC").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  let core = String(n ?? "")
+    .normalize("NFKC")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
   // Strip to a fixed point so the function is idempotent: "INVINVOICE7" → "INVOICE7" → "7"
   // in one call, never "7" only on a second call. Each pass shortens the string or stops.
   for (;;) {
@@ -76,7 +79,12 @@ type HashableInvoice = Pick<InvoiceInput, "supplier_id" | "currency" | "lines" |
 export const INVOICE_HASH_VERSION = 2;
 export const INVOICE_HASH_PREFIX = `v${INVOICE_HASH_VERSION}:`;
 
-const hashLine = (l: InvoiceLine) => ({ sku: l.sku ?? null, quantity: l.quantity, unit_price_minor: l.unit_price_minor, line_total_minor: l.line_total_minor });
+const hashLine = (l: InvoiceLine) => ({
+  sku: l.sku ?? null,
+  quantity: l.quantity,
+  unit_price_minor: l.unit_price_minor,
+  line_total_minor: l.line_total_minor,
+});
 
 /**
  * Content fingerprint independent of the invoice number, to catch re-numbered resubmissions.
@@ -144,7 +152,12 @@ export function analyzeInvoice(inv: InvoiceInput, po: PurchaseOrderView | null, 
   const sameSupplier = existing.filter((e) => e.supplier_id === inv.supplier_id);
 
   const numberDupes = sameSupplier.filter((e) => normalizeInvoiceNumber(e.invoice_number) === normalized);
-  add("DUPLICATE_INVOICE_NUMBER", numberDupes.length === 0, "HIGH", numberDupes.length === 0 ? "Invoice number not seen before." : `Invoice number already recorded (${numberDupes.length}).`);
+  add(
+    "DUPLICATE_INVOICE_NUMBER",
+    numberDupes.length === 0,
+    "HIGH",
+    numberDupes.length === 0 ? "Invoice number not seen before." : `Invoice number already recorded (${numberDupes.length}).`,
+  );
 
   // Rows stored before v2 carry an unprefixed legacy hash; compare those against the legacy
   // fingerprint of this invoice so the algorithm change does not open a resubmission window.
@@ -152,26 +165,62 @@ export function analyzeInvoice(inv: InvoiceInput, po: PurchaseOrderView | null, 
   const contentDupes = sameSupplier.filter(
     (e) => (e.content_hash === content_hash || (legacy_hash !== null && e.content_hash === legacy_hash)) && !numberDupes.includes(e),
   );
-  add("DUPLICATE_CONTENT", contentDupes.length === 0, "HIGH", contentDupes.length === 0 ? "No invoice with identical content." : "An invoice with identical lines and total exists under a different number.");
+  add(
+    "DUPLICATE_CONTENT",
+    contentDupes.length === 0,
+    "HIGH",
+    contentDupes.length === 0
+      ? "No invoice with identical content."
+      : "An invoice with identical lines and total exists under a different number.",
+  );
 
   const poDupes = inv.purchase_order_id
     ? sameSupplier.filter((e) => e.purchase_order_id === inv.purchase_order_id && e.status === "MATCHED" && !numberDupes.includes(e))
     : [];
-  add("PO_ALREADY_INVOICED", poDupes.length === 0, "HIGH", poDupes.length === 0 ? "Purchase order not yet settled by another invoice." : "Purchase order was already settled by another invoice.");
+  add(
+    "PO_ALREADY_INVOICED",
+    poDupes.length === 0,
+    "HIGH",
+    poDupes.length === 0 ? "Purchase order not yet settled by another invoice." : "Purchase order was already settled by another invoice.",
+  );
 
   // Arithmetic
   const lineIssues = inv.lines.filter((l) => l.quantity * l.unit_price_minor !== l.line_total_minor);
   const sum = inv.lines.reduce((a, l) => a + l.line_total_minor, 0);
-  add("ARITHMETIC", lineIssues.length === 0 && sum === inv.total_minor, "MEDIUM", lineIssues.length === 0 && sum === inv.total_minor ? "Lines and total reconcile." : `Lines sum to ${sum}, invoice states ${inv.total_minor}.`);
+  add(
+    "ARITHMETIC",
+    lineIssues.length === 0 && sum === inv.total_minor,
+    "MEDIUM",
+    lineIssues.length === 0 && sum === inv.total_minor
+      ? "Lines and total reconcile."
+      : `Lines sum to ${sum}, invoice states ${inv.total_minor}.`,
+  );
 
   if (!po) {
     add("PO_EXISTS", false, "MEDIUM", inv.purchase_order_id ? "Referenced purchase order not found." : "No purchase order referenced.");
   } else {
     add("PO_EXISTS", true, "MEDIUM", `Matched to purchase order ${po.id}.`);
-    add("SUPPLIER_MATCH", po.supplier_id === inv.supplier_id, "HIGH", po.supplier_id === inv.supplier_id ? "Supplier matches the order." : "Invoice supplier differs from the order's supplier.");
+    add(
+      "SUPPLIER_MATCH",
+      po.supplier_id === inv.supplier_id,
+      "HIGH",
+      po.supplier_id === inv.supplier_id ? "Supplier matches the order." : "Invoice supplier differs from the order's supplier.",
+    );
     add("CURRENCY_MATCH", po.currency === inv.currency, "HIGH", `Invoice ${inv.currency}, order ${po.currency}.`);
-    add("PAYMENT_VERIFIED", po.payment_completed, "MEDIUM", po.payment_completed ? "A verified PayPal capture exists for this order." : "No verified payment for this order yet.");
-    add("TOTAL_WITHIN_APPROVED", inv.total_minor <= po.total_minor, "HIGH", inv.total_minor <= po.total_minor ? "Invoice total is within the approved amount." : `Invoice exceeds approved order total by ${inv.total_minor - po.total_minor}.`);
+    add(
+      "PAYMENT_VERIFIED",
+      po.payment_completed,
+      "MEDIUM",
+      po.payment_completed ? "A verified PayPal capture exists for this order." : "No verified payment for this order yet.",
+    );
+    add(
+      "TOTAL_WITHIN_APPROVED",
+      inv.total_minor <= po.total_minor,
+      "HIGH",
+      inv.total_minor <= po.total_minor
+        ? "Invoice total is within the approved amount."
+        : `Invoice exceeds approved order total by ${inv.total_minor - po.total_minor}.`,
+    );
 
     // Ordered quantity per SKU and per (SKU, unit price). Quantities are summed on both sides so
     // splitting one SKU across several invoice lines cannot bill more than was ordered, and
@@ -194,7 +243,9 @@ export function analyzeInvoice(inv: InvoiceInput, po: PurchaseOrderView | null, 
     for (const l of inv.lines) {
       const match = l.sku ? ordered.get(l.sku) : undefined;
       if (!match) {
-        const charge = !l.sku ? chargeLines.find((c) => !c.used && c.line_total_minor === l.line_total_minor && l.quantity === 1) : undefined;
+        const charge = !l.sku
+          ? chargeLines.find((c) => !c.used && c.line_total_minor === l.line_total_minor && l.quantity === 1)
+          : undefined;
         if (charge) {
           charge.used = true;
           continue;
@@ -224,14 +275,31 @@ export function analyzeInvoice(inv: InvoiceInput, po: PurchaseOrderView | null, 
     const uninvoiced = [...ordered]
       .filter(([sku, o]) => o.kind === "PRODUCT" && (invoiced.get(sku) ?? 0) < o.quantity)
       .map(([sku, o]) => `${sku} (${invoiced.get(sku) ?? 0} of ${o.quantity})`);
-    add("LINES_ON_ORDER", unknown.length === 0, "HIGH", unknown.length === 0 ? "Every invoice line is on the order." : `Lines not on the approved order: ${unknown.join("; ")}.`);
-    add("QUANTITIES_WITHIN_ORDER", overQty.length === 0, "MEDIUM", overQty.length === 0 ? "Quantities within ordered amounts." : `Over-billed quantities: ${overQty.join(", ")}.`);
-    add("PRICES_MATCH_ORDER", priceDiff.length === 0, "MEDIUM", priceDiff.length === 0 ? "Unit prices match the order." : `Price differences: ${priceDiff.join(", ")}.`);
+    add(
+      "LINES_ON_ORDER",
+      unknown.length === 0,
+      "HIGH",
+      unknown.length === 0 ? "Every invoice line is on the order." : `Lines not on the approved order: ${unknown.join("; ")}.`,
+    );
+    add(
+      "QUANTITIES_WITHIN_ORDER",
+      overQty.length === 0,
+      "MEDIUM",
+      overQty.length === 0 ? "Quantities within ordered amounts." : `Over-billed quantities: ${overQty.join(", ")}.`,
+    );
+    add(
+      "PRICES_MATCH_ORDER",
+      priceDiff.length === 0,
+      "MEDIUM",
+      priceDiff.length === 0 ? "Unit prices match the order." : `Price differences: ${priceDiff.join(", ")}.`,
+    );
     add(
       "ORDER_FULLY_INVOICED",
       uninvoiced.length === 0,
       "LOW",
-      uninvoiced.length === 0 ? "Every ordered product is invoiced." : `Ordered products not (fully) invoiced: ${uninvoiced.join(", ")}. Expect a follow-up invoice or a credit for any short shipment.`,
+      uninvoiced.length === 0
+        ? "Every ordered product is invoiced."
+        : `Ordered products not (fully) invoiced: ${uninvoiced.join(", ")}. Expect a follow-up invoice or a credit for any short shipment.`,
     );
   }
 
@@ -239,7 +307,14 @@ export function analyzeInvoice(inv: InvoiceInput, po: PurchaseOrderView | null, 
   const text = [inv.notes ?? "", ...inv.lines.map((l) => l.description)].join("\n");
   if (text.trim()) {
     injection = detectPromptInjection(text);
-    add("NO_EMBEDDED_INSTRUCTIONS", !injection.suspicious, injection.severity, injection.suspicious ? `Suspicious instructions in invoice text (${injection.signals.map((s) => s.rule).join(", ")}).` : "No embedded instructions found.");
+    add(
+      "NO_EMBEDDED_INSTRUCTIONS",
+      !injection.suspicious,
+      injection.severity,
+      injection.suspicious
+        ? `Suspicious instructions in invoice text (${injection.signals.map((s) => s.rule).join(", ")}).`
+        : "No embedded instructions found.",
+    );
   }
 
   const duplicate = numberDupes.length > 0 || contentDupes.length > 0 || poDupes.length > 0;

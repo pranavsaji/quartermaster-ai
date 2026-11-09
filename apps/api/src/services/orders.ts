@@ -121,10 +121,17 @@ export function cartFromRows(po: PurchaseOrderRow, items: PurchaseOrderItemRow[]
 }
 
 export async function loadOrder(db: DbOrTx, organizationId: string, id: string, lock = false) {
-  const q = db.select().from(purchaseOrders).where(and(eq(purchaseOrders.id, id), eq(purchaseOrders.organizationId, organizationId)));
+  const q = db
+    .select()
+    .from(purchaseOrders)
+    .where(and(eq(purchaseOrders.id, id), eq(purchaseOrders.organizationId, organizationId)));
   const [po] = lock ? await q.for("update") : await q;
   if (!po) throw notFound("Purchase order");
-  const items = await db.select().from(purchaseOrderItems).where(eq(purchaseOrderItems.purchaseOrderId, po.id)).orderBy(purchaseOrderItems.position);
+  const items = await db
+    .select()
+    .from(purchaseOrderItems)
+    .where(eq(purchaseOrderItems.purchaseOrderId, po.id))
+    .orderBy(purchaseOrderItems.position);
   return { po, items };
 }
 
@@ -248,11 +255,20 @@ export async function orderDtos(db: DbOrTx, organizationId: string, pos: Purchas
 }
 
 /** Purchase orders newest first, with keyset pagination. */
-export async function listOrders(db: DbOrTx, organizationId: string, q: { limit: number; cursor?: string }): Promise<Page<PurchaseOrderDto>> {
+export async function listOrders(
+  db: DbOrTx,
+  organizationId: string,
+  q: { limit: number; cursor?: string },
+): Promise<Page<PurchaseOrderDto>> {
   const rows = await db
     .select()
     .from(purchaseOrders)
-    .where(and(eq(purchaseOrders.organizationId, organizationId), afterCursor(purchaseOrders.createdAt, purchaseOrders.id, decodeCursor(q.cursor))))
+    .where(
+      and(
+        eq(purchaseOrders.organizationId, organizationId),
+        afterCursor(purchaseOrders.createdAt, purchaseOrders.id, decodeCursor(q.cursor)),
+      ),
+    )
     .orderBy(...newestFirst(purchaseOrders.createdAt, purchaseOrders.id))
     .limit(q.limit + 1);
   const { page, nextCursor } = toPage(rows, q.limit);

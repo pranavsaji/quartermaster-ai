@@ -27,7 +27,16 @@ function input(overrides: Partial<CaptureGuardInput> = {}): CaptureGuardInput {
     authenticated_org_id: "org_1",
     payment: { id: "pay_1", status: "ORDER_CREATED", paypal_order_id: "5O190127TN364715T", amount_minor: 17_320, currency: "USD" },
     requested_paypal_order_id: "5O190127TN364715T",
-    provider_order: { id: "5O190127TN364715T", status: "APPROVED", currency: "USD", amount_minor: 17_320, reference_id: "po_1", custom_id: "intent_1", invoice_id: "PO-1", payee_merchant_id: "MERCHANT" },
+    provider_order: {
+      id: "5O190127TN364715T",
+      status: "APPROVED",
+      currency: "USD",
+      amount_minor: 17_320,
+      reference_id: "po_1",
+      custom_id: "intent_1",
+      invoice_id: "PO-1",
+      payee_merchant_id: "MERCHANT",
+    },
     reservation: { status: "ACTIVE", amount_minor: 17_320 },
     expected_payee_merchant_id: "MERCHANT",
     policy_still_allows: true,
@@ -74,8 +83,14 @@ describe("capture guard", () => {
   });
 
   it("does not require a payee when none is configured", () => {
-    expect(guardCapture(input({ expected_payee_merchant_id: null, provider_order: { ...input().provider_order, payee_merchant_id: null } })).allowed).toBe(true);
-    expect(guardCapture(input({ expected_payee_merchant_id: null, provider_order: { ...input().provider_order, payee_merchant_id: "ANY" } })).allowed).toBe(true);
+    expect(
+      guardCapture(input({ expected_payee_merchant_id: null, provider_order: { ...input().provider_order, payee_merchant_id: null } }))
+        .allowed,
+    ).toBe(true);
+    expect(
+      guardCapture(input({ expected_payee_merchant_id: null, provider_order: { ...input().provider_order, payee_merchant_id: "ANY" } }))
+        .allowed,
+    ).toBe(true);
   });
 
   it("refuses anyone other than the approving buyer", () => {
@@ -129,19 +144,29 @@ describe("payment state machine", () => {
   it("matches the full transition matrix over every payment status", () => {
     // Rows: from. Columns: to, in PAYMENT_STATUSES order. Written out explicitly so any change
     // to the state machine has to be made here deliberately.
-    const order = ["CREATED", "ORDER_CREATED", "PAYER_APPROVED", "CAPTURE_PENDING", "COMPLETED", "FAILED", "VOIDED", "PARTIALLY_REFUNDED", "REFUNDED"] as const;
+    const order = [
+      "CREATED",
+      "ORDER_CREATED",
+      "PAYER_APPROVED",
+      "CAPTURE_PENDING",
+      "COMPLETED",
+      "FAILED",
+      "VOIDED",
+      "PARTIALLY_REFUNDED",
+      "REFUNDED",
+    ] as const;
     expect([...PAYMENT_STATUSES].sort()).toEqual([...order].sort());
     const matrix: Record<(typeof order)[number], string> = {
       //                   CRE ORD PAY CAP COM FAI VOI PAR REF
-      CREATED:            "0   1   1   1   1   1   1   0   0",
-      ORDER_CREATED:      "0   0   1   1   1   1   1   0   0",
-      PAYER_APPROVED:     "0   0   0   1   1   1   1   0   0",
-      CAPTURE_PENDING:    "0   0   0   0   1   1   1   0   0",
-      COMPLETED:          "0   0   0   0   0   0   0   1   1",
-      FAILED:             "0   0   0   0   1   0   0   0   0",
-      VOIDED:             "0   0   0   0   1   0   0   0   0",
+      CREATED: "0   1   1   1   1   1   1   0   0",
+      ORDER_CREATED: "0   0   1   1   1   1   1   0   0",
+      PAYER_APPROVED: "0   0   0   1   1   1   1   0   0",
+      CAPTURE_PENDING: "0   0   0   0   1   1   1   0   0",
+      COMPLETED: "0   0   0   0   0   0   0   1   1",
+      FAILED: "0   0   0   0   1   0   0   0   0",
+      VOIDED: "0   0   0   0   1   0   0   0   0",
       PARTIALLY_REFUNDED: "0   0   0   0   0   0   0   0   1",
-      REFUNDED:           "0   0   0   0   0   0   0   0   0",
+      REFUNDED: "0   0   0   0   0   0   0   0   0",
     };
     for (const from of order) {
       const row = matrix[from].split(/\s+/).map((c) => c === "1");

@@ -49,7 +49,15 @@ export const shipping = (amount = 0): CartLine => ({
   line_total_minor: amount,
 });
 
-export const tax = (amount: number): CartLine => ({ kind: "TAX", sku: null, description: "Sales tax", category: null, quantity: 1, unit_price_minor: amount, line_total_minor: amount });
+export const tax = (amount: number): CartLine => ({
+  kind: "TAX",
+  sku: null,
+  description: "Sales tax",
+  category: null,
+  quantity: 1,
+  unit_price_minor: amount,
+  line_total_minor: amount,
+});
 
 export const fee = (code: string, amount: number, description = "Service charge"): CartLine => ({
   kind: "FEE",
@@ -76,13 +84,28 @@ export function baseInput(overrides: Partial<PolicyInput> = {}, lines?: CartLine
     catalog: [
       { sku: "TK-250", supplier_id: SUPPLIER, category: "food_packaging", unit_price_minor: 8_000, recurring: false, quarantined: false },
       { sku: "WINE-12", supplier_id: SUPPLIER, category: "alcohol", unit_price_minor: 14_400, recurring: false, quarantined: false },
-      { sku: "DESCALE-SUB", supplier_id: SUPPLIER, category: "cleaning_supplies", unit_price_minor: 3_900, recurring: true, quarantined: false },
+      {
+        sku: "DESCALE-SUB",
+        supplier_id: SUPPLIER,
+        category: "cleaning_supplies",
+        unit_price_minor: 3_900,
+        recurring: true,
+        quarantined: false,
+      },
     ],
     budget: { limit_minor: 50_000, spent_minor: 0, reserved_minor: 0 },
     request_budget_limit_minor: null,
     needed_units_by_sku: { "TK-250": 460 },
     pack_quantity_by_sku: { "TK-250": 250, "WINE-12": 12, "DESCALE-SUB": 1 },
-    market: [{ sku: "TK-250", reference_unit_price_minor: 31, candidate_unit_price_minor: 32, observed_at: "2026-11-10T12:00:00Z", comparable: true }],
+    market: [
+      {
+        sku: "TK-250",
+        reference_unit_price_minor: 31,
+        candidate_unit_price_minor: 32,
+        observed_at: "2026-11-10T12:00:00Z",
+        comparable: true,
+      },
+    ],
     prior_orders: [],
     quarantined_source_ids: [],
     now: NOW,

@@ -11,7 +11,11 @@ export function deriveRequestStatus(statuses: string[], fallback: RequestStatus)
   if (has("PAYMENT_PENDING")) return "PAYMENT_PENDING";
   if (has("APPROVED")) return "APPROVED";
   const settled = live.filter((s) => s === "PAID" || s === "FULFILLED");
-  if (settled.length > 0) return settled.every((s) => s === "FULFILLED") && live.every((s) => ["FULFILLED", "BLOCKED", "REJECTED", "EXPIRED", "CANCELLED"].includes(s)) ? "FULFILLED" : "PAID";
+  if (settled.length > 0)
+    return settled.every((s) => s === "FULFILLED") &&
+      live.every((s) => ["FULFILLED", "BLOCKED", "REJECTED", "EXPIRED", "CANCELLED"].includes(s))
+      ? "FULFILLED"
+      : "PAID";
   if (live.every((s) => s === "REJECTED")) return "REJECTED";
   if (live.every((s) => s === "REJECTED" || s === "CANCELLED" || s === "EXPIRED")) return "CANCELLED";
   return "BLOCKED";
@@ -21,7 +25,11 @@ export async function refreshRequestStatus(tx: DbOrTx, requestId: string, now: D
   const [req] = await tx.select({ status: purchaseRequests.status }).from(purchaseRequests).where(eq(purchaseRequests.id, requestId));
   if (!req) return "FAILED";
   const pos = await tx.select({ status: purchaseOrders.status }).from(purchaseOrders).where(eq(purchaseOrders.requestId, requestId));
-  const next = deriveRequestStatus(pos.map((p) => p.status), req.status);
-  if (next !== req.status) await tx.update(purchaseRequests).set({ status: next, updatedAt: now }).where(eq(purchaseRequests.id, requestId));
+  const next = deriveRequestStatus(
+    pos.map((p) => p.status),
+    req.status,
+  );
+  if (next !== req.status)
+    await tx.update(purchaseRequests).set({ status: next, updatedAt: now }).where(eq(purchaseRequests.id, requestId));
   return next;
 }

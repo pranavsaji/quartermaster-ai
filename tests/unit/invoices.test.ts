@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { INVOICE_HASH_VERSION, analyzeInvoice, invoiceContentHash, legacyInvoiceContentHash, normalizeInvoiceNumber, type ExistingInvoiceView, type InvoiceInput, type PurchaseOrderView } from "@qm/quartermaster";
+import {
+  INVOICE_HASH_VERSION,
+  analyzeInvoice,
+  invoiceContentHash,
+  legacyInvoiceContentHash,
+  normalizeInvoiceNumber,
+  type ExistingInvoiceView,
+  type InvoiceInput,
+  type PurchaseOrderView,
+} from "@qm/quartermaster";
 
 const po: PurchaseOrderView = {
   id: "po_1",
@@ -73,19 +82,29 @@ describe("invoice reconciliation", () => {
   });
 
   it("flags an amount above the approved purchase order", () => {
-    const lines = [...invoice().lines, { sku: "RUSH", description: "Rush handling", quantity: 1, unit_price_minor: 2_500, line_total_minor: 2_500 }];
+    const lines = [
+      ...invoice().lines,
+      { sku: "RUSH", description: "Rush handling", quantity: 1, unit_price_minor: 2_500, line_total_minor: 2_500 },
+    ];
     const r = analyzeInvoice(invoice({ lines, total_minor: 19_820 }), po, []);
     expect(r.status).toBe("DISCREPANCY");
-    expect(r.checks.filter((c) => !c.passed).map((c) => c.check)).toEqual(expect.arrayContaining(["TOTAL_WITHIN_APPROVED", "LINES_ON_ORDER"]));
+    expect(r.checks.filter((c) => !c.passed).map((c) => c.check)).toEqual(
+      expect.arrayContaining(["TOTAL_WITHIN_APPROVED", "LINES_ON_ORDER"]),
+    );
   });
 
   it("flags over-billed quantities and changed prices", () => {
     const r = analyzeInvoice(
-      invoice({ lines: [{ sku: "HRS-TK32-250", description: "Containers", quantity: 3, unit_price_minor: 7_000, line_total_minor: 21_000 }], total_minor: 21_000 }),
+      invoice({
+        lines: [{ sku: "HRS-TK32-250", description: "Containers", quantity: 3, unit_price_minor: 7_000, line_total_minor: 21_000 }],
+        total_minor: 21_000,
+      }),
       { ...po, total_minor: 30_000 },
       [],
     );
-    expect(r.checks.filter((c) => !c.passed).map((c) => c.check)).toEqual(expect.arrayContaining(["QUANTITIES_WITHIN_ORDER", "PRICES_MATCH_ORDER"]));
+    expect(r.checks.filter((c) => !c.passed).map((c) => c.check)).toEqual(
+      expect.arrayContaining(["QUANTITIES_WITHIN_ORDER", "PRICES_MATCH_ORDER"]),
+    );
   });
 
   describe("per-SKU quantity matching", () => {
@@ -97,7 +116,13 @@ describe("invoice reconciliation", () => {
         { kind: "PRODUCT", sku: "B", quantity: 10, unit_price_minor: 1_000, line_total_minor: 10_000 },
       ],
     };
-    const line = (sku: string, quantity: number) => ({ sku, description: sku, quantity, unit_price_minor: 1_000, line_total_minor: quantity * 1_000 });
+    const line = (sku: string, quantity: number) => ({
+      sku,
+      description: sku,
+      quantity,
+      unit_price_minor: 1_000,
+      line_total_minor: quantity * 1_000,
+    });
 
     it("sums a SKU split across invoice lines, so A×10 + A×10 against A×10, B×10 is over-billed", () => {
       const r = analyzeInvoice(invoice({ lines: [line("A", 10), line("A", 10)], total_minor: 20_000 }), twoSkuPo, []);
@@ -133,9 +158,19 @@ describe("invoice reconciliation", () => {
           { kind: "PRODUCT", sku: "A", quantity: 5, unit_price_minor: 1_200, line_total_minor: 6_000 },
         ],
       };
-      const at = (quantity: number, unit: number) => ({ sku: "A", description: "A", quantity, unit_price_minor: unit, line_total_minor: quantity * unit });
+      const at = (quantity: number, unit: number) => ({
+        sku: "A",
+        description: "A",
+        quantity,
+        unit_price_minor: unit,
+        line_total_minor: quantity * unit,
+      });
       const priceCheck = (lines: ReturnType<typeof at>[]) =>
-        analyzeInvoice(invoice({ lines, total_minor: lines.reduce((a, l) => a + l.line_total_minor, 0) }), { ...splitPo, total_minor: 20_000 }, []).checks.find((c) => c.check === "PRICES_MATCH_ORDER")!;
+        analyzeInvoice(
+          invoice({ lines, total_minor: lines.reduce((a, l) => a + l.line_total_minor, 0) }),
+          { ...splitPo, total_minor: 20_000 },
+          [],
+        ).checks.find((c) => c.check === "PRICES_MATCH_ORDER")!;
 
       it("refuses billing the whole quantity at the higher price", () => {
         expect(priceCheck([at(10, 1_200)])).toMatchObject({ passed: false, detail: "Price differences: A." });
@@ -155,7 +190,11 @@ describe("invoice reconciliation", () => {
     });
 
     it("compares unit prices against every ordered line of the SKU", () => {
-      const r = analyzeInvoice(invoice({ lines: [line("A", 10), { ...line("B", 10), unit_price_minor: 1_100, line_total_minor: 11_000 }], total_minor: 21_000 }), { ...twoSkuPo, total_minor: 30_000 }, []);
+      const r = analyzeInvoice(
+        invoice({ lines: [line("A", 10), { ...line("B", 10), unit_price_minor: 1_100, line_total_minor: 11_000 }], total_minor: 21_000 }),
+        { ...twoSkuPo, total_minor: 30_000 },
+        [],
+      );
       expect(r.checks.find((c) => c.check === "PRICES_MATCH_ORDER")).toMatchObject({ passed: false, detail: "Price differences: B." });
     });
   });
@@ -167,7 +206,13 @@ describe("invoice reconciliation", () => {
     const c = { sku: null, description: "tax", quantity: 1, unit_price_minor: 80, line_total_minor: 80 };
     const base = invoice({ lines: [a, b, c], total_minor: 2_080 });
     const h = invoiceContentHash(base);
-    for (const order of [[b, a, c], [c, b, a], [a, c, b], [c, a, b], [b, c, a]]) {
+    for (const order of [
+      [b, a, c],
+      [c, b, a],
+      [a, c, b],
+      [c, a, b],
+      [b, c, a],
+    ]) {
       expect(invoiceContentHash({ ...base, lines: order })).toBe(h);
     }
     expect(invoiceContentHash({ ...base, lines: [a, a, c] })).not.toBe(h);
@@ -192,7 +237,11 @@ describe("invoice reconciliation", () => {
     const lower = { sku: "a", description: "x", quantity: 1, unit_price_minor: 1, line_total_minor: 1 };
     const upper = { sku: "B", description: "x", quantity: 1, unit_price_minor: 1, line_total_minor: 1 };
     const accented = { sku: "é", description: "x", quantity: 1, unit_price_minor: 1, line_total_minor: 1 };
-    const hashes = [[lower, upper, accented], [accented, upper, lower], [upper, accented, lower]].map((lines) => invoiceContentHash(invoice({ lines, total_minor: 3 })));
+    const hashes = [
+      [lower, upper, accented],
+      [accented, upper, lower],
+      [upper, accented, lower],
+    ].map((lines) => invoiceContentHash(invoice({ lines, total_minor: 3 })));
     expect(new Set(hashes).size).toBe(1);
   });
 

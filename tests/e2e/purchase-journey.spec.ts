@@ -25,7 +25,9 @@ test("owner researches a request, sees TrustRail block the injected supplier, ap
   await signIn(page);
   await page.goto("/procurement");
   await page.getByRole("button", { name: "New request" }).click();
-  await page.getByLabel("Instruction").fill("We're expecting a busy weekend. Restock takeaway containers and cooking oil without exceeding $300.");
+  await page
+    .getByLabel("Instruction")
+    .fill("We're expecting a busy weekend. Restock takeaway containers and cooking oil without exceeding $300.");
   await page.getByRole("button", { name: "Create & research" }).click();
 
   await expect(page).toHaveURL(/\/procurement\/[0-9a-f-]{36}/);

@@ -56,7 +56,12 @@ export const WebhookVerificationSchema = z.looseObject({
 export const OAuthTokenSchema = z.looseObject({
   access_token: z.string().min(1),
   /** Seconds. Bounded so a hostile or broken response cannot pin a token for years. */
-  expires_in: z.number().int().positive().max(7 * 86_400).optional(),
+  expires_in: z
+    .number()
+    .int()
+    .positive()
+    .max(7 * 86_400)
+    .optional(),
 });
 
 /** Paths (never values) of the fields that failed validation, for logs and error messages. */

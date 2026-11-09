@@ -78,7 +78,8 @@ export function checkCartArithmetic(cart: Cart): ArithmeticIssue[] {
       ["unit_price_minor", l.unit_price_minor],
       ["line_total_minor", l.line_total_minor],
     ] as const) {
-      if (!Number.isSafeInteger(v) || v < 0) issues.push({ path: `lines[${i}].${field}`, expected: Math.max(0, Math.trunc(v) || 0), actual: v });
+      if (!Number.isSafeInteger(v) || v < 0)
+        issues.push({ path: `lines[${i}].${field}`, expected: Math.max(0, Math.trunc(v) || 0), actual: v });
     }
     if (l.kind === "PRODUCT" && l.quantity <= 0) {
       issues.push({ path: `lines[${i}].quantity`, expected: 1, actual: l.quantity });

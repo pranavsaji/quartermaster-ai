@@ -39,10 +39,16 @@ export function operationsRoutes(ctx: AppContext): Router {
     requireRole("OWNER"),
     idempotent(ctx, "mandates.update", async (req) => {
       const input = parse(SpendMandateInput, req.body);
-      const out = await ctx.db.transaction((tx) => updateMandate(tx, { organizationId: req.user!.organizationId, userId: req.user!.id, input, now: ctx.now() }));
+      const out = await ctx.db.transaction((tx) =>
+        updateMandate(tx, { organizationId: req.user!.organizationId, userId: req.user!.id, input, now: ctx.now() }),
+      );
       return {
         status: 200,
-        body: { mandate: toMandateDto(out.mandate), budget: await weeklyBudget(ctx, req.user!.organizationId, out.mandate.weeklyBudgetMinor), revoked_certificates: out.revokedCertificates },
+        body: {
+          mandate: toMandateDto(out.mandate),
+          budget: await weeklyBudget(ctx, req.user!.organizationId, out.mandate.weeklyBudgetMinor),
+          revoked_certificates: out.revokedCertificates,
+        },
       };
     }),
   );

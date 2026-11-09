@@ -11,14 +11,26 @@ import { recordFinding } from "../findings";
 import { cartFromRows, loadOrder, toPaymentDto } from "../orders";
 import { refreshRequestStatus } from "../procurement/status";
 import { applyTerminalFailure } from "./settle";
-import { failureMessageFor, isAmbiguousPayPalFailure, loadPayment, patchPayment, paypalFailureCode, requirePayPal, transitionPayment } from "./shared";
+import {
+  failureMessageFor,
+  isAmbiguousPayPalFailure,
+  loadPayment,
+  patchPayment,
+  paypalFailureCode,
+  requirePayPal,
+  transitionPayment,
+} from "./shared";
 
 /**
  * Creates (or returns the existing) PayPal order for an approved intent. The order body is
  * derived from the persisted, certificate-bound cart; the request id is stable per logical
  * payment so retries can never create a second PayPal order.
  */
-export async function createPayPalOrder(ctx: AppContext, actor: Actor, intentId: string): Promise<{ payment: PaymentDto; paypal_order_id: string }> {
+export async function createPayPalOrder(
+  ctx: AppContext,
+  actor: Actor,
+  intentId: string,
+): Promise<{ payment: PaymentDto; paypal_order_id: string }> {
   requirePayPal(ctx);
   const prepared = await withDeferredFailures(ctx, () =>
     ctx.db.transaction(async (tx) => {
@@ -26,35 +38,47 @@ export async function createPayPalOrder(ctx: AppContext, actor: Actor, intentId:
       const cert = await loadCertificate(tx, actor.organizationId, intentId, true);
       if (cert.buyerId !== actor.id) throw forbidden("Only the owner who approved this purchase can pay for it.");
       const [existing] = await tx.select().from(paymentAttempts).where(eq(paymentAttempts.intentId, cert.id)).for("update");
-      if (existing && (existing.status === "VOIDED" || existing.status === "FAILED")) throw conflict("PAYMENT_NOT_CREATABLE", `Payment is ${existing.status}.`);
+      if (existing && (existing.status === "VOIDED" || existing.status === "FAILED"))
+        throw conflict("PAYMENT_NOT_CREATABLE", `Payment is ${existing.status}.`);
       if (existing?.paypalOrderId) return { attempt: existing, cart: null, po: null, supplierName: null };
       if (existing && existing.status !== "CREATED") throw conflict("PAYMENT_NOT_CREATABLE", `Payment is ${existing.status}.`);
 
       const verification = await verifyStoredCertificate(tx, actor.organizationId, cert, now);
       if (!verification.valid) {
-        throw new DeferredFailure(unprocessable("CERTIFICATE_INVALID", `Intent certificate is not valid: ${verification.status}.`, { checks: verification.checks }), (db) =>
-          recordFinding(db, {
-            organizationId: actor.organizationId,
-            type: "CERTIFICATE_VERIFICATION_FAILED",
-            severity: verification.status === "CART_MODIFIED" || verification.status === "SIGNATURE_INVALID" ? "CRITICAL" : "MEDIUM",
-            title: `Payment refused: certificate ${verification.status}`,
-            description: "A PayPal order was requested for an intent whose certificate did not verify.",
-            sourceKind: "intent_certificate",
-            sourceId: cert.id,
-            evidence: { checks: verification.checks },
-            relatedPurchaseOrderId: cert.purchaseOrderId,
-          }).then(() => undefined),
+        throw new DeferredFailure(
+          unprocessable("CERTIFICATE_INVALID", `Intent certificate is not valid: ${verification.status}.`, { checks: verification.checks }),
+          (db) =>
+            recordFinding(db, {
+              organizationId: actor.organizationId,
+              type: "CERTIFICATE_VERIFICATION_FAILED",
+              severity: verification.status === "CART_MODIFIED" || verification.status === "SIGNATURE_INVALID" ? "CRITICAL" : "MEDIUM",
+              title: `Payment refused: certificate ${verification.status}`,
+              description: "A PayPal order was requested for an intent whose certificate did not verify.",
+              sourceKind: "intent_certificate",
+              sourceId: cert.id,
+              evidence: { checks: verification.checks },
+              relatedPurchaseOrderId: cert.purchaseOrderId,
+            }).then(() => undefined),
         );
       }
       const { po, items } = await loadOrder(tx, actor.organizationId, cert.purchaseOrderId, true);
-      if (!(PAYABLE_PO_STATUSES as readonly string[]).includes(po.status)) throw conflict("ORDER_NOT_PAYABLE", `Purchase order is ${po.status}.`);
+      if (!(PAYABLE_PO_STATUSES as readonly string[]).includes(po.status))
+        throw conflict("ORDER_NOT_PAYABLE", `Purchase order is ${po.status}.`);
       const [supplier] = await tx.select({ name: suppliers.name }).from(suppliers).where(eq(suppliers.id, po.supplierId));
       const attempt =
         existing ??
         (
           await tx
             .insert(paymentAttempts)
-            .values({ organizationId: actor.organizationId, intentId: cert.id, purchaseOrderId: po.id, status: "CREATED", amountMinor: po.totalMinor, currency: po.currency, createdBy: actor.id })
+            .values({
+              organizationId: actor.organizationId,
+              intentId: cert.id,
+              purchaseOrderId: po.id,
+              status: "CREATED",
+              amountMinor: po.totalMinor,
+              currency: po.currency,
+              createdBy: actor.id,
+            })
             .returning()
         )[0]!;
       return { attempt, cart: cartFromRows(po, items), po, supplierName: supplier?.name ?? "Supplier" };
@@ -82,7 +106,10 @@ export async function createPayPalOrder(ctx: AppContext, actor: Actor, intentId:
     await patchPayment(ctx.db, prepared.attempt.id, { failureCode: code, failureMessage: failureMessageFor(code) }, ctx.now());
     if (err instanceof PayPalNotConfiguredError) throw unavailable("PAYPAL_NOT_CONFIGURED", "PayPal is not configured on this server.");
     // An ambiguous outcome is safe to retry: the same PayPal-Request-Id returns the same order.
-    throw badGateway("PAYPAL_ORDER_FAILED", "PayPal did not create the order. Try again.", { retryable: isAmbiguousPayPalFailure(err), code });
+    throw badGateway("PAYPAL_ORDER_FAILED", "PayPal did not create the order. Try again.", {
+      retryable: isAmbiguousPayPalFailure(err),
+      code,
+    });
   }
 
   const view = toProviderOrderView(order);
@@ -99,12 +126,24 @@ export async function createPayPalOrder(ctx: AppContext, actor: Actor, intentId:
         description: `PayPal order ${order.id} reported ${view.amount_minor} minor units for intent ${view.custom_id ?? "unknown"}; the owner approved ${prepared.attempt.amountMinor} for ${intentId}.`,
         sourceKind: "payment_attempt",
         sourceId: prepared.attempt.id,
-        evidence: { paypal_order_id: order.id, provider_amount_minor: view.amount_minor, approved_minor: prepared.attempt.amountMinor, provider_custom_id: view.custom_id },
+        evidence: {
+          paypal_order_id: order.id,
+          provider_amount_minor: view.amount_minor,
+          approved_minor: prepared.attempt.amountMinor,
+          provider_custom_id: view.custom_id,
+        },
         relatedPurchaseOrderId: po.id,
       });
     });
     // Unwind the approval: void the attempt, release the budget and revoke the certificate.
-    await applyTerminalFailure(ctx, prepared.attempt.id, "VOIDED", "PAYPAL_ORDER_MISMATCH", "PayPal returned an order that does not match the approved intent.", "PAYPAL");
+    await applyTerminalFailure(
+      ctx,
+      prepared.attempt.id,
+      "VOIDED",
+      "PAYPAL_ORDER_MISMATCH",
+      "PayPal returned an order that does not match the approved intent.",
+      "PAYPAL",
+    );
     throw badGateway("PAYPAL_ORDER_MISMATCH", "PayPal returned an order that does not match the approved intent. The payment was voided.");
   }
 

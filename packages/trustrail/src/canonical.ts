@@ -17,13 +17,7 @@ import { createHash } from "node:crypto";
  * float in a signed payload indicates a bug, and float serialisation is a classic source of
  * hash drift between implementations.
  */
-export type CanonicalValue =
-  | string
-  | number
-  | boolean
-  | null
-  | CanonicalValue[]
-  | { [key: string]: CanonicalValue | undefined };
+export type CanonicalValue = string | number | boolean | null | CanonicalValue[] | { [key: string]: CanonicalValue | undefined };
 
 export function canonicalize(value: unknown): string {
   return encode(value, "$", new Set());

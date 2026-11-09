@@ -39,7 +39,13 @@ describe("log correlation", () => {
     );
     expect(lines[0]).toMatchObject({ msg: "before auth", correlation_id: "corr-12345678" });
     expect(lines[0]).not.toHaveProperty("user_id");
-    expect(lines[1]).toMatchObject({ msg: "service step", step: "after await", correlation_id: "corr-12345678", organization_id: "org-1", user_id: "user-1" });
+    expect(lines[1]).toMatchObject({
+      msg: "service step",
+      step: "after await",
+      correlation_id: "corr-12345678",
+      organization_id: "org-1",
+      user_id: "user-1",
+    });
   });
 
   it("writes plain lines outside a request", () => {

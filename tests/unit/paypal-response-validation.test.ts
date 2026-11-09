@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { PayPalAmbiguousError, PayPalApiError, PayPalClient, PayPalInvalidResponseError, PayPalOrderSchema } from "@qm/payments";
 
-const json = (status: number, body: unknown) => new Response(typeof body === "string" ? body : JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+const json = (status: number, body: unknown) =>
+  new Response(typeof body === "string" ? body : JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 /** A PayPal stub that issues a token and answers every other call with `reply`. */
 function client(reply: () => Response, token: () => Response = () => json(200, { access_token: "t", expires_in: 3600 })) {
@@ -37,7 +38,9 @@ describe("PayPal response validation", () => {
   });
 
   it("rejects captures nested in an order when their amount is missing", async () => {
-    const { c } = client(() => json(201, { id: "O", status: "COMPLETED", purchase_units: [{ payments: { captures: [{ id: "C", status: "COMPLETED" }] } }] }));
+    const { c } = client(() =>
+      json(201, { id: "O", status: "COMPLETED", purchase_units: [{ payments: { captures: [{ id: "C", status: "COMPLETED" }] } }] }),
+    );
     const err = (await c.captureOrder("O", "req-2").catch((e: unknown) => e)) as PayPalInvalidResponseError;
     expect(err).toBeInstanceOf(PayPalInvalidResponseError);
     expect(err.invalidPaths[0]).toMatch(/^purchase_units\.0\.payments\.captures\.0\.amount/);
@@ -54,7 +57,10 @@ describe("PayPal response validation", () => {
   });
 
   it("rejects an OAuth token response without an access token", async () => {
-    const { c } = client(() => json(200, {}), () => json(200, { token_type: "Bearer" }));
+    const { c } = client(
+      () => json(200, {}),
+      () => json(200, { token_type: "Bearer" }),
+    );
     await expect(c.getAccessToken()).rejects.toBeInstanceOf(PayPalInvalidResponseError);
   });
 
@@ -65,7 +71,9 @@ describe("PayPal response validation", () => {
 
   it("does not report a throttled verification as an invalid signature", async () => {
     const throttled = client(() => json(429, { name: "RATE_LIMIT_REACHED" }));
-    await expect(throttled.c.verifyWebhook(headers, { id: "E", event_type: "X", resource: {} })).rejects.toMatchObject({ rateLimited: true });
+    await expect(throttled.c.verifyWebhook(headers, { id: "E", event_type: "X", resource: {} })).rejects.toMatchObject({
+      rateLimited: true,
+    });
     const rejected = client(() => json(400, { name: "VALIDATION_ERROR" }));
     expect(await rejected.c.verifyWebhook(headers, { id: "E", event_type: "X", resource: {} })).toBe(false);
   });
@@ -78,7 +86,17 @@ describe("PayPal response validation", () => {
   });
 
   it("passes valid orders through, keeping fields it does not model", async () => {
-    const order = { id: "O", status: "COMPLETED", purchase_units: [{ amount: { currency_code: "USD", value: "1.00" }, payments: { captures: [{ id: "C", status: "COMPLETED", amount: { currency_code: "USD", value: "1.00" } }] } }], supplementary: { x: 1 } };
+    const order = {
+      id: "O",
+      status: "COMPLETED",
+      purchase_units: [
+        {
+          amount: { currency_code: "USD", value: "1.00" },
+          payments: { captures: [{ id: "C", status: "COMPLETED", amount: { currency_code: "USD", value: "1.00" } }] },
+        },
+      ],
+      supplementary: { x: 1 },
+    };
     const { c } = client(() => json(200, order));
     const got = await c.getOrder("O");
     expect(got.purchase_units?.[0]?.payments?.captures?.[0]?.id).toBe("C");

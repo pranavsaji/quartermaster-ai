@@ -2,13 +2,13 @@
 
 ## Services
 
-| Service | Command | Health |
-|---|---|---|
-| API | `node apps/api/dist/server.js` | `GET /healthz` (liveness), `GET /readyz` (database + integration flags) |
-| Web | `pnpm --filter @qm/web start` | `GET /login` |
-| Sweeper (cron, every 5 min) | `node apps/api/dist/sweep.js` | logs `sweep complete` with counts |
-| Migrations (pre-deploy) | `node apps/api/dist/migrate.js` | exits 0 |
-| Demo seed (once) | `DEMO_USER_PASSWORD=… node apps/api/dist/seed.js` | logs `demo seed` |
+| Service                     | Command                                           | Health                                                                  |
+| --------------------------- | ------------------------------------------------- | ----------------------------------------------------------------------- |
+| API                         | `node apps/api/dist/server.js`                    | `GET /healthz` (liveness), `GET /readyz` (database + integration flags) |
+| Web                         | `pnpm --filter @qm/web start`                     | `GET /login`                                                            |
+| Sweeper (cron, every 5 min) | `node apps/api/dist/sweep.js`                     | logs `sweep complete` with counts                                       |
+| Migrations (pre-deploy)     | `node apps/api/dist/migrate.js`                   | exits 0                                                                 |
+| Demo seed (once)            | `DEMO_USER_PASSWORD=… node apps/api/dist/seed.js` | logs `demo seed`                                                        |
 
 All logs are structured JSON (pino) with `correlation_id`. Every API response carries
 `x-correlation-id`; the same id is stored on audit events, so a support request can be traced from
@@ -31,9 +31,9 @@ Choose a paid Postgres plan: the judging window extends beyond a free database's
 
 ## Routine checks
 
-* `GET /api/v1/security/audit/verify` must return `valid: true`.
-* `GET /api/v1/analytics/summary` → `security.duplicate_captures` must be `0`.
-* Payments stuck in `CAPTURE_PENDING` for more than a few minutes indicate PayPal connectivity
+- `GET /api/v1/security/audit/verify` must return `valid: true`.
+- `GET /api/v1/analytics/summary` → `security.duplicate_captures` must be `0`.
+- Payments stuck in `CAPTURE_PENDING` for more than a few minutes indicate PayPal connectivity
   problems; the sweeper reconciles them automatically once PayPal is reachable.
 
 ## Incident playbooks

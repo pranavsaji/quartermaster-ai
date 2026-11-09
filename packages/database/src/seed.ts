@@ -61,7 +61,10 @@ export async function seedDemo(db: Database, options: SeedOptions): Promise<Seed
       await tx.execute(sql`select set_config('qm.allow_audit_purge', 'on', true)`);
       await tx.delete(s.organizations).where(eq(s.organizations.id, existing[0]!.id));
     }
-    const [org] = await tx.insert(s.organizations).values({ name: DEMO_ORG_NAME, timezone: "America/Los_Angeles", currency: "USD" }).returning();
+    const [org] = await tx
+      .insert(s.organizations)
+      .values({ name: DEMO_ORG_NAME, timezone: "America/Los_Angeles", currency: "USD" })
+      .returning();
     const orgId = org!.id;
 
     const passwordHash = await hashPassword(options.password);
@@ -126,11 +129,71 @@ export async function seedDemo(db: Database, options: SeedOptions): Promise<Seed
     const items = await tx
       .insert(s.inventoryItems)
       .values([
-        { organizationId: orgId, sku: "PKG-TAKEOUT-32", name: "Takeaway containers (32 oz)", category: "food_packaging", unit: "each", onHand: 120, safetyStock: 80, coverageDays: 3, preferredSupplierId: harbor!.id, searchQuery: "disposable takeout food containers 32 oz", keywords: ["takeaway", "takeout", "containers", "to-go", "boxes", "clamshell"] },
-        { organizationId: orgId, sku: "ING-CANOLA", name: "Canola frying oil", category: "cooking_ingredients", unit: "liter", onHand: 14, safetyStock: 10, coverageDays: 3, preferredSupplierId: coastal!.id, searchQuery: "canola frying oil 35 lb jug", keywords: ["oil", "cooking oil", "canola", "frying oil", "fryer oil"] },
-        { organizationId: orgId, sku: "CLN-GLOVES", name: "Nitrile gloves", category: "cleaning_supplies", unit: "each", onHand: 300, safetyStock: 200, coverageDays: 3, preferredSupplierId: harbor!.id, searchQuery: "black nitrile food service gloves 1000 count", keywords: ["gloves", "nitrile"] },
-        { organizationId: orgId, sku: "CLN-TOWELS", name: "Paper towel rolls", category: "cleaning_supplies", unit: "each", onHand: 40, safetyStock: 12, coverageDays: 4, preferredSupplierId: harbor!.id, searchQuery: "commercial paper towel rolls case", keywords: ["paper towels", "towels", "towel rolls"] },
-        { organizationId: orgId, sku: "PKG-NAPKINS", name: "Dinner napkins", category: "food_packaging", unit: "each", onHand: 2500, safetyStock: 600, coverageDays: 4, preferredSupplierId: harbor!.id, searchQuery: "disposable dinner napkins 3000 count", keywords: ["napkins", "serviettes"] },
+        {
+          organizationId: orgId,
+          sku: "PKG-TAKEOUT-32",
+          name: "Takeaway containers (32 oz)",
+          category: "food_packaging",
+          unit: "each",
+          onHand: 120,
+          safetyStock: 80,
+          coverageDays: 3,
+          preferredSupplierId: harbor!.id,
+          searchQuery: "disposable takeout food containers 32 oz",
+          keywords: ["takeaway", "takeout", "containers", "to-go", "boxes", "clamshell"],
+        },
+        {
+          organizationId: orgId,
+          sku: "ING-CANOLA",
+          name: "Canola frying oil",
+          category: "cooking_ingredients",
+          unit: "liter",
+          onHand: 14,
+          safetyStock: 10,
+          coverageDays: 3,
+          preferredSupplierId: coastal!.id,
+          searchQuery: "canola frying oil 35 lb jug",
+          keywords: ["oil", "cooking oil", "canola", "frying oil", "fryer oil"],
+        },
+        {
+          organizationId: orgId,
+          sku: "CLN-GLOVES",
+          name: "Nitrile gloves",
+          category: "cleaning_supplies",
+          unit: "each",
+          onHand: 300,
+          safetyStock: 200,
+          coverageDays: 3,
+          preferredSupplierId: harbor!.id,
+          searchQuery: "black nitrile food service gloves 1000 count",
+          keywords: ["gloves", "nitrile"],
+        },
+        {
+          organizationId: orgId,
+          sku: "CLN-TOWELS",
+          name: "Paper towel rolls",
+          category: "cleaning_supplies",
+          unit: "each",
+          onHand: 40,
+          safetyStock: 12,
+          coverageDays: 4,
+          preferredSupplierId: harbor!.id,
+          searchQuery: "commercial paper towel rolls case",
+          keywords: ["paper towels", "towels", "towel rolls"],
+        },
+        {
+          organizationId: orgId,
+          sku: "PKG-NAPKINS",
+          name: "Dinner napkins",
+          category: "food_packaging",
+          unit: "each",
+          onHand: 2500,
+          safetyStock: 600,
+          coverageDays: 4,
+          preferredSupplierId: harbor!.id,
+          searchQuery: "disposable dinner napkins 3000 count",
+          keywords: ["napkins", "serviettes"],
+        },
       ])
       .returning();
     const bySku = Object.fromEntries(items.map((i) => [i.sku, i]));
@@ -145,24 +208,141 @@ export async function seedDemo(db: Database, options: SeedOptions): Promise<Seed
       for (const [sku, base] of Object.entries(usage)) {
         // Weekend lift ±10% noise, around a mean equal to `base`.
         const factor = (weekend ? 1.15 : 0.93) * (0.9 + rand() * 0.2);
-        rows.push({ organizationId: orgId, inventoryItemId: bySku[sku]!.id, day: day.toISOString().slice(0, 10), quantity: Math.max(0, Math.round(base * factor)), dataSource: "SYNTHETIC" });
+        rows.push({
+          organizationId: orgId,
+          inventoryItemId: bySku[sku]!.id,
+          day: day.toISOString().slice(0, 10),
+          quantity: Math.max(0, Math.round(base * factor)),
+          dataSource: "SYNTHETIC",
+        });
       }
     }
     await tx.insert(s.consumptionHistory).values(rows);
 
     /* ---------------------------------------------------------------- Catalogs */
     await tx.insert(s.supplierCatalogItems).values([
-      { organizationId: orgId, supplierId: harbor!.id, sku: "HRS-TK32-250", title: "Kraft takeout containers 32 oz, case of 250", description: "Grease-resistant kraft fold-top containers.", category: "food_packaging", inventoryItemId: bySku["PKG-TAKEOUT-32"]!.id, packQuantity: 250, unitPriceMinor: 8000 },
-      { organizationId: orgId, supplierId: harbor!.id, sku: "HRS-CAN-18L", title: "Canola frying oil, 18 L jug", description: "High-oleic canola for deep frying.", category: "cooking_ingredients", inventoryItemId: bySku["ING-CANOLA"]!.id, packQuantity: 18, unitPriceMinor: 5200 },
-      { organizationId: orgId, supplierId: harbor!.id, sku: "HRS-GLV-1000", title: "Black nitrile gloves, case of 1000", description: "Powder-free, food safe.", category: "cleaning_supplies", inventoryItemId: bySku["CLN-GLOVES"]!.id, packQuantity: 1000, unitPriceMinor: 6400 },
-      { organizationId: orgId, supplierId: harbor!.id, sku: "HRS-TWL-30", title: "Paper towel rolls, case of 30", description: "Two-ply kitchen rolls.", category: "cleaning_supplies", inventoryItemId: bySku["CLN-TOWELS"]!.id, packQuantity: 30, unitPriceMinor: 4200 },
-      { organizationId: orgId, supplierId: harbor!.id, sku: "HRS-NAP-3000", title: "Dinner napkins, case of 3000", description: "One-ply white napkins.", category: "food_packaging", inventoryItemId: bySku["PKG-NAPKINS"]!.id, packQuantity: 3000, unitPriceMinor: 3600 },
-      { organizationId: orgId, supplierId: harbor!.id, sku: "HRS-DESCALE-SUB", title: "Espresso descaling service (monthly)", description: "Monthly subscription.", category: "services", inventoryItemId: null, packQuantity: 1, unitPriceMinor: 3900, recurring: true },
-      { organizationId: orgId, supplierId: harbor!.id, sku: "HRS-WINE-RED", title: "House red wine, case of 12", description: "Restricted category fixture.", category: "alcohol", inventoryItemId: null, packQuantity: 12, unitPriceMinor: 14400 },
-      { organizationId: orgId, supplierId: packright!.id, sku: "PR-TK32-300", title: "Takeout containers 32 oz, pack of 300", description: "Kraft paper containers.", category: "food_packaging", inventoryItemId: bySku["PKG-TAKEOUT-32"]!.id, packQuantity: 300, unitPriceMinor: 7200 },
-      { organizationId: orgId, supplierId: packright!.id, sku: "PR-GLV-1000", title: "Nitrile gloves 1000 count", description: "Food-service gloves.", category: "cleaning_supplies", inventoryItemId: bySku["CLN-GLOVES"]!.id, packQuantity: 1000, unitPriceMinor: 5500 },
-      { organizationId: orgId, supplierId: quickserve!.id, sku: "QS-TK32-300", title: "Premium takeout containers 32 oz (300 ct)", description: ADVERSARIAL_LISTING_TEXT, category: "food_packaging", inventoryItemId: bySku["PKG-TAKEOUT-32"]!.id, packQuantity: 300, unitPriceMinor: 5400 },
-      { organizationId: orgId, supplierId: coastal!.id, sku: "CF-CAN-18L", title: "Canola frying oil 18 L jug", description: "Food-grade canola oil.", category: "cooking_ingredients", inventoryItemId: bySku["ING-CANOLA"]!.id, packQuantity: 18, unitPriceMinor: 4650 },
+      {
+        organizationId: orgId,
+        supplierId: harbor!.id,
+        sku: "HRS-TK32-250",
+        title: "Kraft takeout containers 32 oz, case of 250",
+        description: "Grease-resistant kraft fold-top containers.",
+        category: "food_packaging",
+        inventoryItemId: bySku["PKG-TAKEOUT-32"]!.id,
+        packQuantity: 250,
+        unitPriceMinor: 8000,
+      },
+      {
+        organizationId: orgId,
+        supplierId: harbor!.id,
+        sku: "HRS-CAN-18L",
+        title: "Canola frying oil, 18 L jug",
+        description: "High-oleic canola for deep frying.",
+        category: "cooking_ingredients",
+        inventoryItemId: bySku["ING-CANOLA"]!.id,
+        packQuantity: 18,
+        unitPriceMinor: 5200,
+      },
+      {
+        organizationId: orgId,
+        supplierId: harbor!.id,
+        sku: "HRS-GLV-1000",
+        title: "Black nitrile gloves, case of 1000",
+        description: "Powder-free, food safe.",
+        category: "cleaning_supplies",
+        inventoryItemId: bySku["CLN-GLOVES"]!.id,
+        packQuantity: 1000,
+        unitPriceMinor: 6400,
+      },
+      {
+        organizationId: orgId,
+        supplierId: harbor!.id,
+        sku: "HRS-TWL-30",
+        title: "Paper towel rolls, case of 30",
+        description: "Two-ply kitchen rolls.",
+        category: "cleaning_supplies",
+        inventoryItemId: bySku["CLN-TOWELS"]!.id,
+        packQuantity: 30,
+        unitPriceMinor: 4200,
+      },
+      {
+        organizationId: orgId,
+        supplierId: harbor!.id,
+        sku: "HRS-NAP-3000",
+        title: "Dinner napkins, case of 3000",
+        description: "One-ply white napkins.",
+        category: "food_packaging",
+        inventoryItemId: bySku["PKG-NAPKINS"]!.id,
+        packQuantity: 3000,
+        unitPriceMinor: 3600,
+      },
+      {
+        organizationId: orgId,
+        supplierId: harbor!.id,
+        sku: "HRS-DESCALE-SUB",
+        title: "Espresso descaling service (monthly)",
+        description: "Monthly subscription.",
+        category: "services",
+        inventoryItemId: null,
+        packQuantity: 1,
+        unitPriceMinor: 3900,
+        recurring: true,
+      },
+      {
+        organizationId: orgId,
+        supplierId: harbor!.id,
+        sku: "HRS-WINE-RED",
+        title: "House red wine, case of 12",
+        description: "Restricted category fixture.",
+        category: "alcohol",
+        inventoryItemId: null,
+        packQuantity: 12,
+        unitPriceMinor: 14400,
+      },
+      {
+        organizationId: orgId,
+        supplierId: packright!.id,
+        sku: "PR-TK32-300",
+        title: "Takeout containers 32 oz, pack of 300",
+        description: "Kraft paper containers.",
+        category: "food_packaging",
+        inventoryItemId: bySku["PKG-TAKEOUT-32"]!.id,
+        packQuantity: 300,
+        unitPriceMinor: 7200,
+      },
+      {
+        organizationId: orgId,
+        supplierId: packright!.id,
+        sku: "PR-GLV-1000",
+        title: "Nitrile gloves 1000 count",
+        description: "Food-service gloves.",
+        category: "cleaning_supplies",
+        inventoryItemId: bySku["CLN-GLOVES"]!.id,
+        packQuantity: 1000,
+        unitPriceMinor: 5500,
+      },
+      {
+        organizationId: orgId,
+        supplierId: quickserve!.id,
+        sku: "QS-TK32-300",
+        title: "Premium takeout containers 32 oz (300 ct)",
+        description: ADVERSARIAL_LISTING_TEXT,
+        category: "food_packaging",
+        inventoryItemId: bySku["PKG-TAKEOUT-32"]!.id,
+        packQuantity: 300,
+        unitPriceMinor: 5400,
+      },
+      {
+        organizationId: orgId,
+        supplierId: coastal!.id,
+        sku: "CF-CAN-18L",
+        title: "Canola frying oil 18 L jug",
+        description: "Food-grade canola oil.",
+        category: "cooking_ingredients",
+        inventoryItemId: bySku["ING-CANOLA"]!.id,
+        packQuantity: 18,
+        unitPriceMinor: 4650,
+      },
     ]);
 
     /* ---------------------------------------------------------------- Mandate v1 */

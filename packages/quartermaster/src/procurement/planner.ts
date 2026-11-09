@@ -46,7 +46,12 @@ export function planCarts(input: PlanInput): { carts: PlannedCart[]; unfilled_it
   const carts: PlannedCart[] = [];
   for (const picks of chosen.values()) {
     const supplier = picks[0]!.candidate.supplier;
-    const lines = picks.map((p) => ({ offer: p.candidate.offer, packs: p.candidate.packs, units: p.candidate.units, inventory_item_id: p.item }));
+    const lines = picks.map((p) => ({
+      offer: p.candidate.offer,
+      packs: p.candidate.packs,
+      units: p.candidate.units,
+      inventory_item_id: p.item,
+    }));
     const cart = buildSupplierQuote(
       supplier,
       lines.map((l) => ({ offer: l.offer, packs: l.packs })),
@@ -70,9 +75,16 @@ export function fitToBudget(
   currency: string,
   storefrontLines: StorefrontQuoteLine[],
 ): PlannedCart | null {
-  let lines = [...planned.lines].sort((a, b) => (priorityByItem.get(a.inventory_item_id) ?? 0) - (priorityByItem.get(b.inventory_item_id) ?? 0));
+  let lines = [...planned.lines].sort(
+    (a, b) => (priorityByItem.get(a.inventory_item_id) ?? 0) - (priorityByItem.get(b.inventory_item_id) ?? 0),
+  );
   while (lines.length > 0) {
-    const cart = buildSupplierQuote(planned.supplier, lines.map((l) => ({ offer: l.offer, packs: l.packs })), currency, storefrontLines);
+    const cart = buildSupplierQuote(
+      planned.supplier,
+      lines.map((l) => ({ offer: l.offer, packs: l.packs })),
+      currency,
+      storefrontLines,
+    );
     if (cart.total_minor <= capMinor) {
       const keep = new Set(lines.map((l) => l.offer.sku));
       return {

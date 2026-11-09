@@ -36,7 +36,13 @@ function capturingContext() {
 }
 
 function invoke(mw: ReturnType<typeof idempotent>, key: string) {
-  const req = { get: (n: string) => (n.toLowerCase() === "idempotency-key" ? key : undefined), user, method: "POST", params: {}, body: { a: 1 } } as unknown as Request;
+  const req = {
+    get: (n: string) => (n.toLowerCase() === "idempotency-key" ? key : undefined),
+    user,
+    method: "POST",
+    params: {},
+    body: { a: 1 },
+  } as unknown as Request;
   const sent: { status?: number; body?: unknown } = {};
   const res = {
     status(s: number) {
@@ -71,17 +77,26 @@ describe("idempotency lease", () => {
     expect(sent).toEqual({ status: 201, body: { done: true } });
     const entry = lines.find((l) => l.msg === "idempotency lease lost before completion; response not stored");
     expect(entry).toMatchObject({ level: 50, idempotency_key: key, route: "test.lost_lease", status: 201 });
-    const [row] = await h.ctx.db.select().from(idempotencyKeys).where(and(eq(idempotencyKeys.userId, user.id), eq(idempotencyKeys.key, key)));
+    const [row] = await h.ctx.db
+      .select()
+      .from(idempotencyKeys)
+      .where(and(eq(idempotencyKeys.userId, user.id), eq(idempotencyKeys.key, key)));
     expect(row!.status).toBe("IN_PROGRESS");
   });
 
   it("stores the response without logging when the lease is intact", async () => {
     const { ctx, lines } = capturingContext();
     const key = "kept-lease-key-0001";
-    const sent = await invoke(idempotent(ctx, "test.kept_lease", async () => ({ status: 200, body: { ok: 1 } })), key);
+    const sent = await invoke(
+      idempotent(ctx, "test.kept_lease", async () => ({ status: 200, body: { ok: 1 } })),
+      key,
+    );
     expect(sent.status).toBe(200);
     expect(lines.filter((l) => (l.level as number) >= 50)).toEqual([]);
-    const [row] = await h.ctx.db.select().from(idempotencyKeys).where(and(eq(idempotencyKeys.userId, user.id), eq(idempotencyKeys.key, key)));
+    const [row] = await h.ctx.db
+      .select()
+      .from(idempotencyKeys)
+      .where(and(eq(idempotencyKeys.userId, user.id), eq(idempotencyKeys.key, key)));
     expect(row!.status).toBe("COMPLETED");
   });
 });

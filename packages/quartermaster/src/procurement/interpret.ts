@@ -37,7 +37,11 @@ export const INTENT_JSON_SCHEMA = {
     budget_limit_minor: { type: ["integer", "null"], description: "Spending cap in cents if the owner stated one." },
     required_by: { type: ["string", "null"], description: "YYYY-MM-DD if the owner stated a date." },
     notes: { type: "string", description: "One sentence summarising the owner's intent." },
-    unsupported_requests: { type: "array", items: { type: "string" }, description: "Parts of the request that are not supply purchases from inventory." },
+    unsupported_requests: {
+      type: "array",
+      items: { type: "string" },
+      description: "Parts of the request that are not supply purchases from inventory.",
+    },
   },
 } as const;
 
@@ -58,10 +62,14 @@ export function sanitizeIntent(raw: unknown, inventory: InventoryRef[]): Interpr
   if (!raw || typeof raw !== "object") return null;
   const r = raw as Record<string, unknown>;
   const known = new Set(inventory.map((i) => i.id));
-  const ids = Array.isArray(r.inventory_item_ids) ? r.inventory_item_ids.filter((x): x is string => typeof x === "string" && known.has(x)) : [];
+  const ids = Array.isArray(r.inventory_item_ids)
+    ? r.inventory_item_ids.filter((x): x is string => typeof x === "string" && known.has(x))
+    : [];
   const mult = typeof r.demand_multiplier === "number" && Number.isFinite(r.demand_multiplier) ? r.demand_multiplier : 1;
   const budget =
-    typeof r.budget_limit_minor === "number" && Number.isSafeInteger(r.budget_limit_minor) && r.budget_limit_minor > 0 ? r.budget_limit_minor : null;
+    typeof r.budget_limit_minor === "number" && Number.isSafeInteger(r.budget_limit_minor) && r.budget_limit_minor > 0
+      ? r.budget_limit_minor
+      : null;
   const date = typeof r.required_by === "string" && isCalendarDate(r.required_by) ? r.required_by : null;
   return {
     inventory_item_ids: [...new Set(ids)],
@@ -70,7 +78,10 @@ export function sanitizeIntent(raw: unknown, inventory: InventoryRef[]): Interpr
     required_by: date,
     notes: typeof r.notes === "string" ? r.notes.slice(0, 300) : "",
     unsupported_requests: Array.isArray(r.unsupported_requests)
-      ? r.unsupported_requests.filter((x): x is string => typeof x === "string").slice(0, 10).map((s) => s.slice(0, 200))
+      ? r.unsupported_requests
+          .filter((x): x is string => typeof x === "string")
+          .slice(0, 10)
+          .map((s) => s.slice(0, 200))
       : [],
   };
 }
@@ -136,7 +147,9 @@ function parseDate(text: string, now: Date, timeZone: string): string | null {
   const today = localCalendarDay(now, timeZone);
   const day = (offsetDays: number) => new Date(today.getTime() + offsetDays * 86_400_000).toISOString().slice(0, 10);
   if (/\btomorrow\b/i.test(text)) return day(1);
-  const weekday = /\b(by|before|for)\s+(?:this\s+)?(monday|tuesday|wednesday|thursday|friday|saturday|sunday|the weekend|weekend)\b/i.exec(text);
+  const weekday = /\b(by|before|for)\s+(?:this\s+)?(monday|tuesday|wednesday|thursday|friday|saturday|sunday|the weekend|weekend)\b/i.exec(
+    text,
+  );
   if (weekday) {
     const names = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
     const target = /weekend/i.test(weekday[2]!) ? 5 : names.indexOf(weekday[2]!.toLowerCase());
@@ -161,7 +174,12 @@ function containsTerm(text: string, term: string): boolean {
 }
 
 /** Deterministic interpreter: keyword matching against inventory plus simple pattern extraction. */
-export function interpretDeterministically(instruction: string, inventory: InventoryRef[], now: Date, options: InterpretOptions = {}): InterpretedIntent {
+export function interpretDeterministically(
+  instruction: string,
+  inventory: InventoryRef[],
+  now: Date,
+  options: InterpretOptions = {},
+): InterpretedIntent {
   const text = instruction.toLowerCase();
   const matched = inventory.filter((item) => {
     const terms = [item.name.toLowerCase(), item.sku.toLowerCase(), ...item.keywords.map((k) => k.toLowerCase())];

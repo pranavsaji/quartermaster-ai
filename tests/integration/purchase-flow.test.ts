@@ -28,23 +28,40 @@ async function newResearchedRequest(instruction = DEMO_INSTRUCTION): Promise<Pro
 async function drawDown(sku: string, to: number) {
   const item = (await owner.get("/inventory")).body.items.find((i: { sku: string }) => i.sku === sku);
   const delta = to - item.on_hand;
-  if (delta !== 0) expect((await owner.post(`/inventory/${item.id}/adjustments`, { quantity_delta: delta, reason: "COUNT_CORRECTION" })).status).toBe(200);
+  if (delta !== 0)
+    expect((await owner.post(`/inventory/${item.id}/adjustments`, { quantity_delta: delta, reason: "COUNT_CORRECTION" })).status).toBe(200);
 }
 
 function mandateInput(m: Record<string, unknown>) {
   const keys = [
-    "currency", "weekly_budget_minor", "per_order_limit_minor", "auto_approval_limit_minor", "human_approval_required",
-    "approved_supplier_ids", "allowed_categories", "max_market_price_premium_pct", "market_price_action", "duplicate_window_hours",
-    "duplicate_action", "subscriptions_allowed", "certificate_ttl_minutes", "max_quantity_multiple_of_need",
+    "currency",
+    "weekly_budget_minor",
+    "per_order_limit_minor",
+    "auto_approval_limit_minor",
+    "human_approval_required",
+    "approved_supplier_ids",
+    "allowed_categories",
+    "max_market_price_premium_pct",
+    "market_price_action",
+    "duplicate_window_hours",
+    "duplicate_action",
+    "subscriptions_allowed",
+    "certificate_ttl_minutes",
+    "max_quantity_multiple_of_need",
   ];
   return { ...Object.fromEntries(keys.map((k) => [k, m[k]])), expected_version: m.version };
 }
 
-const proposal = (r: ProcurementRequestDto, supplierPrefix: string) => r.proposals.find((p) => p.supplier_name.startsWith(supplierPrefix) && p.status !== "SUPERSEDED")!;
+const proposal = (r: ProcurementRequestDto, supplierPrefix: string) =>
+  r.proposals.find((p) => p.supplier_name.startsWith(supplierPrefix) && p.status !== "SUPERSEDED")!;
 const reviewCodes = (p: PurchaseOrderDto) => p.policy_decision!.violations.filter((v) => v.severity === "REVIEW").map((v) => v.code);
 
 async function approve(r: ProcurementRequestDto, p: PurchaseOrderDto, client = owner) {
-  return client.post(`/procurement/requests/${r.id}/approve`, { purchase_order_id: p.id, cart_hash: p.cart_hash, acknowledged_review_codes: reviewCodes(p) });
+  return client.post(`/procurement/requests/${r.id}/approve`, {
+    purchase_order_id: p.id,
+    cart_hash: p.cart_hash,
+    acknowledged_review_codes: reviewCodes(p),
+  });
 }
 
 async function pay(intentId: string) {
@@ -69,7 +86,9 @@ describe("end-to-end purchasing journey", () => {
     const blocked = proposal(req, "QuickServe");
     expect(blocked.status).toBe("BLOCKED");
     expect(blocked.policy_decision!.decision).toBe("BLOCK");
-    expect(blocked.policy_decision!.violations.map((v) => v.code)).toEqual(expect.arrayContaining(["UNAUTHORIZED_LINE_ITEM", "QUARANTINED_SOURCE"]));
+    expect(blocked.policy_decision!.violations.map((v) => v.code)).toEqual(
+      expect.arrayContaining(["UNAUTHORIZED_LINE_ITEM", "QUARANTINED_SOURCE"]),
+    );
     expect(req.security_findings.map((f) => f.type)).toEqual(expect.arrayContaining(["PROMPT_INJECTION", "UNAUTHORIZED_FEE"]));
 
     const harbor = proposal(req, "Harbor");
@@ -96,7 +115,11 @@ describe("end-to-end purchasing journey", () => {
 
   it("rejects approval of a cart hash the owner did not see", async () => {
     const harbor = proposal(req, "Harbor");
-    const res = await owner.post(`/procurement/requests/${req.id}/approve`, { purchase_order_id: harbor.id, cart_hash: `sha256:${"0".repeat(64)}`, acknowledged_review_codes: reviewCodes(harbor) });
+    const res = await owner.post(`/procurement/requests/${req.id}/approve`, {
+      purchase_order_id: harbor.id,
+      cart_hash: `sha256:${"0".repeat(64)}`,
+      acknowledged_review_codes: reviewCodes(harbor),
+    });
     expect(res.status).toBe(409);
     expect(res.body.error.code).toBe("CART_CHANGED");
   });
@@ -169,14 +192,27 @@ describe("end-to-end purchasing journey", () => {
   });
 
   it("deduplicates webhooks and never regresses a completed payment", async () => {
-    const event = { id: "WH-EVT-1", event_type: "PAYMENT.CAPTURE.COMPLETED", resource: { id: "CAP", supplementary_data: { related_ids: { order_id: paypalOrderId } } } };
-    const send = () => request(h.app).post("/api/v1/webhooks/paypal").set(h.paypal.webhookHeaders()).set("content-type", "application/json").send(JSON.stringify(event));
+    const event = {
+      id: "WH-EVT-1",
+      event_type: "PAYMENT.CAPTURE.COMPLETED",
+      resource: { id: "CAP", supplementary_data: { related_ids: { order_id: paypalOrderId } } },
+    };
+    const send = () =>
+      request(h.app)
+        .post("/api/v1/webhooks/paypal")
+        .set(h.paypal.webhookHeaders())
+        .set("content-type", "application/json")
+        .send(JSON.stringify(event));
     const first = await send();
     expect(first.body.outcome).toBe("PROCESSED");
     const second = await send();
     expect(second.body.outcome).toBe("DUPLICATE");
     const late = { id: "WH-EVT-2", event_type: "CHECKOUT.ORDER.APPROVED", resource: { id: paypalOrderId } };
-    await request(h.app).post("/api/v1/webhooks/paypal").set(h.paypal.webhookHeaders()).set("content-type", "application/json").send(JSON.stringify(late));
+    await request(h.app)
+      .post("/api/v1/webhooks/paypal")
+      .set(h.paypal.webhookHeaders())
+      .set("content-type", "application/json")
+      .send(JSON.stringify(late));
     expect((await owner.get(`/payments/${paymentId}`)).body.status).toBe("COMPLETED");
   });
 
@@ -212,8 +248,20 @@ describe("end-to-end purchasing journey", () => {
       invoice_date: "2026-11-11",
       currency: "USD",
       lines: [
-        { sku: product.sku, description: product.description, quantity: product.quantity, unit_price_minor: product.unit_price_minor, line_total_minor: product.line_total_minor },
-        { sku: null, description: "Sales tax", quantity: 1, unit_price_minor: tax.line_total_minor, line_total_minor: tax.line_total_minor },
+        {
+          sku: product.sku,
+          description: product.description,
+          quantity: product.quantity,
+          unit_price_minor: product.unit_price_minor,
+          line_total_minor: product.line_total_minor,
+        },
+        {
+          sku: null,
+          description: "Sales tax",
+          quantity: 1,
+          unit_price_minor: tax.line_total_minor,
+          line_total_minor: tax.line_total_minor,
+        },
       ],
       total_minor: po.total_minor,
     };
@@ -231,9 +279,13 @@ describe("end-to-end purchasing journey", () => {
     const po = proposal((await owner.get(`/procurement/requests/${req.id}`)).body, "Harbor");
     expect(before.inbound_confirmed).toBe(500);
     const line = po.items.find((i) => i.kind === "PRODUCT")!;
-    const over = await owner.post(`/deliveries/${po.delivery!.id}/receive`, { lines: [{ purchase_order_item_id: line.id, quantity_received: 501 }] });
+    const over = await owner.post(`/deliveries/${po.delivery!.id}/receive`, {
+      lines: [{ purchase_order_item_id: line.id, quantity_received: 501 }],
+    });
     expect(over.status).toBe(422);
-    const ok = await owner.post(`/deliveries/${po.delivery!.id}/receive`, { lines: [{ purchase_order_item_id: line.id, quantity_received: 500 }] });
+    const ok = await owner.post(`/deliveries/${po.delivery!.id}/receive`, {
+      lines: [{ purchase_order_item_id: line.id, quantity_received: 500 }],
+    });
     expect(ok.body.delivery.status).toBe("DELIVERED");
     const after = (await owner.get("/inventory")).body.items.find((i: { sku: string }) => i.sku === "PKG-TAKEOUT-32");
     expect(after.on_hand).toBe(before.on_hand + 500);
@@ -256,13 +308,18 @@ describe("end-to-end purchasing journey", () => {
     const [victim] = await h.ctx.db.select().from(auditEvents).where(eq(auditEvents.action, "payment.captured"));
     // The database refuses to rewrite or delete audit rows.
     const cause = (p: Promise<unknown>) => p.catch((e: { cause?: unknown }) => Promise.reject(e.cause ?? e));
-    await expect(cause(h.ctx.db.update(auditEvents).set({ data: {} }).where(eq(auditEvents.id, victim!.id)))).rejects.toThrow(/append-only/);
+    await expect(cause(h.ctx.db.update(auditEvents).set({ data: {} }).where(eq(auditEvents.id, victim!.id)))).rejects.toThrow(
+      /append-only/,
+    );
     await expect(cause(h.ctx.db.delete(auditEvents).where(eq(auditEvents.id, victim!.id)))).rejects.toThrow(/cannot be deleted/);
 
     // Someone with DDL rights can bypass the trigger; the hash chain still exposes the edit.
     await h.ctx.db.execute(sql`alter table audit_events disable trigger audit_events_append_only`);
     try {
-      await h.ctx.db.update(auditEvents).set({ data: { ...victim!.data, captured_minor: 1 } }).where(eq(auditEvents.id, victim!.id));
+      await h.ctx.db
+        .update(auditEvents)
+        .set({ data: { ...victim!.data, captured_minor: 1 } })
+        .where(eq(auditEvents.id, victim!.id));
       const bad = await owner.get("/security/audit/verify");
       expect(bad.body.valid).toBe(false);
       expect(bad.body.first_invalid_sequence).toBe(victim!.sequence);
@@ -308,7 +365,10 @@ describe("failure handling and attacks on the payment path", () => {
     const approval = await approve(r, p);
     expect(approval.status).toBe(200);
     const [line] = await h.ctx.db.select().from(purchaseOrderItems).where(eq(purchaseOrderItems.purchaseOrderId, p.id));
-    await h.ctx.db.update(purchaseOrderItems).set({ description: `${line!.description} + hidden extra` }).where(eq(purchaseOrderItems.id, line!.id));
+    await h.ctx.db
+      .update(purchaseOrderItems)
+      .set({ description: `${line!.description} + hidden extra` })
+      .where(eq(purchaseOrderItems.id, line!.id));
     const res = await owner.post(`/intents/${approval.body.certificate.id}/paypal-order`);
     expect(res.status).toBe(422);
     expect(res.body.error.code).toBe("CERTIFICATE_INVALID");
@@ -329,7 +389,11 @@ describe("failure handling and attacks on the payment path", () => {
     const approval = await approve(r, p);
     expect(approval.status).toBe(200);
     const current = (await owner.get("/mandates/current")).body.mandate;
-    const put = await owner.put("/mandates/current", { ...mandateInput(current), per_order_limit_minor: 3_000, auto_approval_limit_minor: 1_000 });
+    const put = await owner.put("/mandates/current", {
+      ...mandateInput(current),
+      per_order_limit_minor: 3_000,
+      auto_approval_limit_minor: 1_000,
+    });
     expect(put.status).toBe(200);
     expect(put.body.revoked_certificates).toBeGreaterThanOrEqual(1);
     const v = await owner.get(`/intents/${approval.body.certificate.id}/verify`);

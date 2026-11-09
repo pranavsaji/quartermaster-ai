@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { Channel3Client, Channel3Error, flattenOffers, Notifier, OpenAIClient, OpenAIError } from "@qm/integrations";
 
-const jsonResponse = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+const jsonResponse = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 
 describe("Channel3 client", () => {
   it("sends the API key, query, limit and in-stock filter", async () => {
@@ -20,8 +21,16 @@ describe("Channel3 client", () => {
 
   it("drops malformed products and offers", () => {
     const rows = flattenOffers([
-      { id: "1", title: "Good", offers: [{ url: "https://a", domain: "a", price: { price: 10, currency: "usd" }, availability: "InStock" }] },
-      { id: "2", title: "Bad price", offers: [{ url: "https://b", domain: "b", price: { price: -1, currency: "USD" }, availability: "InStock" }] },
+      {
+        id: "1",
+        title: "Good",
+        offers: [{ url: "https://a", domain: "a", price: { price: 10, currency: "usd" }, availability: "InStock" }],
+      },
+      {
+        id: "2",
+        title: "Bad price",
+        offers: [{ url: "https://b", domain: "b", price: { price: -1, currency: "USD" }, availability: "InStock" }],
+      },
     ] as never);
     expect(rows).toHaveLength(1);
     expect(rows[0]!.currency).toBe("USD");
@@ -42,7 +51,10 @@ describe("OpenAI structured-output client", () => {
       model: "test-model",
       fetch: async (_u, init) => {
         body = JSON.parse(String(init?.body));
-        return jsonResponse({ choices: [{ message: { content: '{"ok":true}' }, finish_reason: "stop" }], usage: { prompt_tokens: 10, completion_tokens: 5 } });
+        return jsonResponse({
+          choices: [{ message: { content: '{"ok":true}' }, finish_reason: "stop" }],
+          usage: { prompt_tokens: 10, completion_tokens: 5 },
+        });
       },
     });
     const r = await c.structured<{ ok: boolean }>({ name: "t", system: "s", user: "u", schema: { type: "object" } });
@@ -65,9 +77,26 @@ describe("OpenAI structured-output client", () => {
 describe("notifier", () => {
   it("is notification-only and never throws", async () => {
     const sent: unknown[] = [];
-    const n = new Notifier({ webhookUrl: "https://hooks.example/x", appBaseUrl: "https://app.example", fetch: async (_u, init) => { sent.push(JSON.parse(String(init?.body))); return new Response(null, { status: 500 }); } });
-    await expect(n.send({ kind: "PAYMENT_COMPLETED", organization_id: "o", title: "t", summary: "s", link_path: "/orders" })).resolves.toBeUndefined();
+    const n = new Notifier({
+      webhookUrl: "https://hooks.example/x",
+      appBaseUrl: "https://app.example",
+      fetch: async (_u, init) => {
+        sent.push(JSON.parse(String(init?.body)));
+        return new Response(null, { status: 500 });
+      },
+    });
+    await expect(
+      n.send({ kind: "PAYMENT_COMPLETED", organization_id: "o", title: "t", summary: "s", link_path: "/orders" }),
+    ).resolves.toBeUndefined();
     expect(sent[0]).toMatchObject({ link: "https://app.example/orders", notice: expect.stringMatching(/Informational only/) });
-    await expect(new Notifier({ webhookUrl: "https://x.example", appBaseUrl: "https://a.example", fetch: async () => { throw new Error("down"); } }).send({ kind: "INVOICE_FLAGGED", organization_id: "o", title: "t", summary: "s" })).resolves.toBeUndefined();
+    await expect(
+      new Notifier({
+        webhookUrl: "https://x.example",
+        appBaseUrl: "https://a.example",
+        fetch: async () => {
+          throw new Error("down");
+        },
+      }).send({ kind: "INVOICE_FLAGGED", organization_id: "o", title: "t", summary: "s" }),
+    ).resolves.toBeUndefined();
   });
 });

@@ -45,7 +45,8 @@ export class FakePayPal {
     const headers = new Headers(init?.headers);
     const requestId = headers.get("PayPal-Request-Id");
     this.calls.push({ method, path: url.pathname, requestId });
-    const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", "paypal-debug-id": "fake" } });
+    const json = (status: number, body: unknown) =>
+      new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json", "paypal-debug-id": "fake" } });
 
     if (url.pathname === "/v1/oauth2/token") {
       this.tokenCount++;
@@ -62,14 +63,25 @@ export class FakePayPal {
       const sum = [b.item_total, b.shipping, b.handling, b.tax_total].reduce((a, m) => a + Math.round(Number(m?.value ?? 0) * 100), 0);
       const items = unit.items.reduce((a, i) => a + Math.round(Number(i.unit_amount.value) * 100) * Number(i.quantity), 0);
       if (sum !== Math.round(Number(unit.amount.value) * 100) || items !== Math.round(Number(b.item_total.value) * 100)) {
-        return json(422, { name: "UNPROCESSABLE_ENTITY", details: [{ issue: "AMOUNT_MISMATCH", description: "breakdown does not add up" }] });
+        return json(422, {
+          name: "UNPROCESSABLE_ENTITY",
+          details: [{ issue: "AMOUNT_MISMATCH", description: "breakdown does not add up" }],
+        });
       }
       const id = `FAKE${(++this.seq).toString().padStart(13, "0")}`;
       const order: PayPalOrder = {
         id,
         status: "CREATED",
         intent: "CAPTURE",
-        purchase_units: [{ reference_id: unit.reference_id, custom_id: unit.custom_id, invoice_id: unit.invoice_id, amount: { currency_code: unit.amount.currency_code, value: unit.amount.value }, payee: { merchant_id: "FAKEMERCHANT" } }],
+        purchase_units: [
+          {
+            reference_id: unit.reference_id,
+            custom_id: unit.custom_id,
+            invoice_id: unit.invoice_id,
+            amount: { currency_code: unit.amount.currency_code, value: unit.amount.value },
+            payee: { merchant_id: "FAKEMERCHANT" },
+          },
+        ],
         links: [{ href: `https://www.sandbox.paypal.com/checkoutnow?token=${id}`, rel: "payer-action" }],
       };
       this.orders.set(id, { order, body, requestId: requestId ?? "" });
@@ -94,8 +106,10 @@ export class FakePayPal {
         return json(200, copy);
       }
       // capture
-      if (stored.order.status === "COMPLETED") return json(422, { name: "UNPROCESSABLE_ENTITY", details: [{ issue: "ORDER_ALREADY_CAPTURED" }] });
-      if (stored.order.status !== "APPROVED") return json(422, { name: "UNPROCESSABLE_ENTITY", details: [{ issue: "ORDER_NOT_APPROVED" }] });
+      if (stored.order.status === "COMPLETED")
+        return json(422, { name: "UNPROCESSABLE_ENTITY", details: [{ issue: "ORDER_ALREADY_CAPTURED" }] });
+      if (stored.order.status !== "APPROVED")
+        return json(422, { name: "UNPROCESSABLE_ENTITY", details: [{ issue: "ORDER_NOT_APPROVED" }] });
       if (this.failNextCaptureBeforeProcessing) {
         this.failNextCaptureBeforeProcessing = false;
         throw new TypeError("fetch failed: ETIMEDOUT");
@@ -109,7 +123,15 @@ export class FakePayPal {
       stored.order.status = "COMPLETED";
       stored.order.payer = { payer_id: "FAKEPAYER" };
       stored.order.purchase_units![0]!.payments = {
-        captures: [{ id: `CAP${this.seq}${this.captureCount}`, status: this.captureStatus, amount: { ...amount }, final_capture: true, custom_id: stored.body.purchase_units[0]!.custom_id }],
+        captures: [
+          {
+            id: `CAP${this.seq}${this.captureCount}`,
+            status: this.captureStatus,
+            amount: { ...amount },
+            final_capture: true,
+            custom_id: stored.body.purchase_units[0]!.custom_id,
+          },
+        ],
       };
       if (requestId) this.requestIds.set(requestId, stored.order);
       if (this.dropNextCaptureResponse) {
@@ -162,7 +184,15 @@ export class FakePayPal {
     stored.order.status = "COMPLETED";
     stored.order.payer = { payer_id: "FAKEPAYER" };
     stored.order.purchase_units![0]!.payments = {
-      captures: [{ id, status: "COMPLETED", amount: { ...stored.order.purchase_units![0]!.amount! }, final_capture: true, custom_id: stored.body.purchase_units[0]!.custom_id }],
+      captures: [
+        {
+          id,
+          status: "COMPLETED",
+          amount: { ...stored.order.purchase_units![0]!.amount! },
+          final_capture: true,
+          custom_id: stored.body.purchase_units[0]!.custom_id,
+        },
+      ],
     };
     return id;
   }

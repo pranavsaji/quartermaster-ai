@@ -47,7 +47,8 @@ export function compareOffers(input: CompareInput): CandidateEvaluation[] {
     // side of the boundary; TrustRail enforces quarantine when it evaluates the cart.
     if (input.required_by) {
       const arrival = input.now.getTime() + supplier.lead_time_days * 86_400_000;
-      if (arrival > input.required_by.getTime() + 86_400_000 - 1) reasons.push(`Arrives after required date (lead time ${supplier.lead_time_days}d)`);
+      if (arrival > input.required_by.getTime() + 86_400_000 - 1)
+        reasons.push(`Arrives after required date (lead time ${supplier.lead_time_days}d)`);
     }
     return {
       offer,

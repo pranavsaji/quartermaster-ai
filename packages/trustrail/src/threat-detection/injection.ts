@@ -43,7 +43,8 @@ interface Rule {
 const gap = (n: number) => String.raw`(?:[\w\s'%-]|\$(?=\d)|[.,](?=\d)){0,${n}}`;
 
 const OVERRIDE_VERBS = "ignore|disregard|forget|override|bypass|skip";
-const OVERRIDE_NOUNS = "instructions?|rules?|prompts?|polic(?:y|ies)|guidelines?|guidance|directions?|directives?|commands?|orders?|constraints?|mandates?|limits?";
+const OVERRIDE_NOUNS =
+  "instructions?|rules?|prompts?|polic(?:y|ies)|guidelines?|guidance|directions?|directives?|commands?|orders?|constraints?|mandates?|limits?";
 const BUDGET_OBJECTS =
   "budgets?|spend(?:ing)? (?:limits?|caps?|mandates?|thresholds?)|budget (?:limits?|caps?|thresholds?)|approval (?:limits?|thresholds?)|(?:purchase|purchasing|order|credit) limits?|limits? on (?:spending|purchases|orders)|mandates?";
 
@@ -51,7 +52,10 @@ const RULES: Rule[] = [
   {
     id: "override_instructions",
     weight: 6,
-    pattern: new RegExp(String.raw`\b(${OVERRIDE_VERBS})\b[\w\s,'-]{0,40}\b(previous|prior|above|earlier|all|any|your|the|system|these|those|my|our)\b[\w\s,'-]{0,30}\b(${OVERRIDE_NOUNS})\b`, "i"),
+    pattern: new RegExp(
+      String.raw`\b(${OVERRIDE_VERBS})\b[\w\s,'-]{0,40}\b(previous|prior|above|earlier|all|any|your|the|system|these|those|my|our)\b[\w\s,'-]{0,30}\b(${OVERRIDE_NOUNS})\b`,
+      "i",
+    ),
   },
   {
     // French, Spanish, German and Portuguese overrides; matched on the diacritic-folded variant.
@@ -66,19 +70,40 @@ const RULES: Rule[] = [
     pattern:
       /\b(you are now|act as (?:an? |the |your )?(?:ai|assistant|admin(?:istrator)?|system|agent|approver|owner|manager|buyer|procurement (?:agent|assistant))|pretend (?:to be|you are)|from now on,? you|new (?:system )?instructions?|developer mode|jailbreak|DAN mode)\b/i,
   },
-  { id: "system_prompt_reference", weight: 4, pattern: /\b(system prompt|system message|hidden instructions?|\[\/?(system|inst|assistant)\]|<\/?(system|assistant|instructions?)>|###\s*(system|instruction))/i },
-  { id: "agent_addressing", weight: 3, pattern: /\b(attention|note|message|instruction)s?\s+(to|for)\s+(the\s+)?(ai|assistant|agent|llm|model|bot|procurement (agent|assistant))\b|\b(dear|hey|hello)\s+(ai|assistant|agent|llm|model|bot)\b/i },
+  {
+    id: "system_prompt_reference",
+    weight: 4,
+    pattern:
+      /\b(system prompt|system message|hidden instructions?|\[\/?(system|inst|assistant)\]|<\/?(system|assistant|instructions?)>|###\s*(system|instruction))/i,
+  },
+  {
+    id: "agent_addressing",
+    weight: 3,
+    pattern:
+      /\b(attention|note|message|instruction)s?\s+(to|for)\s+(the\s+)?(ai|assistant|agent|llm|model|bot|procurement (agent|assistant))\b|\b(dear|hey|hello)\s+(ai|assistant|agent|llm|model|bot)\b/i,
+  },
   {
     // Qualified budget nouns only: "remove the cap" on a bottle is product copy, not an attack.
     id: "budget_manipulation",
     weight: 5,
-    pattern: new RegExp(String.raw`\b(increase|raise|ignore|remove|disable|exceed|double|override|lift|bypass|waive)\b[\w\s'-]{0,25}\b(${BUDGET_OBJECTS})\b`, "i"),
+    pattern: new RegExp(
+      String.raw`\b(increase|raise|ignore|remove|disable|exceed|double|override|lift|bypass|waive)\b[\w\s'-]{0,25}\b(${BUDGET_OBJECTS})\b`,
+      "i",
+    ),
   },
-  { id: "approval_manipulation", weight: 5, pattern: /\b(auto[- ]?approve|pre[- ]?approved|already (been )?approved|approval (is )?(not )?(required|needed)|skip (the )?(approval|review|verification)|no (need for|human) (approval|review))\b/i },
+  {
+    id: "approval_manipulation",
+    weight: 5,
+    pattern:
+      /\b(auto[- ]?approve|pre[- ]?approved|already (been )?approved|approval (is )?(not )?(required|needed)|skip (the )?(approval|review|verification)|no (need for|human) (approval|review))\b/i,
+  },
   {
     id: "fee_injection",
     weight: 4,
-    pattern: new RegExp(String.raw`\b(add|include|append|apply|charge)\b${gap(30)}\b(fee|surcharge|service charge|handling charge|processing charge|convenience charge|tip|gratuity|donation)\b`, "i"),
+    pattern: new RegExp(
+      String.raw`\b(add|include|append|apply|charge)\b${gap(30)}\b(fee|surcharge|service charge|handling charge|processing charge|convenience charge|tip|gratuity|donation)\b`,
+      "i",
+    ),
   },
   {
     // A charge aimed at "this order" / "the total" is an instruction, not a published term.
@@ -87,12 +112,41 @@ const RULES: Rule[] = [
     pattern:
       /\b(fee|surcharge|service charge|handling charge|processing charge|convenience charge|tip|gratuity|donation)s?\b[\w\s$.,%'-]{0,20}\b(to|on|onto)\s+(this|the|your|every|each|all)\s+(orders?|carts?|invoices?|totals?|purchases?|checkouts?)\b/i,
   },
-  { id: "fee_mandate", weight: 4, pattern: /\b(fee|surcharge|service charge|handling charge|processing charge|convenience charge|tip|gratuity)s?\b[\w\s$.,'-]{0,40}\b(must|shall|should|will|is to|needs to)\s+be\s+(added|included|applied|charged|appended)\b/i },
-  { id: "payment_redirect", weight: 6, pattern: /\b(send|transfer|wire|pay|remit)\b[\w\s'-]{0,30}\b(to|via)\b[\w\s'-]{0,20}\b(account|wallet|paypal\.me|iban|routing|bitcoin|crypto|gift ?cards?|venmo|zelle)\b/i },
-  { id: "credential_request", weight: 6, pattern: /\b(api[_ -]?key|secret|password|access[_ -]?token|private key|client[_ -]?secret|credentials?)\b[\w\s'-]{0,20}\b(send|share|reveal|print|output|provide|include)\b|\b(send|share|reveal|print|output|provide)\b[\w\s'-]{0,20}\b(api[_ -]?key|secret|password|access[_ -]?token|private key|client[_ -]?secret|credentials?)\b/i },
-  { id: "tool_invocation", weight: 4, pattern: /\b(call|invoke|execute|run|use)\b[\w\s'-]{0,15}\b(function|tool|capture|refund|checkout|payment api|api)\b[\w\s'-]{0,25}\b(now|immediately|automatically|without)\b/i },
-  { id: "priority_claim", weight: 2, pattern: /\b(mandatory|required by law|must be added|non[- ]?negotiable|this (supersedes|overrides))\b/i },
-  { id: "quantity_manipulation", weight: 3, pattern: /\b(order|buy|purchase)\b[\w\s'-]{0,15}\b(\d{2,}x|ten times|maximum quantity|as many as possible|entire stock|all (available )?(units|stock))\b/i },
+  {
+    id: "fee_mandate",
+    weight: 4,
+    pattern:
+      /\b(fee|surcharge|service charge|handling charge|processing charge|convenience charge|tip|gratuity)s?\b[\w\s$.,'-]{0,40}\b(must|shall|should|will|is to|needs to)\s+be\s+(added|included|applied|charged|appended)\b/i,
+  },
+  {
+    id: "payment_redirect",
+    weight: 6,
+    pattern:
+      /\b(send|transfer|wire|pay|remit)\b[\w\s'-]{0,30}\b(to|via)\b[\w\s'-]{0,20}\b(account|wallet|paypal\.me|iban|routing|bitcoin|crypto|gift ?cards?|venmo|zelle)\b/i,
+  },
+  {
+    id: "credential_request",
+    weight: 6,
+    pattern:
+      /\b(api[_ -]?key|secret|password|access[_ -]?token|private key|client[_ -]?secret|credentials?)\b[\w\s'-]{0,20}\b(send|share|reveal|print|output|provide|include)\b|\b(send|share|reveal|print|output|provide)\b[\w\s'-]{0,20}\b(api[_ -]?key|secret|password|access[_ -]?token|private key|client[_ -]?secret|credentials?)\b/i,
+  },
+  {
+    id: "tool_invocation",
+    weight: 4,
+    pattern:
+      /\b(call|invoke|execute|run|use)\b[\w\s'-]{0,15}\b(function|tool|capture|refund|checkout|payment api|api)\b[\w\s'-]{0,25}\b(now|immediately|automatically|without)\b/i,
+  },
+  {
+    id: "priority_claim",
+    weight: 2,
+    pattern: /\b(mandatory|required by law|must be added|non[- ]?negotiable|this (supersedes|overrides))\b/i,
+  },
+  {
+    id: "quantity_manipulation",
+    weight: 3,
+    pattern:
+      /\b(order|buy|purchase)\b[\w\s'-]{0,15}\b(\d{2,}x|ten times|maximum quantity|as many as possible|entire stock|all (available )?(units|stock))\b/i,
+  },
   { id: "exfiltration_link", weight: 3, pattern: /\b(visit|open|go to|navigate to|click)\b[\w\s'-]{0,20}(https?:\/\/|www\.)/i },
 ];
 
@@ -105,9 +159,10 @@ const RULES: Rule[] = [
  * whitespace.
  */
 // Written with escapes so every character is visible in review. Control characters are matched on
-// purpose: they are stripped from untrusted text.
-// eslint-disable-next-line no-control-regex, no-misleading-character-class -- deliberate: Hangul fillers are listed individually
-const INVISIBLE = /[\p{Cf}\u034F\uFE00-\uFE0F\u{E0100}-\u{E01EF}\u115F\u1160\u3164\uFFA0\u17B4\u17B5\u0000-\u0008\u000E-\u001F\u007F-\u009F]/gu;
+// purpose: they are stripped from untrusted text; Hangul fillers are listed individually.
+const INVISIBLE =
+  // eslint-disable-next-line no-control-regex, no-misleading-character-class -- deliberate, see above
+  /[\p{Cf}\u034F\uFE00-\uFE0F\u{E0100}-\u{E01EF}\u115F\u1160\u3164\uFFA0\u17B4\u17B5\u0000-\u0008\u000E-\u001F\u007F-\u009F]/gu;
 
 /** Unicode tag characters U+E0020–E007E mirror printable ASCII and are invisible ("ASCII smuggling"). */
 const TAG_CHARS = /[\u{E0020}-\u{E007E}]/gu;
@@ -115,22 +170,107 @@ const TAG_CHARS = /[\u{E0020}-\u{E007E}]/gu;
 /** Cross-script confusables that NFKC does not fold, mapped to the Latin letter they imitate. */
 const HOMOGLYPH_PAIRS: [number, string][] = [
   // Cyrillic lower case
-  [0x0430, "a"], [0x0432, "b"], [0x0435, "e"], [0x043a, "k"], [0x043c, "m"], [0x043d, "h"], [0x043e, "o"], [0x0440, "p"], [0x0441, "c"],
-  [0x0442, "t"], [0x0443, "y"], [0x0445, "x"], [0x0455, "s"], [0x0456, "i"], [0x0457, "i"], [0x0458, "j"], [0x04bb, "h"], [0x04cf, "l"],
-  [0x0501, "d"], [0x051b, "q"], [0x051d, "w"], [0x0461, "w"], [0x0475, "v"],
+  [0x0430, "a"],
+  [0x0432, "b"],
+  [0x0435, "e"],
+  [0x043a, "k"],
+  [0x043c, "m"],
+  [0x043d, "h"],
+  [0x043e, "o"],
+  [0x0440, "p"],
+  [0x0441, "c"],
+  [0x0442, "t"],
+  [0x0443, "y"],
+  [0x0445, "x"],
+  [0x0455, "s"],
+  [0x0456, "i"],
+  [0x0457, "i"],
+  [0x0458, "j"],
+  [0x04bb, "h"],
+  [0x04cf, "l"],
+  [0x0501, "d"],
+  [0x051b, "q"],
+  [0x051d, "w"],
+  [0x0461, "w"],
+  [0x0475, "v"],
   // Cyrillic upper case
-  [0x0410, "A"], [0x0412, "B"], [0x0415, "E"], [0x041a, "K"], [0x041c, "M"], [0x041d, "H"], [0x041e, "O"], [0x0420, "P"], [0x0421, "C"],
-  [0x0422, "T"], [0x0423, "Y"], [0x0425, "X"], [0x0405, "S"], [0x0406, "I"], [0x0407, "I"], [0x0408, "J"], [0x04c0, "I"],
+  [0x0410, "A"],
+  [0x0412, "B"],
+  [0x0415, "E"],
+  [0x041a, "K"],
+  [0x041c, "M"],
+  [0x041d, "H"],
+  [0x041e, "O"],
+  [0x0420, "P"],
+  [0x0421, "C"],
+  [0x0422, "T"],
+  [0x0423, "Y"],
+  [0x0425, "X"],
+  [0x0405, "S"],
+  [0x0406, "I"],
+  [0x0407, "I"],
+  [0x0408, "J"],
+  [0x04c0, "I"],
   // Greek
-  [0x03b1, "a"], [0x03b5, "e"], [0x03b9, "i"], [0x03ba, "k"], [0x03bd, "v"], [0x03bf, "o"], [0x03c1, "p"], [0x03c4, "t"], [0x03c5, "u"],
-  [0x03c7, "x"], [0x0391, "A"], [0x0392, "B"], [0x0395, "E"], [0x0396, "Z"], [0x0397, "H"], [0x0399, "I"], [0x039a, "K"], [0x039c, "M"],
-  [0x039d, "N"], [0x039f, "O"], [0x03a1, "P"], [0x03a4, "T"], [0x03a5, "Y"], [0x03a7, "X"],
+  [0x03b1, "a"],
+  [0x03b5, "e"],
+  [0x03b9, "i"],
+  [0x03ba, "k"],
+  [0x03bd, "v"],
+  [0x03bf, "o"],
+  [0x03c1, "p"],
+  [0x03c4, "t"],
+  [0x03c5, "u"],
+  [0x03c7, "x"],
+  [0x0391, "A"],
+  [0x0392, "B"],
+  [0x0395, "E"],
+  [0x0396, "Z"],
+  [0x0397, "H"],
+  [0x0399, "I"],
+  [0x039a, "K"],
+  [0x039c, "M"],
+  [0x039d, "N"],
+  [0x039f, "O"],
+  [0x03a1, "P"],
+  [0x03a4, "T"],
+  [0x03a5, "Y"],
+  [0x03a7, "X"],
   // Armenian
-  [0x0585, "o"], [0x057d, "u"], [0x0570, "h"], [0x0578, "n"], [0x0581, "g"], [0x0566, "q"], [0x0561, "w"],
+  [0x0585, "o"],
+  [0x057d, "u"],
+  [0x0570, "h"],
+  [0x0578, "n"],
+  [0x0581, "g"],
+  [0x0566, "q"],
+  [0x0561, "w"],
   // Latin look-alikes: script g, dotless i/j, small capitals
-  [0x0261, "g"], [0x0131, "i"], [0x0237, "j"], [0x1d00, "a"], [0x0299, "b"], [0x1d04, "c"], [0x1d05, "d"], [0x1d07, "e"], [0x0262, "g"],
-  [0x029c, "h"], [0x026a, "i"], [0x1d0a, "j"], [0x1d0b, "k"], [0x029f, "l"], [0x1d0d, "m"], [0x0274, "n"], [0x1d0f, "o"], [0x1d18, "p"],
-  [0x0280, "r"], [0xa731, "s"], [0x1d1b, "t"], [0x1d1c, "u"], [0x1d20, "v"], [0x1d21, "w"], [0x028f, "y"], [0x1d22, "z"],
+  [0x0261, "g"],
+  [0x0131, "i"],
+  [0x0237, "j"],
+  [0x1d00, "a"],
+  [0x0299, "b"],
+  [0x1d04, "c"],
+  [0x1d05, "d"],
+  [0x1d07, "e"],
+  [0x0262, "g"],
+  [0x029c, "h"],
+  [0x026a, "i"],
+  [0x1d0a, "j"],
+  [0x1d0b, "k"],
+  [0x029f, "l"],
+  [0x1d0d, "m"],
+  [0x0274, "n"],
+  [0x1d0f, "o"],
+  [0x1d18, "p"],
+  [0x0280, "r"],
+  [0xa731, "s"],
+  [0x1d1b, "t"],
+  [0x1d1c, "u"],
+  [0x1d20, "v"],
+  [0x1d21, "w"],
+  [0x028f, "y"],
+  [0x1d22, "z"],
 ];
 const HOMOGLYPHS = new Map<string, string>(HOMOGLYPH_PAIRS.map(([cp, ascii]) => [String.fromCodePoint(cp), ascii]));
 
@@ -142,7 +282,9 @@ export function countInvisibleCharacters(text: string): number {
 }
 
 export function normalizeUntrustedText(text: string): string {
-  let t = String(text ?? "").normalize("NFKC").replace(INVISIBLE, "");
+  let t = String(text ?? "")
+    .normalize("NFKC")
+    .replace(INVISIBLE, "");
   t = [...t].map((ch) => HOMOGLYPHS.get(ch) ?? ch).join("");
   // Collapse letter-spaced words ("i g n o r e", "i.g.n.o.r.e"): runs of 3+ single letters joined
   // by exactly one separator. A wider gap (two spaces, " / ") stays a word boundary, so
@@ -213,7 +355,11 @@ function detect(raw: string, options: DetectOptions, depth: number): InjectionVe
   const invisibleCount = countInvisibleCharacters(raw);
   const tagCount = (raw.match(TAG_CHARS) ?? []).length;
   if (tagCount > 0) {
-    signals.push({ rule: "hidden_characters", weight: 5, excerpt: `${tagCount} invisible tag characters encoding "${smuggled.slice(0, 60)}"` });
+    signals.push({
+      rule: "hidden_characters",
+      weight: 5,
+      excerpt: `${tagCount} invisible tag characters encoding "${smuggled.slice(0, 60)}"`,
+    });
   } else if (invisibleCount >= 3) {
     signals.push({ rule: "hidden_characters", weight: 3, excerpt: `${invisibleCount} invisible characters` });
   }
@@ -269,7 +415,10 @@ function safeBase64Decode(value: string): string | null {
 }
 
 /** Escalate-only merge of a heuristic verdict with an optional classifier verdict. */
-export function mergeVerdicts(heuristic: InjectionVerdict, classifier: { injection: boolean; confidence: number; reason: string } | null): InjectionVerdict {
+export function mergeVerdicts(
+  heuristic: InjectionVerdict,
+  classifier: { injection: boolean; confidence: number; reason: string } | null,
+): InjectionVerdict {
   if (!classifier || !classifier.injection || classifier.confidence < 0.6) return heuristic;
   const weight = classifier.confidence >= 0.85 ? 5 : 3;
   const signals = [...heuristic.signals, { rule: "model_classifier", weight, excerpt: classifier.reason.slice(0, 160) }];

@@ -85,7 +85,10 @@ export class Channel3Client {
     const filters: Record<string, unknown> = {};
     if (params.inStockOnly !== false) filters.availability = ["InStock"];
     if (params.minPrice !== undefined || params.maxPrice !== undefined) {
-      filters.price = { ...(params.minPrice !== undefined ? { min_price: params.minPrice } : {}), ...(params.maxPrice !== undefined ? { max_price: params.maxPrice } : {}) };
+      filters.price = {
+        ...(params.minPrice !== undefined ? { min_price: params.minPrice } : {}),
+        ...(params.maxPrice !== undefined ? { max_price: params.maxPrice } : {}),
+      };
     }
     const timeout = AbortSignal.timeout(this.timeoutMs);
     try {
@@ -103,7 +106,11 @@ export class Channel3Client {
       if (!envelope.success) throw new Channel3Error("Channel3 returned an unexpected response", res.status);
       const { products, droppedProducts, droppedOffers } = parseProducts(envelope.data.products ?? []);
       if (droppedProducts || droppedOffers) {
-        this.config.log?.("channel3.items_dropped", { dropped_products: droppedProducts, dropped_offers: droppedOffers, kept_products: products.length });
+        this.config.log?.("channel3.items_dropped", {
+          dropped_products: droppedProducts,
+          dropped_offers: droppedOffers,
+          kept_products: products.length,
+        });
       }
       return { products, next_page_token: envelope.data.next_page_token ?? null };
     } catch (err) {
@@ -160,16 +167,21 @@ const ProductSchema = z.object({
   id: z.string().min(1).max(200),
   title: clipped(500).pipe(z.string().min(1)),
   description: clipped(5000).nullish(),
-  brands: z.array(z.object({ id: z.string(), name: clipped(200) })).optional().catch(undefined),
+  brands: z
+    .array(z.object({ id: z.string(), name: clipped(200) }))
+    .optional()
+    .catch(undefined),
   // Images are optional decoration: keep the valid http(s) ones, drop the rest.
   images: z
     .array(z.unknown())
     .optional()
     .catch(undefined)
-    .transform((images) => images?.flatMap((i) => {
-      const r = ImageSchema.safeParse(i);
-      return r.success ? [r.data] : [];
-    })),
+    .transform((images) =>
+      images?.flatMap((i) => {
+        const r = ImageSchema.safeParse(i);
+        return r.success ? [r.data] : [];
+      }),
+    ),
   offers: z.array(z.unknown()).max(200),
 });
 
@@ -203,7 +215,15 @@ function parseProducts(raw: unknown[]): { products: Channel3Product[]; droppedPr
 export function flattenOffers(products: Channel3Product[]) {
   return products.flatMap((p) =>
     p.offers
-      .filter((o) => o && typeof o.url === "string" && o.price && Number.isFinite(o.price.price) && o.price.price > 0 && typeof o.price.currency === "string")
+      .filter(
+        (o) =>
+          o &&
+          typeof o.url === "string" &&
+          o.price &&
+          Number.isFinite(o.price.price) &&
+          o.price.price > 0 &&
+          typeof o.price.currency === "string",
+      )
       .map((o) => ({
         product_id: p.id,
         title: p.title,

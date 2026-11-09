@@ -55,10 +55,19 @@ export class AgentRun {
     this.deadline = AbortSignal.timeout(Math.max(0, limits.deadlineMs));
   }
 
-  static async start(db: DbOrTx, args: { organizationId: string; requestId: string; kind: string; limits: AgentLimits }): Promise<AgentRun> {
+  static async start(
+    db: DbOrTx,
+    args: { organizationId: string; requestId: string; kind: string; limits: AgentLimits },
+  ): Promise<AgentRun> {
     const [row] = await db
       .insert(agentRuns)
-      .values({ organizationId: args.organizationId, requestId: args.requestId, kind: args.kind, status: "RUNNING", aiMode: "DETERMINISTIC_FALLBACK" })
+      .values({
+        organizationId: args.organizationId,
+        requestId: args.requestId,
+        kind: args.kind,
+        status: "RUNNING",
+        aiMode: "DETERMINISTIC_FALLBACK",
+      })
       .returning({ id: agentRuns.id });
     return new AgentRun(db, row!.id, args.organizationId, args.limits);
   }
@@ -91,7 +100,8 @@ export class AgentRun {
   async tool<T>(tool: AgentTool, input: Record<string, unknown>, fn: () => Promise<T>, summarize: (r: T) => string): Promise<T> {
     if (!(AGENT_TOOLS as readonly string[]).includes(tool)) throw new Error(`Tool ${tool} is not allowlisted`);
     if (this.calls >= this.limits.maxToolCalls) throw new AgentBudgetExceeded("tool call limit reached");
-    if (tool === "market.search" && this.researchCalls >= this.limits.maxResearchCalls) throw new AgentBudgetExceeded("research call limit reached");
+    if (tool === "market.search" && this.researchCalls >= this.limits.maxResearchCalls)
+      throw new AgentBudgetExceeded("research call limit reached");
     if (this.remainingMs <= 0 || this.deadline.aborted) throw new AgentBudgetExceeded("deadline exceeded");
     this.calls++;
     if (tool === "market.search") this.researchCalls++;
@@ -110,7 +120,14 @@ export class AgentRun {
     await this.record(tool, {}, "SKIPPED", reason, null, new Date());
   }
 
-  private async record(tool: string, input: Record<string, unknown>, status: "SUCCEEDED" | "FAILED" | "SKIPPED", summary: string, error: string | null, started: Date) {
+  private async record(
+    tool: string,
+    input: Record<string, unknown>,
+    status: "SUCCEEDED" | "FAILED" | "SKIPPED",
+    summary: string,
+    error: string | null,
+    started: Date,
+  ) {
     await this.db.insert(toolExecutions).values({
       organizationId: this.organizationId,
       agentRunId: this.id,
@@ -127,7 +144,15 @@ export class AgentRun {
   async finish(status: "SUCCEEDED" | "FAILED", error?: string): Promise<void> {
     await this.db
       .update(agentRuns)
-      .set({ status, aiMode: this.aiMode, model: this.model, tokensUsed: this.tokens, toolCalls: this.calls, error: error ?? null, completedAt: new Date() })
+      .set({
+        status,
+        aiMode: this.aiMode,
+        model: this.model,
+        tokensUsed: this.tokens,
+        toolCalls: this.calls,
+        error: error ?? null,
+        completedAt: new Date(),
+      })
       .where(eq(agentRuns.id, this.id));
   }
 }

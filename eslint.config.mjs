@@ -19,7 +19,17 @@ const IMPURE = [
 
 export default tseslint.config(
   {
-    ignores: ["**/node_modules/**", "**/dist/**", "**/.next/**", "apps/web/**", "coverage/**", "test-results/**", "playwright-report/**", ".claude/**", "**/*.d.ts"],
+    ignores: [
+      "**/node_modules/**",
+      "**/dist/**",
+      "**/.next/**",
+      "apps/web/**",
+      "coverage/**",
+      "test-results/**",
+      "playwright-report/**",
+      ".claude/**",
+      "**/*.d.ts",
+    ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
@@ -65,7 +75,10 @@ export default tseslint.config(
       "no-restricted-imports": ["error", { paths: IMPURE }],
       "no-restricted-globals": ["error", { name: "fetch", message: "Pure packages cannot do network I/O." }],
       "no-restricted-properties": ["error", { object: "Date", property: "now", message: "Pass `now` in; pure packages have no clock." }],
-      "no-restricted-syntax": ["error", { selector: "NewExpression[callee.name='Date'][arguments.length=0]", message: "Pass `now` in; pure packages have no clock." }],
+      "no-restricted-syntax": [
+        "error",
+        { selector: "NewExpression[callee.name='Date'][arguments.length=0]", message: "Pass `now` in; pure packages have no clock." },
+      ],
     },
   },
   {

@@ -6,7 +6,9 @@
   "description": "PostgreSQL system of record: Drizzle schema, migrations, client factory and demo seed.",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
-  "exports": { ".": "./src/index.ts" },
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
     "generate": "drizzle-kit generate",

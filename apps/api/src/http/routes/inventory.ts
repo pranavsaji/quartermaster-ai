@@ -24,7 +24,13 @@ export function inventoryRoutes(ctx: AppContext): Router {
     idempotent(ctx, "inventory.adjust", async (req) => {
       const input = parse(InventoryAdjustmentRequest, req.body);
       const item = await ctx.db.transaction((tx) =>
-        adjustInventory(tx, { organizationId: req.user!.organizationId, userId: req.user!.id, itemId: param(req, "id"), input, now: ctx.now() }),
+        adjustInventory(tx, {
+          organizationId: req.user!.organizationId,
+          userId: req.user!.id,
+          itemId: param(req, "id"),
+          input,
+          now: ctx.now(),
+        }),
       );
       return { status: 200, body: { item } };
     }),

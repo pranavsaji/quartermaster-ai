@@ -6,7 +6,13 @@
   "description": "TrustRail: deterministic spend policy, prompt-injection defense and signed purchase intent certificates.",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
-  "exports": { ".": "./src/index.ts" },
-  "scripts": { "typecheck": "tsc -p tsconfig.json" },
-  "dependencies": { "@qm/contracts": "workspace:*" }
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@qm/contracts": "workspace:*"
+  }
 }

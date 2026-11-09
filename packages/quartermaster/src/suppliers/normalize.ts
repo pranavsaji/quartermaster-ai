@@ -33,7 +33,8 @@ const COUNT = new RegExp(String.raw`${NUM}\s*-?\s*${COUNT_WORDS}\b`, "gi");
 // "(150)" at the end of a title
 const TRAILING_PAREN = /\((\d{2,6})\)\s*$/;
 // "100 Count (Pack of 10)", "50 count each", "50 per sleeve": the pack-of is a multiplier.
-const EXPLICIT_MULTIPLIER = /\(\s*(?:pack|case|set|box|bag|carton|bundle)\s+of\s+\d[\d,]*\s*\)|\beach\b|\bper\s+(?:pack|box|case|bag|sleeve|carton)\b/i;
+const EXPLICIT_MULTIPLIER =
+  /\(\s*(?:pack|case|set|box|bag|carton|bundle)\s+of\s+\d[\d,]*\s*\)|\beach\b|\bper\s+(?:pack|box|case|bag|sleeve|carton)\b/i;
 
 const MAX_PACK = 1_000_000;
 const toInt = (s: string) => Number(s.replace(/,/g, ""));
@@ -55,13 +56,15 @@ function hits(re: RegExp, text: string, group: number): Hit[] {
   return out;
 }
 
-function parseOne(text: string): Omit<PackParse, "confidence"> & { confidence: "HIGH" | "LOW" } | null {
+function parseOne(text: string): (Omit<PackParse, "confidence"> & { confidence: "HIGH" | "LOW" }) | null {
   const multi = [...text.slice(0, 2_000).matchAll(MULTIPACK)]
     .map((m) => ({
       a: Number(m[1]),
       b: Number(m[4]),
       // "6 packs of 50", "6 x 50 count", or "Case of 6 x 50" are unambiguous multipacks.
-      explicit: !!(m[2] || m[5] || /of/i.test(m[3]!)) || /\b(?:pack|case|set|box|bag|carton|bundle)\s+of\s+$/i.test(text.slice(Math.max(0, m.index - 24), m.index)),
+      explicit:
+        !!(m[2] || m[5] || /of/i.test(m[3]!)) ||
+        /\b(?:pack|case|set|box|bag|carton|bundle)\s+of\s+$/i.test(text.slice(Math.max(0, m.index - 24), m.index)),
       index: m.index,
       end: m.index + m[0].length,
       text: m[0],
@@ -91,7 +94,11 @@ function parseOne(text: string): Omit<PackParse, "confidence"> & { confidence: "
     // figures may instead both describe the total, so the product is kept but not trusted.
     const qty = c.qty * p.qty;
     if (!valid(qty)) return { pack_quantity: c.qty, confidence: "LOW", matched: c.text };
-    return { pack_quantity: qty, confidence: selfConsistent && EXPLICIT_MULTIPLIER.test(text) ? "HIGH" : "LOW", matched: `${c.text} … ${p.text}` };
+    return {
+      pack_quantity: qty,
+      confidence: selfConsistent && EXPLICIT_MULTIPLIER.test(text) ? "HIGH" : "LOW",
+      matched: `${c.text} … ${p.text}`,
+    };
   }
   const single = c ?? p;
   if (single) {
@@ -126,12 +133,15 @@ export function parseVolumeLitres(text: string): number | null {
   if (!m) return null;
   const n = Number(m[1]);
   const unit = m[2]!.toLowerCase().replace(/\s|\./g, "");
-  const litres =
-    unit.startsWith("ml") ? n / 1000
-    : unit.startsWith("gal") ? n * 3.78541
-    : unit.startsWith("floz") ? n * 0.0295735
-    : unit.startsWith("qt") || unit.startsWith("quart") ? n * 0.946353
-    : n;
+  const litres = unit.startsWith("ml")
+    ? n / 1000
+    : unit.startsWith("gal")
+      ? n * 3.78541
+      : unit.startsWith("floz")
+        ? n * 0.0295735
+        : unit.startsWith("qt") || unit.startsWith("quart")
+          ? n * 0.946353
+          : n;
   const multi = /\b(\d{1,3})\s*(?:x|×|pack of|case of)\s*\d/i.exec(text);
   const count = multi ? Number(multi[1]) : 1;
   return Math.round(litres * count * 1000) / 1000;
@@ -141,7 +151,11 @@ export function parseVolumeLitres(text: string): number | null {
  * Units of the inventory item a listing provides. For count-based items this is the pack size;
  * for volume items (unit "liter") it is the total volume.
  */
-export function usableUnits(unit: string, title: string, description?: string | null): { units: number | null; confidence: PackParse["confidence"] } {
+export function usableUnits(
+  unit: string,
+  title: string,
+  description?: string | null,
+): { units: number | null; confidence: PackParse["confidence"] } {
   if (/^(l|liter|litre|liters|litres)$/i.test(unit)) {
     const v = parseVolumeLitres(title) ?? parseVolumeLitres(description ?? "");
     return { units: v, confidence: v === null ? "NONE" : "HIGH" };

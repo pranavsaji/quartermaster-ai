@@ -36,9 +36,20 @@ function run(err: unknown) {
 
 describe("error handler", () => {
   it("never returns upstream error text in 5xx details, but logs it", () => {
-    const { sent, logged } = run(badGateway("PAYPAL_REFUND_FAILED", "PayPal did not confirm the refund.", { message: "connect ECONNREFUSED 10.0.0.3:5432", retryable: true, cause: { stack: "..." } }));
+    const { sent, logged } = run(
+      badGateway("PAYPAL_REFUND_FAILED", "PayPal did not confirm the refund.", {
+        message: "connect ECONNREFUSED 10.0.0.3:5432",
+        retryable: true,
+        cause: { stack: "..." },
+      }),
+    );
     expect(sent.status).toBe(502);
-    expect(sent.body!.error).toEqual({ code: "PAYPAL_REFUND_FAILED", message: "PayPal did not confirm the refund.", details: { retryable: true }, correlation_id: "corr-1" });
+    expect(sent.body!.error).toEqual({
+      code: "PAYPAL_REFUND_FAILED",
+      message: "PayPal did not confirm the refund.",
+      details: { retryable: true },
+      correlation_id: "corr-1",
+    });
     expect(JSON.stringify(sent.body)).not.toContain("ECONNREFUSED");
     expect(JSON.stringify(logged)).toContain("ECONNREFUSED");
   });
@@ -56,7 +67,11 @@ describe("error handler", () => {
   });
 
   it("reduces server error details to scalar non-string fields", () => {
-    expect(publicServerErrorDetails({ retryable: false, attempts: 2, gone: null, text: "x", nested: {} })).toEqual({ retryable: false, attempts: 2, gone: null });
+    expect(publicServerErrorDetails({ retryable: false, attempts: 2, gone: null, text: "x", nested: {} })).toEqual({
+      retryable: false,
+      attempts: 2,
+      gone: null,
+    });
     expect(publicServerErrorDetails({ message: "x" })).toBeUndefined();
     expect(publicServerErrorDetails("raw text")).toBeUndefined();
     expect(publicServerErrorDetails(["a"])).toBeUndefined();

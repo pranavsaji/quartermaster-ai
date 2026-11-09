@@ -21,15 +21,33 @@ function toDto(r: InvoiceRow, matches: (typeof invoiceMatches.$inferSelect)[]): 
     total_minor: r.totalMinor,
     status: r.status,
     settlement_allowed: r.settlementAllowed,
-    matches: matches.map((m) => ({ check: m.check, passed: m.passed, severity: (m.severity as Severity | null) ?? null, detail: m.detail })),
+    matches: matches.map((m) => ({
+      check: m.check,
+      passed: m.passed,
+      severity: (m.severity as Severity | null) ?? null,
+      detail: m.detail,
+    })),
     created_at: r.createdAt.toISOString(),
   };
 }
 
 export async function listInvoices(db: DbOrTx, organizationId: string): Promise<InvoiceDto[]> {
-  const rows = await db.select().from(invoices).where(eq(invoices.organizationId, organizationId)).orderBy(desc(invoices.createdAt)).limit(200);
+  const rows = await db
+    .select()
+    .from(invoices)
+    .where(eq(invoices.organizationId, organizationId))
+    .orderBy(desc(invoices.createdAt))
+    .limit(200);
   if (rows.length === 0) return [];
-  const matches = await db.select().from(invoiceMatches).where(inArray(invoiceMatches.invoiceId, rows.map((r) => r.id)));
+  const matches = await db
+    .select()
+    .from(invoiceMatches)
+    .where(
+      inArray(
+        invoiceMatches.invoiceId,
+        rows.map((r) => r.id),
+      ),
+    );
   const byInvoice = new Map<string, (typeof matches)[number][]>();
   for (const m of matches) byInvoice.set(m.invoiceId, [...(byInvoice.get(m.invoiceId) ?? []), m]);
   return rows.map((r) => toDto(r, byInvoice.get(r.id) ?? []));
@@ -43,12 +61,19 @@ export async function listInvoices(db: DbOrTx, organizationId: string): Promise<
 export async function analyzeAndRecordInvoice(ctx: AppContext, actor: Actor, input: AnalyzeInvoiceRequest): Promise<InvoiceDto> {
   const after = new AfterCommit();
   const result = await ctx.db.transaction(async (tx) => {
-    const [supplier] = await tx.select().from(suppliers).where(and(eq(suppliers.id, input.supplier_id), eq(suppliers.organizationId, actor.organizationId)));
+    const [supplier] = await tx
+      .select()
+      .from(suppliers)
+      .where(and(eq(suppliers.id, input.supplier_id), eq(suppliers.organizationId, actor.organizationId)));
     if (!supplier) throw notFound("Supplier");
 
     let poView = null;
     if (input.purchase_order_id) {
-      const [po] = await tx.select().from(purchaseOrders).where(and(eq(purchaseOrders.id, input.purchase_order_id), eq(purchaseOrders.organizationId, actor.organizationId))).for("update");
+      const [po] = await tx
+        .select()
+        .from(purchaseOrders)
+        .where(and(eq(purchaseOrders.id, input.purchase_order_id), eq(purchaseOrders.organizationId, actor.organizationId)))
+        .for("update");
       if (po) {
         const items = await tx.select().from(purchaseOrderItems).where(eq(purchaseOrderItems.purchaseOrderId, po.id));
         const [payment] = await tx.select().from(paymentAttempts).where(eq(paymentAttempts.purchaseOrderId, po.id));
@@ -59,7 +84,13 @@ export async function analyzeAndRecordInvoice(ctx: AppContext, actor: Actor, inp
           total_minor: po.totalMinor,
           status: po.status,
           payment_completed: payment !== undefined && ["COMPLETED", "PARTIALLY_REFUNDED"].includes(payment.status),
-          items: items.map((i) => ({ kind: i.kind, sku: i.sku, quantity: i.quantity, unit_price_minor: i.unitPriceMinor, line_total_minor: i.lineTotalMinor })),
+          items: items.map((i) => ({
+            kind: i.kind,
+            sku: i.sku,
+            quantity: i.quantity,
+            unit_price_minor: i.unitPriceMinor,
+            line_total_minor: i.lineTotalMinor,
+          })),
         };
       }
     }
@@ -102,7 +133,12 @@ export async function analyzeAndRecordInvoice(ctx: AppContext, actor: Actor, inp
       })
       .returning();
     const matches = analysis.checks.length
-      ? await tx.insert(invoiceMatches).values(analysis.checks.map((c) => ({ invoiceId: row!.id, check: c.check, passed: c.passed, severity: c.severity, detail: c.detail }))).returning()
+      ? await tx
+          .insert(invoiceMatches)
+          .values(
+            analysis.checks.map((c) => ({ invoiceId: row!.id, check: c.check, passed: c.passed, severity: c.severity, detail: c.detail })),
+          )
+          .returning()
       : [];
 
     if (analysis.status === "DUPLICATE" || analysis.status === "DISCREPANCY") {
@@ -110,14 +146,28 @@ export async function analyzeAndRecordInvoice(ctx: AppContext, actor: Actor, inp
         organizationId: actor.organizationId,
         type: analysis.status === "DUPLICATE" ? "DUPLICATE_INVOICE" : "INVOICE_DISCREPANCY",
         severity: analysis.status === "DUPLICATE" ? "HIGH" : "MEDIUM",
-        title: analysis.status === "DUPLICATE" ? `Potential duplicate invoice ${input.invoice_number} from ${supplier.name}` : `Invoice ${input.invoice_number} does not match its order`,
-        description: analysis.checks.filter((c) => !c.passed).map((c) => c.detail).join(" "),
+        title:
+          analysis.status === "DUPLICATE"
+            ? `Potential duplicate invoice ${input.invoice_number} from ${supplier.name}`
+            : `Invoice ${input.invoice_number} does not match its order`,
+        description: analysis.checks
+          .filter((c) => !c.passed)
+          .map((c) => c.detail)
+          .join(" "),
         sourceKind: "invoice",
         sourceId: row!.id,
         evidence: { duplicate_of: analysis.duplicate_of, failed_checks: analysis.checks.filter((c) => !c.passed).map((c) => c.check) },
         relatedPurchaseOrderId: poView?.id ?? null,
       });
-      after.add(() => ctx.notifier.send({ kind: "INVOICE_FLAGGED", organization_id: actor.organizationId, title: `Invoice ${input.invoice_number} flagged`, summary: `${analysis.status.toLowerCase()} — settlement withheld`, link_path: "/orders" }));
+      after.add(() =>
+        ctx.notifier.send({
+          kind: "INVOICE_FLAGGED",
+          organization_id: actor.organizationId,
+          title: `Invoice ${input.invoice_number} flagged`,
+          summary: `${analysis.status.toLowerCase()} — settlement withheld`,
+          link_path: "/orders",
+        }),
+      );
     }
     if (analysis.injection?.suspicious) {
       await recordFinding(tx, {
@@ -139,7 +189,12 @@ export async function analyzeAndRecordInvoice(ctx: AppContext, actor: Actor, inp
       actorId: actor.id,
       entityType: "invoice",
       entityId: row!.id,
-      data: { invoice_number: input.invoice_number, status: analysis.status, settlement_allowed: analysis.settlement_allowed, total_minor: input.total_minor },
+      data: {
+        invoice_number: input.invoice_number,
+        status: analysis.status,
+        settlement_allowed: analysis.settlement_allowed,
+        total_minor: input.total_minor,
+      },
     });
     return toDto(row!, matches);
   });

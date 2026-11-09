@@ -141,15 +141,27 @@ describe("pack-size normalisation", () => {
 describe("supplier comparison", () => {
   it("ranks on delivered unit cost, not sticker price", () => {
     // 100 units at $40 vs 250 units at $75: the bigger pack is cheaper per unit.
-    const small = { offer: offer({ id: "s", sku: "S-100", pack_quantity: 100, unit_price_minor: 4_000 }), supplier: { ...harbor, tax_rate_bps: 0, fee_terms: [] }, storefront_lines: [], quarantined: false };
-    const big = { offer: offer({ id: "b", sku: "B-250", pack_quantity: 250, unit_price_minor: 7_500 }), supplier: { ...harbor, tax_rate_bps: 0, fee_terms: [] }, storefront_lines: [], quarantined: false };
+    const small = {
+      offer: offer({ id: "s", sku: "S-100", pack_quantity: 100, unit_price_minor: 4_000 }),
+      supplier: { ...harbor, tax_rate_bps: 0, fee_terms: [] },
+      storefront_lines: [],
+      quarantined: false,
+    };
+    const big = {
+      offer: offer({ id: "b", sku: "B-250", pack_quantity: 250, unit_price_minor: 7_500 }),
+      supplier: { ...harbor, tax_rate_bps: 0, fee_terms: [] },
+      storefront_lines: [],
+      quarantined: false,
+    };
     const r = compareOffers({ needed_units: 250, currency: "USD", offers: [small, big], now: new Date() });
     expect(r[0]!.offer.sku).toBe("B-250");
     expect(r[0]!.delivered_unit_cost_minor).toBe(30);
   });
 
   it("includes shipping, tax and storefront fees in delivered cost", () => {
-    const q = buildSupplierQuote(harbor, [{ offer: offer(), packs: 1 }], "USD", [{ kind: "FEE", code: "X", description: "Fee", amount_minor: 500 }]);
+    const q = buildSupplierQuote(harbor, [{ offer: offer(), packs: 1 }], "USD", [
+      { kind: "FEE", code: "X", description: "Fee", amount_minor: 500 },
+    ]);
     expect(q.total_minor).toBe(8_000 + 899 + 500 + 660);
     expect(deliveredUnitCost(q, 250)).toBeCloseTo(40.236, 3);
   });
@@ -162,8 +174,18 @@ describe("supplier comparison", () => {
       now,
       required_by: new Date("2026-11-10T23:59:59Z"),
       offers: [
-        { offer: offer({ id: "a" }), supplier: { ...harbor, id: "a", approved: false, lead_time_days: 0 }, storefront_lines: [], quarantined: false },
-        { offer: offer({ id: "b", in_stock: false }), supplier: { ...harbor, id: "b", lead_time_days: 0 }, storefront_lines: [], quarantined: false },
+        {
+          offer: offer({ id: "a" }),
+          supplier: { ...harbor, id: "a", approved: false, lead_time_days: 0 },
+          storefront_lines: [],
+          quarantined: false,
+        },
+        {
+          offer: offer({ id: "b", in_stock: false }),
+          supplier: { ...harbor, id: "b", lead_time_days: 0 },
+          storefront_lines: [],
+          quarantined: false,
+        },
         { offer: offer({ id: "c" }), supplier: { ...harbor, id: "c", lead_time_days: 3 }, storefront_lines: [], quarantined: false },
       ],
     });
@@ -172,27 +194,70 @@ describe("supplier comparison", () => {
   });
 
   it("plans one cart per supplier and re-plans around excluded suppliers", () => {
-    const evalA = compareOffers({ needed_units: 300, currency: "USD", now: new Date(), offers: [
-      { offer: offer({ id: "qs", supplier_id: "qs", sku: "QS-300", pack_quantity: 300, unit_price_minor: 5_400 }), supplier: { ...harbor, id: "qs" }, storefront_lines: [], quarantined: true },
-      { offer: offer(), supplier: harbor, storefront_lines: [], quarantined: false },
-    ] }).map((e, i) => ({ ...e, id: `cand_${i}` }));
-    const first = planCarts({ candidates_by_item: new Map([["inv_tk", evalA]]), currency: "USD", storefront_lines_by_supplier: new Map(), excluded_supplier_ids: new Set(), excluded_candidate_ids: new Set() });
+    const evalA = compareOffers({
+      needed_units: 300,
+      currency: "USD",
+      now: new Date(),
+      offers: [
+        {
+          offer: offer({ id: "qs", supplier_id: "qs", sku: "QS-300", pack_quantity: 300, unit_price_minor: 5_400 }),
+          supplier: { ...harbor, id: "qs" },
+          storefront_lines: [],
+          quarantined: true,
+        },
+        { offer: offer(), supplier: harbor, storefront_lines: [], quarantined: false },
+      ],
+    }).map((e, i) => ({ ...e, id: `cand_${i}` }));
+    const first = planCarts({
+      candidates_by_item: new Map([["inv_tk", evalA]]),
+      currency: "USD",
+      storefront_lines_by_supplier: new Map(),
+      excluded_supplier_ids: new Set(),
+      excluded_candidate_ids: new Set(),
+    });
     expect(first.carts[0]!.supplier.id).toBe("qs");
-    const second = planCarts({ candidates_by_item: new Map([["inv_tk", evalA]]), currency: "USD", storefront_lines_by_supplier: new Map(), excluded_supplier_ids: new Set(["qs"]), excluded_candidate_ids: new Set() });
+    const second = planCarts({
+      candidates_by_item: new Map([["inv_tk", evalA]]),
+      currency: "USD",
+      storefront_lines_by_supplier: new Map(),
+      excluded_supplier_ids: new Set(["qs"]),
+      excluded_candidate_ids: new Set(),
+    });
     expect(second.carts[0]!.supplier.id).toBe("harbor");
   });
 
   it("trims a cart to fit a cap by dropping the least urgent item", () => {
     const planned = {
       supplier: harbor,
-      cart: buildSupplierQuote(harbor, [{ offer: offer(), packs: 2 }, { offer: offer({ id: "g", sku: "GLV", inventory_item_id: "inv_g", unit_price_minor: 6_400, pack_quantity: 1000 }), packs: 1 }], "USD"),
+      cart: buildSupplierQuote(
+        harbor,
+        [
+          { offer: offer(), packs: 2 },
+          { offer: offer({ id: "g", sku: "GLV", inventory_item_id: "inv_g", unit_price_minor: 6_400, pack_quantity: 1000 }), packs: 1 },
+        ],
+        "USD",
+      ),
       lines: [
         { offer: offer(), packs: 2, units: 500, inventory_item_id: "inv_tk" },
-        { offer: offer({ id: "g", sku: "GLV", inventory_item_id: "inv_g", unit_price_minor: 6_400, pack_quantity: 1000 }), packs: 1, units: 1000, inventory_item_id: "inv_g" },
+        {
+          offer: offer({ id: "g", sku: "GLV", inventory_item_id: "inv_g", unit_price_minor: 6_400, pack_quantity: 1000 }),
+          packs: 1,
+          units: 1000,
+          inventory_item_id: "inv_g",
+        },
       ],
       candidate_ids: ["c1", "c2"],
     };
-    const fitted = fitToBudget(planned, 20_000, new Map([["inv_tk", 1], ["inv_g", 5]]), "USD", []);
+    const fitted = fitToBudget(
+      planned,
+      20_000,
+      new Map([
+        ["inv_tk", 1],
+        ["inv_g", 5],
+      ]),
+      "USD",
+      [],
+    );
     expect(fitted!.lines.map((l) => l.inventory_item_id)).toEqual(["inv_tk"]);
     expect(fitToBudget(planned, 100, new Map(), "USD", [])).toBeNull();
   });
@@ -205,13 +270,23 @@ describe("supplier comparison", () => {
 
 describe("intent interpretation", () => {
   const inventory = [
-    { id: "inv_tk", sku: "PKG-TAKEOUT-32", name: "Takeaway containers", category: "food_packaging", keywords: ["takeaway", "takeout", "boxes"] },
+    {
+      id: "inv_tk",
+      sku: "PKG-TAKEOUT-32",
+      name: "Takeaway containers",
+      category: "food_packaging",
+      keywords: ["takeaway", "takeout", "boxes"],
+    },
     { id: "inv_oil", sku: "ING-CANOLA", name: "Canola frying oil", category: "cooking_ingredients", keywords: ["oil", "cooking oil"] },
   ];
   const now = new Date("2026-11-10T18:00:00Z"); // Tuesday
 
   it("extracts items, demand and budget deterministically", () => {
-    const i = interpretDeterministically("Busy weekend! Find the best prices for takeaway boxes and cooking oil, stay under $500.", inventory, now);
+    const i = interpretDeterministically(
+      "Busy weekend! Find the best prices for takeaway boxes and cooking oil, stay under $500.",
+      inventory,
+      now,
+    );
     expect(i.inventory_item_ids.sort()).toEqual(["inv_oil", "inv_tk"]);
     expect(i.demand_multiplier).toBe(1.25);
     expect(i.budget_limit_minor).toBe(50_000);
@@ -225,8 +300,25 @@ describe("intent interpretation", () => {
   });
 
   it("sanitises model output: unknown ids dropped, multiplier clamped, bad dates nulled", () => {
-    const s = sanitizeIntent({ inventory_item_ids: ["inv_tk", "evil"], demand_multiplier: 50, budget_limit_minor: 1.5, required_by: "tomorrow", notes: "x", unsupported_requests: [1, "wine"] }, inventory);
-    expect(s).toEqual({ inventory_item_ids: ["inv_tk"], demand_multiplier: 3, budget_limit_minor: null, required_by: null, notes: "x", unsupported_requests: ["wine"] });
+    const s = sanitizeIntent(
+      {
+        inventory_item_ids: ["inv_tk", "evil"],
+        demand_multiplier: 50,
+        budget_limit_minor: 1.5,
+        required_by: "tomorrow",
+        notes: "x",
+        unsupported_requests: [1, "wine"],
+      },
+      inventory,
+    );
+    expect(s).toEqual({
+      inventory_item_ids: ["inv_tk"],
+      demand_multiplier: 3,
+      budget_limit_minor: null,
+      required_by: null,
+      notes: "x",
+      unsupported_requests: ["wine"],
+    });
     expect(sanitizeIntent(null, inventory)).toBeNull();
   });
 });

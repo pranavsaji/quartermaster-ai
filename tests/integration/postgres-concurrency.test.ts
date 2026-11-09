@@ -18,7 +18,10 @@ describe.skipIf(!url)("budget reservations under real parallelism (PostgreSQL)",
   beforeAll(async () => {
     handle = await createDatabase({ url: url!, maxConnections: 12 });
     await handle.migrate();
-    const [org] = await handle.db.insert(organizations).values({ name: `concurrency-${randomUUID()}`, timezone: "UTC", currency: "USD" }).returning();
+    const [org] = await handle.db
+      .insert(organizations)
+      .values({ name: `concurrency-${randomUUID()}`, timezone: "UTC", currency: "USD" })
+      .returning();
     orgId = org!.id;
   });
 
@@ -33,10 +36,23 @@ describe.skipIf(!url)("budget reservations under real parallelism (PostgreSQL)",
     const results = await Promise.allSettled(
       Array.from({ length: attempts }, () =>
         handle.db.transaction(async (tx) => {
-          const account = await currentAccount(tx, { organizationId: orgId, timeZone: "UTC", currency: "USD", weeklyLimitMinor: 50_000, now, lock: true });
+          const account = await currentAccount(tx, {
+            organizationId: orgId,
+            timeZone: "UTC",
+            currency: "USD",
+            weeklyLimitMinor: 50_000,
+            now,
+            lock: true,
+          });
           // Widen the race window while holding the lock.
           await new Promise((r) => setTimeout(r, 20));
-          return reserve(tx, account, { organizationId: orgId, intentId: randomUUID(), purchaseOrderId: randomUUID(), amountMinor: 10_000, now: new Date() });
+          return reserve(tx, account, {
+            organizationId: orgId,
+            intentId: randomUUID(),
+            purchaseOrderId: randomUUID(),
+            amountMinor: 10_000,
+            now: new Date(),
+          });
         }),
       ),
     );
@@ -49,7 +65,15 @@ describe.skipIf(!url)("budget reservations under real parallelism (PostgreSQL)",
   it("fails closed even if a caller forgets to lock", async () => {
     const [account] = await handle.db.select().from(budgetAccounts).where(eq(budgetAccounts.organizationId, orgId));
     await expect(
-      handle.db.transaction((tx) => reserve(tx, account!, { organizationId: orgId, intentId: randomUUID(), purchaseOrderId: randomUUID(), amountMinor: 1, now: new Date() })),
+      handle.db.transaction((tx) =>
+        reserve(tx, account!, {
+          organizationId: orgId,
+          intentId: randomUUID(),
+          purchaseOrderId: randomUUID(),
+          amountMinor: 1,
+          now: new Date(),
+        }),
+      ),
     ).rejects.toThrow(/budget/i);
   });
 });

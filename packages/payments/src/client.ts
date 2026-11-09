@@ -1,6 +1,13 @@
 import type { z } from "zod";
 import { PayPalAmbiguousError, PayPalApiError, PayPalInvalidResponseError, PayPalNotConfiguredError } from "./errors";
-import { OAuthTokenSchema, PayPalCaptureSchema, PayPalOrderSchema, PayPalRefundSchema, WebhookVerificationSchema, issuePaths } from "./schemas";
+import {
+  OAuthTokenSchema,
+  PayPalCaptureSchema,
+  PayPalOrderSchema,
+  PayPalRefundSchema,
+  WebhookVerificationSchema,
+  issuePaths,
+} from "./schemas";
 import type { CreateOrderRequest, PayPalCapture, PayPalOrder, PayPalRefund, WebhookEvent, WebhookHeaders } from "./types";
 
 export interface PayPalConfig {
@@ -97,17 +104,29 @@ export class PayPalClient {
   }
 
   captureOrder(orderId: string, requestId: string): Promise<PayPalOrder> {
-    return this.request("orders.capture", PayPalOrderSchema, "POST", `/v2/checkout/orders/${encodeURIComponent(orderId)}/capture`, {}, {
-      "PayPal-Request-Id": requestId,
-      Prefer: "return=representation",
-    });
+    return this.request(
+      "orders.capture",
+      PayPalOrderSchema,
+      "POST",
+      `/v2/checkout/orders/${encodeURIComponent(orderId)}/capture`,
+      {},
+      {
+        "PayPal-Request-Id": requestId,
+        Prefer: "return=representation",
+      },
+    );
   }
 
   getCapture(captureId: string): Promise<PayPalCapture> {
     return this.request("captures.get", PayPalCaptureSchema, "GET", `/v2/payments/captures/${encodeURIComponent(captureId)}`);
   }
 
-  refundCapture(captureId: string, requestId: string, amount?: { currency_code: string; value: string }, note?: string): Promise<PayPalRefund> {
+  refundCapture(
+    captureId: string,
+    requestId: string,
+    amount?: { currency_code: string; value: string },
+    note?: string,
+  ): Promise<PayPalRefund> {
     return this.request(
       "captures.refund",
       PayPalRefundSchema,
@@ -129,7 +148,13 @@ export class PayPalClient {
    */
   async verifyWebhook(headers: WebhookHeaders, event: WebhookEvent): Promise<boolean> {
     if (!this.webhookConfigured) throw new PayPalNotConfiguredError();
-    const required = ["paypal-auth-algo", "paypal-cert-url", "paypal-transmission-id", "paypal-transmission-sig", "paypal-transmission-time"] as const;
+    const required = [
+      "paypal-auth-algo",
+      "paypal-cert-url",
+      "paypal-transmission-id",
+      "paypal-transmission-sig",
+      "paypal-transmission-time",
+    ] as const;
     if (required.some((h) => !headers[h])) return false;
     const certUrl = headers["paypal-cert-url"]!;
     if (!isTrustedCertUrl(certUrl, this.config.environment)) return false;
@@ -153,7 +178,14 @@ export class PayPalClient {
 
   /* ----------------------------------------------------------------- Plumbing */
 
-  private async request<T>(operation: string, schema: z.ZodType<T>, method: string, path: string, body?: unknown, extraHeaders: Record<string, string> = {}): Promise<T> {
+  private async request<T>(
+    operation: string,
+    schema: z.ZodType<T>,
+    method: string,
+    path: string,
+    body?: unknown,
+    extraHeaders: Record<string, string> = {},
+  ): Promise<T> {
     const token = await this.getAccessToken();
     const started = Date.now();
     const res = await this.rawFetch(operation, path, {
@@ -212,7 +244,8 @@ export function isTrustedCertUrl(url: string, environment: "sandbox" | "live"): 
     const u = new URL(url);
     if (u.protocol !== "https:") return false;
     const host = u.hostname.toLowerCase();
-    const allowed = environment === "sandbox" ? ["api.sandbox.paypal.com", "api-m.sandbox.paypal.com"] : ["api.paypal.com", "api-m.paypal.com"];
+    const allowed =
+      environment === "sandbox" ? ["api.sandbox.paypal.com", "api-m.sandbox.paypal.com"] : ["api.paypal.com", "api-m.paypal.com"];
     return allowed.includes(host);
   } catch {
     return false;

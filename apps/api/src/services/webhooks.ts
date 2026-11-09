@@ -94,7 +94,13 @@ export async function handlePayPalWebhook(ctx: AppContext, headers: WebhookHeade
   const resourceId = typeof event.resource.id === "string" ? event.resource.id : null;
   const inserted = await ctx.db
     .insert(paypalWebhookEvents)
-    .values({ eventId: event.id, eventType: event.event_type, resourceId, verified: true, payload: event as unknown as Record<string, unknown> })
+    .values({
+      eventId: event.id,
+      eventType: event.event_type,
+      resourceId,
+      verified: true,
+      payload: event as unknown as Record<string, unknown>,
+    })
     .onConflictDoNothing({ target: paypalWebhookEvents.eventId })
     .returning({ id: paypalWebhookEvents.id });
   if (inserted.length === 0) {
@@ -119,7 +125,14 @@ export async function handlePayPalWebhook(ctx: AppContext, headers: WebhookHeade
         const status = await reconcilePayment(ctx, p.id);
         outcome = "PROCESSED";
         resultText = `reconciled to ${status}`;
-        await appendAudit(ctx.db, { organizationId: p.organizationId, action: "paypal.webhook_processed", actorType: "PAYPAL", entityType: "payment_attempt", entityId: p.id, data: { event_id: event.id, event_type: event.event_type, status } });
+        await appendAudit(ctx.db, {
+          organizationId: p.organizationId,
+          action: "paypal.webhook_processed",
+          actorType: "PAYPAL",
+          entityType: "payment_attempt",
+          entityId: p.id,
+          data: { event_id: event.id, event_type: event.event_type, status },
+        });
       } else {
         resultText = "no matching payment";
       }

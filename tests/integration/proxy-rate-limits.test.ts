@@ -10,7 +10,9 @@ import { createHarness, type Harness } from "../helpers/harness";
 let h: Harness;
 
 beforeAll(async () => {
-  h = await createHarness({ extraEnv: { TRUST_PROXY: "2", RATE_LIMIT_PER_MINUTE: "5", LOGIN_RATE_LIMIT_PER_ACCOUNT: "2", LOGIN_RATE_LIMIT_PER_IP: "50" } });
+  h = await createHarness({
+    extraEnv: { TRUST_PROXY: "2", RATE_LIMIT_PER_MINUTE: "5", LOGIN_RATE_LIMIT_PER_ACCOUNT: "2", LOGIN_RATE_LIMIT_PER_IP: "50" },
+  });
 });
 afterAll(async () => {
   await h.close();
@@ -20,7 +22,11 @@ afterAll(async () => {
 const via = (client: string) => `${client}, 10.200.0.7`;
 const config = (client: string) => request(h.app).get("/api/v1/config/public").set("X-Forwarded-For", via(client));
 const login = (client: string, email: string) =>
-  request(h.app).post("/api/v1/auth/login").set("X-Forwarded-For", via(client)).set("X-Requested-With", "quartermaster").send({ email, password: "wrong-password-123" });
+  request(h.app)
+    .post("/api/v1/auth/login")
+    .set("X-Forwarded-For", via(client))
+    .set("X-Requested-With", "quartermaster")
+    .send({ email, password: "wrong-password-123" });
 
 describe("rate limits behind trusted proxies", () => {
   it("gives distinct forwarded clients separate global buckets", async () => {

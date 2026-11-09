@@ -30,7 +30,7 @@ export function createLogger(level: string, destination?: DestinationStream) {
         paths: [
           "req.headers.authorization",
           "req.headers.cookie",
-          "res.headers[\"set-cookie\"]",
+          'res.headers["set-cookie"]',
           "*.password",
           "*.passwordHash",
           "*.token",

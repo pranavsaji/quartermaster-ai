@@ -14,7 +14,8 @@ describe("TrustRail policy engine", () => {
   });
 
   describe("auto-approval (mandate.human_approval_required = false)", () => {
-    const auto = (overrides: Parameters<typeof mandate>[0] = {}) => mandate({ human_approval_required: false, auto_approval_limit_minor: 20_000, ...overrides });
+    const auto = (overrides: Parameters<typeof mandate>[0] = {}) =>
+      mandate({ human_approval_required: false, auto_approval_limit_minor: 20_000, ...overrides });
 
     it("auto-approves an ALLOW decision within the auto-approval limit", () => {
       const r = evaluatePolicy(baseInput({ mandate: auto() }));
@@ -71,7 +72,9 @@ describe("TrustRail policy engine", () => {
   });
 
   it("uses the stricter of the account limit and the mandate's weekly budget", () => {
-    const r = evaluatePolicy(baseInput({ mandate: mandate({ weekly_budget_minor: 15_000, per_order_limit_minor: 15_000, auto_approval_limit_minor: 10_000 }) }));
+    const r = evaluatePolicy(
+      baseInput({ mandate: mandate({ weekly_budget_minor: 15_000, per_order_limit_minor: 15_000, auto_approval_limit_minor: 10_000 }) }),
+    );
     expect(codes(r)).toEqual(expect.arrayContaining(["WEEKLY_BUDGET_EXCEEDED", "PER_ORDER_LIMIT_EXCEEDED"]));
   });
 
@@ -101,26 +104,56 @@ describe("TrustRail policy engine", () => {
   });
 
   it("blocks prohibited product categories", () => {
-    const wine = product({ sku: "WINE-12", description: "House red wine", category: "alcohol", quantity: 1, unit_price_minor: 14_400, line_total_minor: 14_400 });
+    const wine = product({
+      sku: "WINE-12",
+      description: "House red wine",
+      category: "alcohol",
+      quantity: 1,
+      unit_price_minor: 14_400,
+      line_total_minor: 14_400,
+    });
     const r = evaluatePolicy(baseInput({}, [wine, shipping(899), tax(1_188)]));
     expect(codes(r)).toContain("CATEGORY_NOT_ALLOWED");
   });
 
   it("blocks a line that relabels its category to bypass restrictions", () => {
-    const wine = product({ sku: "WINE-12", description: "House red wine", category: "food_packaging", quantity: 1, unit_price_minor: 14_400, line_total_minor: 14_400 });
+    const wine = product({
+      sku: "WINE-12",
+      description: "House red wine",
+      category: "food_packaging",
+      quantity: 1,
+      unit_price_minor: 14_400,
+      line_total_minor: 14_400,
+    });
     const r = evaluatePolicy(baseInput({}, [wine, shipping(899), tax(1_188)]));
     expect(codes(r)).toContain("CATEGORY_NOT_ALLOWED");
   });
 
   it("blocks subscriptions when the mandate forbids them", () => {
-    const sub = product({ sku: "DESCALE-SUB", description: "Descaling subscription", category: "cleaning_supplies", quantity: 1, unit_price_minor: 3_900, line_total_minor: 3_900 });
+    const sub = product({
+      sku: "DESCALE-SUB",
+      description: "Descaling subscription",
+      category: "cleaning_supplies",
+      quantity: 1,
+      unit_price_minor: 3_900,
+      line_total_minor: 3_900,
+    });
     const r = evaluatePolicy(baseInput({ needed_units_by_sku: {} }, [sub, shipping(899), tax(322)]));
     expect(codes(r)).toContain("SUBSCRIPTION_NOT_ALLOWED");
   });
 
   it("allows subscriptions when the mandate permits them", () => {
-    const sub = product({ sku: "DESCALE-SUB", description: "Descaling subscription", category: "cleaning_supplies", quantity: 1, unit_price_minor: 3_900, line_total_minor: 3_900 });
-    const r = evaluatePolicy(baseInput({ mandate: mandate({ subscriptions_allowed: true }), needed_units_by_sku: {} }, [sub, shipping(899), tax(322)]));
+    const sub = product({
+      sku: "DESCALE-SUB",
+      description: "Descaling subscription",
+      category: "cleaning_supplies",
+      quantity: 1,
+      unit_price_minor: 3_900,
+      line_total_minor: 3_900,
+    });
+    const r = evaluatePolicy(
+      baseInput({ mandate: mandate({ subscriptions_allowed: true }), needed_units_by_sku: {} }, [sub, shipping(899), tax(322)]),
+    );
     expect(codes(r)).not.toContain("SUBSCRIPTION_NOT_ALLOWED");
   });
 
@@ -137,17 +170,53 @@ describe("TrustRail policy engine", () => {
   });
 
   it("requires review when the market reference is stale", () => {
-    const r = evaluatePolicy(baseInput({ market: [{ sku: "TK-250", reference_unit_price_minor: 31, candidate_unit_price_minor: 32, observed_at: "2026-11-01T00:00:00Z", comparable: true }] }));
+    const r = evaluatePolicy(
+      baseInput({
+        market: [
+          {
+            sku: "TK-250",
+            reference_unit_price_minor: 31,
+            candidate_unit_price_minor: 32,
+            observed_at: "2026-11-01T00:00:00Z",
+            comparable: true,
+          },
+        ],
+      }),
+    );
     expect(r.violations[0]?.evidence?.reason).toBe("stale");
   });
 
   it("requires review when listings are not comparable", () => {
-    const r = evaluatePolicy(baseInput({ market: [{ sku: "TK-250", reference_unit_price_minor: 31, candidate_unit_price_minor: 32, observed_at: NOW.toISOString(), comparable: false }] }));
+    const r = evaluatePolicy(
+      baseInput({
+        market: [
+          {
+            sku: "TK-250",
+            reference_unit_price_minor: 31,
+            candidate_unit_price_minor: 32,
+            observed_at: NOW.toISOString(),
+            comparable: false,
+          },
+        ],
+      }),
+    );
     expect(codes(r)).toEqual(["MARKET_REFERENCE_UNAVAILABLE"]);
   });
 
   it("flags a premium above the mandate threshold for review", () => {
-    const r = evaluatePolicy(baseInput({ market: [{ sku: "TK-250", reference_unit_price_minor: 25, candidate_unit_price_minor: 0, observed_at: NOW.toISOString(), comparable: true }] }));
+    const r = evaluatePolicy(
+      baseInput({
+        market: [
+          {
+            sku: "TK-250",
+            reference_unit_price_minor: 25,
+            candidate_unit_price_minor: 0,
+            observed_at: NOW.toISOString(),
+            comparable: true,
+          },
+        ],
+      }),
+    );
     const v = r.violations.find((x) => x.code === "MARKET_PRICE_PREMIUM_EXCEEDED");
     expect(v?.severity).toBe("REVIEW");
     expect(v?.evidence?.premium_pct).toBe(28);
@@ -155,27 +224,73 @@ describe("TrustRail policy engine", () => {
 
   it("computes the premium from the cart line, ignoring a caller-supplied candidate price", () => {
     // candidate_unit_price_minor claims 1¢ but the line is really 32¢/unit.
-    const r = evaluatePolicy(baseInput({ market: [{ sku: "TK-250", reference_unit_price_minor: 25, candidate_unit_price_minor: 1, observed_at: NOW.toISOString(), comparable: true }] }));
+    const r = evaluatePolicy(
+      baseInput({
+        market: [
+          {
+            sku: "TK-250",
+            reference_unit_price_minor: 25,
+            candidate_unit_price_minor: 1,
+            observed_at: NOW.toISOString(),
+            comparable: true,
+          },
+        ],
+      }),
+    );
     expect(codes(r)).toContain("MARKET_PRICE_PREMIUM_EXCEEDED");
   });
 
   it("blocks an over-market price when the mandate says BLOCK", () => {
-    const r = evaluatePolicy(baseInput({ mandate: mandate({ market_price_action: "BLOCK" }), market: [{ sku: "TK-250", reference_unit_price_minor: 25, candidate_unit_price_minor: 32, observed_at: NOW.toISOString(), comparable: true }] }));
+    const r = evaluatePolicy(
+      baseInput({
+        mandate: mandate({ market_price_action: "BLOCK" }),
+        market: [
+          {
+            sku: "TK-250",
+            reference_unit_price_minor: 25,
+            candidate_unit_price_minor: 32,
+            observed_at: NOW.toISOString(),
+            comparable: true,
+          },
+        ],
+      }),
+    );
     expect(r.decision).toBe("BLOCK");
   });
 
   it("treats a zero or negative reference price as unavailable rather than dividing by it", () => {
-    const r = evaluatePolicy(baseInput({ market: [{ sku: "TK-250", reference_unit_price_minor: 0, candidate_unit_price_minor: 32, observed_at: NOW.toISOString(), comparable: true }] }));
+    const r = evaluatePolicy(
+      baseInput({
+        market: [
+          {
+            sku: "TK-250",
+            reference_unit_price_minor: 0,
+            candidate_unit_price_minor: 32,
+            observed_at: NOW.toISOString(),
+            comparable: true,
+          },
+        ],
+      }),
+    );
     expect(r.violations[0]?.evidence?.reason).toBe("invalid_price");
   });
 
   it("flags duplicate orders inside the window for review", () => {
-    const r = evaluatePolicy(baseInput({ prior_orders: [{ id: "po_prev", supplier_id: SUPPLIER, skus: ["TK-250"], status: "PAID", created_at: "2026-11-10T08:00:00Z" }] }));
+    const r = evaluatePolicy(
+      baseInput({
+        prior_orders: [{ id: "po_prev", supplier_id: SUPPLIER, skus: ["TK-250"], status: "PAID", created_at: "2026-11-10T08:00:00Z" }],
+      }),
+    );
     expect(r.violations.find((v) => v.code === "DUPLICATE_ORDER")?.severity).toBe("REVIEW");
   });
 
   it("blocks duplicates when the mandate says BLOCK", () => {
-    const r = evaluatePolicy(baseInput({ mandate: mandate({ duplicate_action: "BLOCK" }), prior_orders: [{ id: "po_prev", supplier_id: SUPPLIER, skus: ["TK-250"], status: "APPROVED", created_at: "2026-11-10T08:00:00Z" }] }));
+    const r = evaluatePolicy(
+      baseInput({
+        mandate: mandate({ duplicate_action: "BLOCK" }),
+        prior_orders: [{ id: "po_prev", supplier_id: SUPPLIER, skus: ["TK-250"], status: "APPROVED", created_at: "2026-11-10T08:00:00Z" }],
+      }),
+    );
     expect(r.decision).toBe("BLOCK");
   });
 
@@ -194,7 +309,15 @@ describe("TrustRail policy engine", () => {
 
   it("flags quantities far above forecast need for review", () => {
     const big = product({ quantity: 10, line_total_minor: 80_000 });
-    const r = evaluatePolicy(baseInput({ mandate: mandate({ per_order_limit_minor: 100_000, weekly_budget_minor: 100_000 }), budget: { limit_minor: 100_000, spent_minor: 0, reserved_minor: 0 } }, [big, shipping(0), tax(6_600)]));
+    const r = evaluatePolicy(
+      baseInput(
+        {
+          mandate: mandate({ per_order_limit_minor: 100_000, weekly_budget_minor: 100_000 }),
+          budget: { limit_minor: 100_000, spent_minor: 0, reserved_minor: 0 },
+        },
+        [big, shipping(0), tax(6_600)],
+      ),
+    );
     expect(r.violations.find((v) => v.code === "QUANTITY_EXCEEDS_NEED")?.severity).toBe("REVIEW");
   });
 
@@ -204,7 +327,12 @@ describe("TrustRail policy engine", () => {
   });
 
   it("only lists REVIEW violations as acknowledgement codes", () => {
-    const r = evaluatePolicy(baseInput({ market: [], prior_orders: [{ id: "p", supplier_id: SUPPLIER, skus: ["TK-250"], status: "PAID", created_at: "2026-11-10T10:00:00Z" }] }));
+    const r = evaluatePolicy(
+      baseInput({
+        market: [],
+        prior_orders: [{ id: "p", supplier_id: SUPPLIER, skus: ["TK-250"], status: "PAID", created_at: "2026-11-10T10:00:00Z" }],
+      }),
+    );
     expect(reviewCodes(r).sort()).toEqual(["DUPLICATE_ORDER", "MARKET_REFERENCE_UNAVAILABLE"]);
   });
 
@@ -248,7 +376,11 @@ describe("TrustRail policy engine", () => {
     ];
     const a = evaluatePolicy(baseInput({ prior_orders: priors, quarantined_source_ids: ["q1", "q2"] }));
     const b = evaluatePolicy(
-      baseInput({ prior_orders: [{ ...priors[1]! }, { ...priors[0]!, skus: ["Y", "X"] }], quarantined_source_ids: ["q2", "q1"], catalog: [...baseInput().catalog].reverse() }),
+      baseInput({
+        prior_orders: [{ ...priors[1]! }, { ...priors[0]!, skus: ["Y", "X"] }],
+        quarantined_source_ids: ["q2", "q1"],
+        catalog: [...baseInput().catalog].reverse(),
+      }),
     );
     expect(a.input_digest).toBe(b.input_digest);
   });
@@ -258,7 +390,9 @@ describe("TrustRail policy engine", () => {
     expect(codes(evaluatePolicy(baseInput({}, [small, shipping(899), tax(660)])))).not.toContain("UNAUTHORIZED_LINE_ITEM");
     expect(codes(evaluatePolicy(baseInput({}, [small, shipping(0), tax(660)])))).toContain("UNAUTHORIZED_LINE_ITEM");
     // Builds a cart with a fee on top just to make sure a legit cart is unaffected by fee rules.
-    expect(evaluatePolicy({ ...baseInput(), cart: buildCart(SUPPLIER, "USD", [product(), shipping(0), tax(1_320)]) }).decision).toBe("ALLOW");
+    expect(evaluatePolicy({ ...baseInput(), cart: buildCart(SUPPLIER, "USD", [product(), shipping(0), tax(1_320)]) }).decision).toBe(
+      "ALLOW",
+    );
   });
 
   it("never lets a fee line through, regardless of how it is described", () => {

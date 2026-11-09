@@ -2,7 +2,13 @@ import { describe, expect, it } from "vitest";
 import { interpretDeterministically, isCalendarDate, parseBudget, sanitizeIntent } from "@qm/quartermaster";
 
 const inventory = [
-  { id: "inv_tk", sku: "PKG-TAKEOUT-32", name: "Takeaway containers", category: "food_packaging", keywords: ["takeaway", "takeout", "boxes"] },
+  {
+    id: "inv_tk",
+    sku: "PKG-TAKEOUT-32",
+    name: "Takeaway containers",
+    category: "food_packaging",
+    keywords: ["takeaway", "takeout", "boxes"],
+  },
   { id: "inv_oil", sku: "ING-CANOLA", name: "Canola frying oil", category: "cooking_ingredients", keywords: ["oil", "cooking oil"] },
 ];
 const now = new Date("2026-11-10T18:00:00Z"); // Tuesday
@@ -62,8 +68,12 @@ describe("required-by dates", () => {
     // 2026-11-10T03:00Z is still Monday 2026-11-09 evening in Los Angeles.
     const lateMonday = new Date("2026-11-10T03:00:00Z");
     expect(interpretDeterministically("oil tomorrow", inventory, lateMonday).required_by).toBe("2026-11-11");
-    expect(interpretDeterministically("oil tomorrow", inventory, lateMonday, { timeZone: "America/Los_Angeles" }).required_by).toBe("2026-11-10");
-    expect(interpretDeterministically("oil by tuesday", inventory, lateMonday, { timeZone: "America/Los_Angeles" }).required_by).toBe("2026-11-10");
+    expect(interpretDeterministically("oil tomorrow", inventory, lateMonday, { timeZone: "America/Los_Angeles" }).required_by).toBe(
+      "2026-11-10",
+    );
+    expect(interpretDeterministically("oil by tuesday", inventory, lateMonday, { timeZone: "America/Los_Angeles" }).required_by).toBe(
+      "2026-11-10",
+    );
     expect(interpretDeterministically("oil by tuesday", inventory, lateMonday).required_by).toBe("2026-11-17");
   });
 
@@ -74,7 +84,10 @@ describe("required-by dates", () => {
 });
 
 describe("inventory keyword matching", () => {
-  const withPans = [...inventory, { id: "inv_pan", sku: "PKG-FOIL-913", name: "Foil pans", category: "food_packaging", keywords: ["foil pan", "half pan"] }];
+  const withPans = [
+    ...inventory,
+    { id: "inv_pan", sku: "PKG-FOIL-913", name: "Foil pans", category: "food_packaging", keywords: ["foil pan", "half pan"] },
+  ];
 
   it("matches whole words only, so 'foil pans' does not select canola oil", () => {
     expect(interpretDeterministically("Need foil pans for Friday", withPans, now).inventory_item_ids).toEqual(["inv_pan"]);

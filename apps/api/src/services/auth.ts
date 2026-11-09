@@ -31,8 +31,15 @@ export function hashToken(token: string): string {
  */
 export async function login(ctx: AppContext, email: string, password: string, meta: { ip?: string; userAgent?: string }) {
   const now = ctx.now();
-  const [user] = await ctx.db.select().from(users).where(sql`lower(${users.email}) = ${email.toLowerCase()}`);
-  const invalid = new AppError(401, "INVALID_CREDENTIALS", "Email or password is incorrect, or sign-in is temporarily locked after repeated failures.");
+  const [user] = await ctx.db
+    .select()
+    .from(users)
+    .where(sql`lower(${users.email}) = ${email.toLowerCase()}`);
+  const invalid = new AppError(
+    401,
+    "INVALID_CREDENTIALS",
+    "Email or password is incorrect, or sign-in is temporarily locked after repeated failures.",
+  );
   if (!user || user.disabled) {
     await verifyPassword(password, await dummyPasswordHash());
     throw invalid;
@@ -54,7 +61,12 @@ export async function login(ctx: AppContext, email: string, password: string, me
     throw invalid;
   }
 
-  const [membership] = await ctx.db.select().from(memberships).where(eq(memberships.userId, user.id)).orderBy(memberships.createdAt).limit(1);
+  const [membership] = await ctx.db
+    .select()
+    .from(memberships)
+    .where(eq(memberships.userId, user.id))
+    .orderBy(memberships.createdAt)
+    .limit(1);
   if (!membership) throw invalid;
 
   const token = randomBytes(32).toString("base64url");
@@ -69,7 +81,15 @@ export async function login(ctx: AppContext, email: string, password: string, me
       userAgent: meta.userAgent?.slice(0, 300) ?? null,
       ip: meta.ip ?? null,
     });
-    await appendAudit(tx, { organizationId: membership.organizationId, action: "auth.login", actorType: "USER", actorId: user.id, entityType: "user", entityId: user.id, data: { ip: meta.ip ?? null } });
+    await appendAudit(tx, {
+      organizationId: membership.organizationId,
+      action: "auth.login",
+      actorType: "USER",
+      actorId: user.id,
+      entityType: "user",
+      entityId: user.id,
+      data: { ip: meta.ip ?? null },
+    });
   });
   return { token, expiresAt, user: await sessionUser(ctx, user.id, membership.organizationId) };
 }
@@ -105,7 +125,14 @@ export async function authenticate(ctx: AppContext, token: string): Promise<Auth
   if (now.getTime() - row.session.lastSeenAt.getTime() > 60_000) {
     await ctx.db.update(sessions).set({ lastSeenAt: now }).where(eq(sessions.id, row.session.id));
   }
-  return { id: row.user.id, email: row.user.email, name: row.user.name, role: row.role, organizationId: row.session.organizationId, sessionId: row.session.id };
+  return {
+    id: row.user.id,
+    email: row.user.email,
+    name: row.user.name,
+    role: row.role,
+    organizationId: row.session.organizationId,
+    sessionId: row.session.id,
+  };
 }
 
 export async function logout(ctx: AppContext, sessionId: string): Promise<void> {

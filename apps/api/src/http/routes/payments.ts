@@ -22,7 +22,10 @@ export function intentAndPaymentRoutes(ctx: AppContext): Router {
   r.post(
     "/intents/:id/paypal-order",
     requireRole("OWNER"),
-    idempotent(ctx, "payments.create_order", async (req) => ({ status: 200, body: await createPayPalOrder(ctx, actorOf(req), param(req, "id")) })),
+    idempotent(ctx, "payments.create_order", async (req) => ({
+      status: 200,
+      body: await createPayPalOrder(ctx, actorOf(req), param(req, "id")),
+    })),
   );
 
   r.post(
@@ -46,7 +49,12 @@ export function intentAndPaymentRoutes(ctx: AppContext): Router {
     requireRole("OWNER"),
     idempotent(ctx, "payments.refund", async (req) => {
       const input = parse(RefundRequest, req.body);
-      return { status: 200, body: { payment: await refundPayment(ctx, actorOf(req), param(req, "id"), input.amount_minor, input.reason, req.get("idempotency-key")!) } };
+      return {
+        status: 200,
+        body: {
+          payment: await refundPayment(ctx, actorOf(req), param(req, "id"), input.amount_minor, input.reason, req.get("idempotency-key")!),
+        },
+      };
     }),
   );
 

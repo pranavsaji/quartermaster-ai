@@ -13,7 +13,11 @@ try {
   await handle.migrate();
   const result = await seedDemo(handle.db, { password, reset: process.argv.includes("--reset") });
   console.log(result.created ? "Demo organization seeded." : "Demo organization already exists (use --reset to recreate).");
-  console.log(`Sign in as ${Object.values(DEMO_CREDENTIALS).map((c) => `${c.email} (${c.role})`).join(", ")}.`);
+  console.log(
+    `Sign in as ${Object.values(DEMO_CREDENTIALS)
+      .map((c) => `${c.email} (${c.role})`)
+      .join(", ")}.`,
+  );
 } finally {
   await handle.close();
 }

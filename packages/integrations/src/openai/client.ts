@@ -34,7 +34,17 @@ export interface StructuredResult<T> {
   model: string;
 }
 
-export type OpenAIFailure = "not_configured" | "http" | "refused" | "truncated" | "empty" | "invalid_json" | "invalid_output" | "invalid_response" | "aborted" | "network";
+export type OpenAIFailure =
+  | "not_configured"
+  | "http"
+  | "refused"
+  | "truncated"
+  | "empty"
+  | "invalid_json"
+  | "invalid_output"
+  | "invalid_response"
+  | "aborted"
+  | "network";
 
 export class OpenAIError extends Error {
   constructor(
@@ -57,7 +67,9 @@ const Envelope = z.object({
       }),
     )
     .nullish(),
-  usage: z.object({ prompt_tokens: z.number().int().nonnegative().nullish(), completion_tokens: z.number().int().nonnegative().nullish() }).nullish(),
+  usage: z
+    .object({ prompt_tokens: z.number().int().nonnegative().nullish(), completion_tokens: z.number().int().nonnegative().nullish() })
+    .nullish(),
 });
 
 const ErrorBody = z.object({ error: z.object({ message: z.string().nullish() }).nullish() });

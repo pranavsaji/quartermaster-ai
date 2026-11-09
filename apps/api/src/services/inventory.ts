@@ -50,7 +50,12 @@ async function inboundByItem(db: DbOrTx, organizationId: string): Promise<Map<st
   const received = await db
     .select({ poItemId: goodsReceipts.purchaseOrderItemId, units: sql<number>`sum(${goodsReceipts.unitsReceived})::int` })
     .from(goodsReceipts)
-    .where(inArray(goodsReceipts.purchaseOrderItemId, lines.map((l) => l.itemId)))
+    .where(
+      inArray(
+        goodsReceipts.purchaseOrderItemId,
+        lines.map((l) => l.itemId),
+      ),
+    )
     .groupBy(goodsReceipts.purchaseOrderItemId);
   const receivedBy = new Map(received.map((r) => [r.poItemId, Number(r.units)]));
   const out = new Map<string, number>();
@@ -73,15 +78,30 @@ export async function loadItems(db: DbOrTx, organizationId: string, now: Date, i
   const history = await db
     .select()
     .from(consumptionHistory)
-    .where(and(eq(consumptionHistory.organizationId, organizationId), gte(consumptionHistory.day, since), inArray(consumptionHistory.inventoryItemId, rows.map((r) => r.id))))
+    .where(
+      and(
+        eq(consumptionHistory.organizationId, organizationId),
+        gte(consumptionHistory.day, since),
+        inArray(
+          consumptionHistory.inventoryItemId,
+          rows.map((r) => r.id),
+        ),
+      ),
+    )
     .orderBy(consumptionHistory.day);
-  const supplierRows = await db.select({ id: suppliers.id, lead: suppliers.leadTimeDays }).from(suppliers).where(eq(suppliers.organizationId, organizationId));
+  const supplierRows = await db
+    .select({ id: suppliers.id, lead: suppliers.leadTimeDays })
+    .from(suppliers)
+    .where(eq(suppliers.organizationId, organizationId));
   const leadBySupplier = new Map(supplierRows.map((s) => [s.id, s.lead]));
   const inbound = await inboundByItem(db, organizationId);
 
   return rows.map((row) => {
     const usage = history.filter((h) => h.inventoryItemId === row.id).map((h) => h.quantity);
-    const lead = row.leadTimeDaysOverride ?? (row.preferredSupplierId ? leadBySupplier.get(row.preferredSupplierId) : undefined) ?? DEFAULT_LEAD_TIME_DAYS;
+    const lead =
+      row.leadTimeDaysOverride ??
+      (row.preferredSupplierId ? leadBySupplier.get(row.preferredSupplierId) : undefined) ??
+      DEFAULT_LEAD_TIME_DAYS;
     return {
       row,
       input: {
@@ -137,10 +157,19 @@ export async function runForecast(
   args: { organizationId: string; userId: string; demandMultiplier: number; itemIds?: string[]; requestId?: string | null; now: Date },
 ): Promise<{ run: ForecastRunDto; lines: ForecastLine[]; items: LoadedItem[] }> {
   const items = await loadItems(db, args.organizationId, args.now, args.itemIds);
-  const lines = forecast(items.map((i) => i.input), args.demandMultiplier);
+  const lines = forecast(
+    items.map((i) => i.input),
+    args.demandMultiplier,
+  );
   const [row] = await db
     .insert(forecastRuns)
-    .values({ organizationId: args.organizationId, requestId: args.requestId ?? null, demandMultiplier: args.demandMultiplier, lines, createdBy: args.userId })
+    .values({
+      organizationId: args.organizationId,
+      requestId: args.requestId ?? null,
+      demandMultiplier: args.demandMultiplier,
+      lines,
+      createdBy: args.userId,
+    })
     .returning();
   return { run: toForecastDto(row!), lines, items };
 }

@@ -19,7 +19,14 @@ describe("keyset pagination", () => {
     const at = new Date("2026-05-01T10:00:00.123Z");
     const id = "6f1c1b2e-6c0a-4b47-9c39-8d1a3c1f0e01";
     expect(decodeCursor(encodeCursor(at, id))).toEqual({ at, id });
-    for (const bad of [undefined, "", "not-base64!", Buffer.from("2026-05-01|nope").toString("base64url"), Buffer.from(`garbage|${id}`).toString("base64url"), "x".repeat(300)]) {
+    for (const bad of [
+      undefined,
+      "",
+      "not-base64!",
+      Buffer.from("2026-05-01|nope").toString("base64url"),
+      Buffer.from(`garbage|${id}`).toString("base64url"),
+      "x".repeat(300),
+    ]) {
       expect(decodeCursor(bad)).toBeNull();
     }
   });
@@ -53,7 +60,12 @@ describe("keyset pagination", () => {
   });
 
   it("pages purchase orders, decisions, requests and the audit log", async () => {
-    for (const path of ["/purchase-orders?limit=2", "/security/decisions?limit=2", "/procurement/requests?limit=2", "/security/audit?limit=2"]) {
+    for (const path of [
+      "/purchase-orders?limit=2",
+      "/security/decisions?limit=2",
+      "/procurement/requests?limit=2",
+      "/security/audit?limit=2",
+    ]) {
       const res = await owner.get(path);
       expect(res.status, path).toBe(200);
       expect(Array.isArray(res.body.items)).toBe(true);

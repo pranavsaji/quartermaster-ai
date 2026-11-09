@@ -62,11 +62,18 @@ export function guardCapture(input: CaptureGuardInput): CaptureGuardResult {
   // When a payee is configured it must be positively confirmed: an order that does not report
   // its payee is not evidence that the funds go to the right merchant.
   if (input.expected_payee_merchant_id && o.payee_merchant_id !== input.expected_payee_merchant_id) {
-    fail("PAYEE_MISMATCH", o.payee_merchant_id ? "Funds would go to an unexpected merchant account." : "PayPal order does not identify its payee; the expected merchant cannot be confirmed.");
+    fail(
+      "PAYEE_MISMATCH",
+      o.payee_merchant_id
+        ? "Funds would go to an unexpected merchant account."
+        : "PayPal order does not identify its payee; the expected merchant cannot be confirmed.",
+    );
   }
 
-  if (!input.reservation || input.reservation.status !== "ACTIVE") fail("NO_RESERVATION", "No active budget reservation backs this payment.");
-  else if (input.reservation.amount_minor !== c.approved_amount_minor) fail("RESERVATION_AMOUNT", "Reserved amount differs from the approved amount.");
+  if (!input.reservation || input.reservation.status !== "ACTIVE")
+    fail("NO_RESERVATION", "No active budget reservation backs this payment.");
+  else if (input.reservation.amount_minor !== c.approved_amount_minor)
+    fail("RESERVATION_AMOUNT", "Reserved amount differs from the approved amount.");
 
   if (!input.policy_still_allows) fail("POLICY_CHANGED", "The purchase is no longer permitted under the current Spend Mandate.");
 

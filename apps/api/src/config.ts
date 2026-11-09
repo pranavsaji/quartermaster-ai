@@ -44,11 +44,19 @@ const EnvSchema = z.object({
   DATABASE_CA_CERT: z.string().optional(),
   DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(100).default(10),
 
-  SESSION_TTL_HOURS: z.coerce.number().int().min(1).max(24 * 30).default(12),
+  SESSION_TTL_HOURS: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(24 * 30)
+    .default(12),
   COOKIE_SECURE: bool(false),
 
   TRUSTRAIL_SIGNING_KEY: z.string().optional(),
-  TRUSTRAIL_SIGNING_KEY_ID: z.string().regex(/^[\w.-]{3,64}$/).optional(),
+  TRUSTRAIL_SIGNING_KEY_ID: z
+    .string()
+    .regex(/^[\w.-]{3,64}$/)
+    .optional(),
 
   PAYPAL_ENV: z.enum(["sandbox", "live"]).default("sandbox"),
   PAYPAL_CLIENT_ID: z.string().optional(),
@@ -69,11 +77,16 @@ const EnvSchema = z.object({
   AGENT_MAX_RESEARCH_CALLS: z.coerce.number().int().min(1).max(50).default(8),
   AGENT_DEADLINE_MS: z.coerce.number().int().min(2000).max(120_000).default(45_000),
   AGENT_TOKEN_BUDGET: z.coerce.number().int().min(500).max(200_000).default(12_000),
-  MARKET_REFERENCE_MAX_AGE_HOURS: z.coerce.number().int().min(1).max(24 * 30).default(72),
+  MARKET_REFERENCE_MAX_AGE_HOURS: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(24 * 30)
+    .default(72),
 
   /** How long shutdown waits for in-flight requests and a running sweep (research runs take ~45s). */
   SHUTDOWN_GRACE_MS: z.coerce.number().int().min(0).max(600_000).default(60_000),
-  SWEEPER_INTERVAL_SECONDS:z.coerce.number().int().min(0).max(3600).default(60),
+  SWEEPER_INTERVAL_SECONDS: z.coerce.number().int().min(0).max(3600).default(60),
   /** Demo-only delivery simulation. Defaults to false in production, true elsewhere. */
   ALLOW_SYNTHETIC_DELIVERY_ACTIONS: optionalBool(),
 });
@@ -129,10 +142,15 @@ export function parseTrustProxy(raw: string): number | string[] {
     if (hops > 5) throw new Error("Invalid configuration: TRUST_PROXY hop count must be between 0 and 5");
     return hops;
   }
-  const entries = value.split(",").map((v) => v.trim()).filter(Boolean);
+  const entries = value
+    .split(",")
+    .map((v) => v.trim())
+    .filter(Boolean);
   const bad = entries.filter((v) => !isTrustedProxyEntry(v));
   if (!entries.length || bad.length) {
-    throw new Error(`Invalid configuration: TRUST_PROXY must be a hop count or a list of proxy addresses/CIDRs (invalid: ${bad.join(", ") || "empty"})`);
+    throw new Error(
+      `Invalid configuration: TRUST_PROXY must be a hop count or a list of proxy addresses/CIDRs (invalid: ${bad.join(", ") || "empty"})`,
+    );
   }
   return entries;
 }
@@ -153,9 +171,12 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
     ].filter(([, v]) => !v);
     if (missing.length) throw new Error(`Missing required production configuration: ${missing.map(([k]) => k).join(", ")}`);
     if (e.DATABASE_URL!.startsWith("pglite://")) throw new Error("PGlite is for local development only; use PostgreSQL in production");
-    if (e.PAYPAL_ENV === "live") throw new Error("Live PayPal is disabled in this release; unattended production payments are out of scope");
+    if (e.PAYPAL_ENV === "live")
+      throw new Error("Live PayPal is disabled in this release; unattended production payments are out of scope");
     if (e.DATABASE_SSL === "disable" && !e.DATABASE_ALLOW_INSECURE_TRANSPORT) {
-      throw new Error("DATABASE_SSL=disable is refused in production; use TLS, or set DATABASE_ALLOW_INSECURE_TRANSPORT=true for a trusted private network");
+      throw new Error(
+        "DATABASE_SSL=disable is refused in production; use TLS, or set DATABASE_ALLOW_INSECURE_TRANSPORT=true for a trusted private network",
+      );
     }
   }
   if (Boolean(e.PAYPAL_CLIENT_ID) !== Boolean(e.PAYPAL_CLIENT_SECRET)) {
@@ -168,7 +189,9 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
       ["PAYPAL_MERCHANT_ID", e.PAYPAL_MERCHANT_ID],
     ].filter(([, v]) => !v);
     if (paypalMissing.length) {
-      throw new Error(`PayPal is configured but ${paypalMissing.map(([k]) => k).join(" and ")} ${paypalMissing.length > 1 ? "are" : "is"} missing; both are required in production`);
+      throw new Error(
+        `PayPal is configured but ${paypalMissing.map(([k]) => k).join(" and ")} ${paypalMissing.length > 1 ? "are" : "is"} missing; both are required in production`,
+      );
     }
   }
 
@@ -177,7 +200,9 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
     port: e.PORT,
     logLevel: e.LOG_LEVEL,
     appBaseUrl: e.APP_BASE_URL,
-    corsOrigins: e.CORS_ORIGINS.split(",").map((o) => o.trim()).filter(Boolean),
+    corsOrigins: e.CORS_ORIGINS.split(",")
+      .map((o) => o.trim())
+      .filter(Boolean),
     trustProxy: parseTrustProxy(e.TRUST_PROXY),
     // Tests drive many requests from one address; their defaults are effectively unlimited.
     rateLimits: {
@@ -186,8 +211,17 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
       loginPerIp: e.LOGIN_RATE_LIMIT_PER_IP ?? (e.NODE_ENV === "test" ? 1000 : 100),
       webhookPerMinute: e.WEBHOOK_RATE_LIMIT_PER_MINUTE,
     },
-    database: { url: e.DATABASE_URL ?? "pglite://./.data/pglite", ssl: (e.DATABASE_SSL ?? (production ? "require" : "disable")) === "require", ca: e.DATABASE_CA_CERT, poolMax: e.DATABASE_POOL_MAX },
-    session: { ttlHours: e.SESSION_TTL_HOURS, cookieSecure: production || e.COOKIE_SECURE, cookieName: production ? "__Host-qm_session" : "qm_session" },
+    database: {
+      url: e.DATABASE_URL ?? "pglite://./.data/pglite",
+      ssl: (e.DATABASE_SSL ?? (production ? "require" : "disable")) === "require",
+      ca: e.DATABASE_CA_CERT,
+      poolMax: e.DATABASE_POOL_MAX,
+    },
+    session: {
+      ttlHours: e.SESSION_TTL_HOURS,
+      cookieSecure: production || e.COOKIE_SECURE,
+      cookieName: production ? "__Host-qm_session" : "qm_session",
+    },
     signing: { privateKey: e.TRUSTRAIL_SIGNING_KEY ?? null, keyId: e.TRUSTRAIL_SIGNING_KEY_ID },
     paypal: {
       environment: e.PAYPAL_ENV,

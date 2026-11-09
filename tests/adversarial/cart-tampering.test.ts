@@ -16,7 +16,10 @@ const blockedBy = (c: Cart, code: string, message: RegExp) => {
 describe("cart tampering and fee smuggling", () => {
   it("blocks an undisclosed service charge", () => {
     const c = buildCart(SUPPLIER, "USD", [product(), shipping(0), fee("PRIORITY_SVC", 2_450), tax(1_320)]);
-    expect(blockedBy(c, "UNAUTHORIZED_LINE_ITEM", /not part of the supplier's published terms/).evidence).toMatchObject({ code: "PRIORITY_SVC", amount_minor: 2_450 });
+    expect(blockedBy(c, "UNAUTHORIZED_LINE_ITEM", /not part of the supplier's published terms/).evidence).toMatchObject({
+      code: "PRIORITY_SVC",
+      amount_minor: 2_450,
+    });
   });
 
   it("blocks a published fee code applied twice", () => {
@@ -26,12 +29,20 @@ describe("cart tampering and fee smuggling", () => {
 
   it("blocks a published fee charged at an inflated amount", () => {
     const c = buildCart(SUPPLIER, "USD", [product({ quantity: 1, line_total_minor: 8_000 }), shipping(1_999), tax(660)]);
-    expect(blockedBy(c, "UNAUTHORIZED_LINE_ITEM", /does not match the published amount/).evidence).toEqual({ code: "SHIP_STD", expected_minor: 899, cart_minor: 1_999 });
+    expect(blockedBy(c, "UNAUTHORIZED_LINE_ITEM", /does not match the published amount/).evidence).toEqual({
+      code: "SHIP_STD",
+      expected_minor: 899,
+      cart_minor: 1_999,
+    });
   });
 
   it("blocks shipping charged when it should have been waived", () => {
     const c = buildCart(SUPPLIER, "USD", [product(), shipping(899), tax(1_320)]);
-    expect(blockedBy(c, "UNAUTHORIZED_LINE_ITEM", /does not match the published amount/).evidence).toEqual({ code: "SHIP_STD", expected_minor: 0, cart_minor: 899 });
+    expect(blockedBy(c, "UNAUTHORIZED_LINE_ITEM", /does not match the published amount/).evidence).toEqual({
+      code: "SHIP_STD",
+      expected_minor: 0,
+      cart_minor: 899,
+    });
   });
 
   it("blocks an inflated tax line", () => {
@@ -49,12 +60,29 @@ describe("cart tampering and fee smuggling", () => {
   });
 
   it("blocks a product that is not in the supplier's catalog", () => {
-    const c = buildCart(SUPPLIER, "USD", [product(), product({ sku: "GIFT-CARD", description: "Gift card", category: "food_packaging", quantity: 1, unit_price_minor: 5_000, line_total_minor: 5_000 }), shipping(0), tax(1_733)]);
+    const c = buildCart(SUPPLIER, "USD", [
+      product(),
+      product({
+        sku: "GIFT-CARD",
+        description: "Gift card",
+        category: "food_packaging",
+        quantity: 1,
+        unit_price_minor: 5_000,
+        line_total_minor: 5_000,
+      }),
+      shipping(0),
+      tax(1_733),
+    ]);
     expect(codes(c)).toContain("UNAUTHORIZED_LINE_ITEM");
   });
 
   it("blocks the same SKU split across two lines", () => {
-    const c = buildCart(SUPPLIER, "USD", [product({ quantity: 1, line_total_minor: 8_000 }), product({ quantity: 1, line_total_minor: 8_000 }), shipping(0), tax(1_320)]);
+    const c = buildCart(SUPPLIER, "USD", [
+      product({ quantity: 1, line_total_minor: 8_000 }),
+      product({ quantity: 1, line_total_minor: 8_000 }),
+      shipping(0),
+      tax(1_320),
+    ]);
     expect(blockedBy(c, "UNAUTHORIZED_LINE_ITEM", /appears on more than one line/).evidence).toEqual({ sku: "TK-250" });
   });
 
@@ -71,8 +99,12 @@ describe("cart tampering and fee smuggling", () => {
   });
 
   it("rejects negative or fractional quantities", () => {
-    expect(checkCartArithmetic(buildCart(SUPPLIER, "USD", [product({ quantity: -2, line_total_minor: -16_000 })])).length).toBeGreaterThan(0);
-    expect(checkCartArithmetic(buildCart(SUPPLIER, "USD", [product({ quantity: 1.5, line_total_minor: 12_000 })])).length).toBeGreaterThan(0);
+    expect(checkCartArithmetic(buildCart(SUPPLIER, "USD", [product({ quantity: -2, line_total_minor: -16_000 })])).length).toBeGreaterThan(
+      0,
+    );
+    expect(checkCartArithmetic(buildCart(SUPPLIER, "USD", [product({ quantity: 1.5, line_total_minor: 12_000 })])).length).toBeGreaterThan(
+      0,
+    );
   });
 
   it("rejects unknown line kinds that would be dropped from totals", () => {
@@ -109,6 +141,8 @@ describe("cart tampering and fee smuggling", () => {
   it("blocks carts from a quarantined supplier", () => {
     const r = evaluatePolicy(baseInput({ quarantined_source_ids: [SUPPLIER] }));
     expect(r.decision).toBe("BLOCK");
-    expect(r.violations).toEqual([expect.objectContaining({ code: "QUARANTINED_SOURCE", severity: "BLOCK", evidence: { supplier_id: SUPPLIER } })]);
+    expect(r.violations).toEqual([
+      expect.objectContaining({ code: "QUARANTINED_SOURCE", severity: "BLOCK", evidence: { supplier_id: SUPPLIER } }),
+    ]);
   });
 });

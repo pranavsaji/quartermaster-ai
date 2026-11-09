@@ -25,36 +25,70 @@ afterAll(async () => {
   await h.close();
 });
 
-const rejection = (p: Promise<unknown>) => p.then(
-  () => "accepted",
-  (e: { cause?: { message?: string }; message?: string }) => e.cause?.message ?? e.message ?? "rejected",
-);
+const rejection = (p: Promise<unknown>) =>
+  p.then(
+    () => "accepted",
+    (e: { cause?: { message?: string }; message?: string }) => e.cause?.message ?? e.message ?? "rejected",
+  );
 
 describe("integrity constraints", () => {
   it("rejects unknown status values", async () => {
     const [req] = await h.ctx.db.select().from(purchaseRequests).limit(1);
     const [po] = await h.ctx.db.select().from(purchaseOrders).limit(1);
     expect(req && po).toBeTruthy();
-    expect(await rejection(h.ctx.db.update(purchaseRequests).set({ status: "PAYMENT_PENDNG" as never }).where(eq(purchaseRequests.id, req!.id)))).toMatch(/purchase_requests_status_ck/);
-    expect(await rejection(h.ctx.db.update(purchaseOrders).set({ status: "LOST" as never }).where(eq(purchaseOrders.id, po!.id)))).toMatch(/purchase_orders_status_ck/);
-    expect(await rejection(h.ctx.db.execute(sql`insert into payment_attempts (organization_id, intent_id, purchase_order_id, status, amount_minor, currency, created_by) values (gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), 'DONE', 100, 'USD', gen_random_uuid())`))).toMatch(/payments_status_ck|violates/);
+    expect(
+      await rejection(
+        h.ctx.db
+          .update(purchaseRequests)
+          .set({ status: "PAYMENT_PENDNG" as never })
+          .where(eq(purchaseRequests.id, req!.id)),
+      ),
+    ).toMatch(/purchase_requests_status_ck/);
+    expect(
+      await rejection(
+        h.ctx.db
+          .update(purchaseOrders)
+          .set({ status: "LOST" as never })
+          .where(eq(purchaseOrders.id, po!.id)),
+      ),
+    ).toMatch(/purchase_orders_status_ck/);
+    expect(
+      await rejection(
+        h.ctx.db.execute(
+          sql`insert into payment_attempts (organization_id, intent_id, purchase_order_id, status, amount_minor, currency, created_by) values (gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), 'DONE', 100, 'USD', gen_random_uuid())`,
+        ),
+      ),
+    ).toMatch(/payments_status_ck|violates/);
   });
 
   it("rejects negative budget figures", async () => {
     const [account] = await h.ctx.db.select().from(budgetAccounts).limit(1);
     expect(account).toBeTruthy();
-    expect(await rejection(h.ctx.db.update(budgetAccounts).set({ reservedMinor: -1 }).where(eq(budgetAccounts.id, account!.id)))).toMatch(/budget_accounts_amounts_ck/);
+    expect(await rejection(h.ctx.db.update(budgetAccounts).set({ reservedMinor: -1 }).where(eq(budgetAccounts.id, account!.id)))).toMatch(
+      /budget_accounts_amounts_ck/,
+    );
   });
 
   it("rejects refunds larger than the captured amount", async () => {
     const [p] = await h.ctx.db.select().from(paymentAttempts).limit(1);
     expect(p).toBeTruthy();
-    expect(await rejection(h.ctx.db.update(paymentAttempts).set({ capturedAmountMinor: 100, refundedAmountMinor: 101 }).where(eq(paymentAttempts.id, p!.id)))).toMatch(/payments_amounts_ck/);
+    expect(
+      await rejection(
+        h.ctx.db.update(paymentAttempts).set({ capturedAmountMinor: 100, refundedAmountMinor: 101 }).where(eq(paymentAttempts.id, p!.id)),
+      ),
+    ).toMatch(/payments_amounts_ck/);
   });
 
   it("rejects order totals that do not add up", async () => {
     const [po] = await h.ctx.db.select().from(purchaseOrders).limit(1);
     expect(po).toBeTruthy();
-    expect(await rejection(h.ctx.db.update(purchaseOrders).set({ totalMinor: po!.totalMinor + 1 }).where(eq(purchaseOrders.id, po!.id)))).toMatch(/purchase_orders_amounts_ck/);
+    expect(
+      await rejection(
+        h.ctx.db
+          .update(purchaseOrders)
+          .set({ totalMinor: po!.totalMinor + 1 })
+          .where(eq(purchaseOrders.id, po!.id)),
+      ),
+    ).toMatch(/purchase_orders_amounts_ck/);
   });
 });

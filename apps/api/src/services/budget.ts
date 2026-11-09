@@ -6,7 +6,13 @@ import { conflict, notFound } from "../errors";
 
 /** Local calendar date (YYYY-MM-DD) and ISO weekday (1 = Monday) in a time zone. */
 export function localDate(now: Date, timeZone: string): { date: string; weekday: number } {
-  const parts = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit", weekday: "short" }).formatToParts(now);
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    weekday: "short",
+  }).formatToParts(now);
   const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
   const weekdays: Record<string, number> = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 };
   return { date: `${get("year")}-${get("month")}-${get("day")}`, weekday: weekdays[get("weekday")] ?? 1 };
@@ -87,7 +93,12 @@ export async function reserve(
   const [updated] = await tx
     .update(budgetAccounts)
     .set({ reservedMinor: sql`${budgetAccounts.reservedMinor} + ${args.amountMinor}`, updatedAt: args.now })
-    .where(and(eq(budgetAccounts.id, account.id), sql`${budgetAccounts.limitMinor} - ${budgetAccounts.reservedMinor} - ${budgetAccounts.spentMinor} >= ${args.amountMinor}`))
+    .where(
+      and(
+        eq(budgetAccounts.id, account.id),
+        sql`${budgetAccounts.limitMinor} - ${budgetAccounts.reservedMinor} - ${budgetAccounts.spentMinor} >= ${args.amountMinor}`,
+      ),
+    )
     .returning();
   // Defence in depth: the conditional update fails closed even if a caller forgot the lock.
   if (!updated) throw conflict("BUDGET_EXHAUSTED", "The remaining weekly budget cannot cover this purchase");
@@ -145,7 +156,10 @@ export async function consumeReservation(tx: DbOrTx, intentId: string, capturedM
 export async function recordUnreservedSpend(tx: DbOrTx, intentId: string, capturedMinor: number, now: Date): Promise<void> {
   const [r] = await tx.select().from(budgetReservations).where(eq(budgetReservations.intentId, intentId));
   if (!r || r.status !== "RELEASED") return;
-  await tx.update(budgetReservations).set({ status: "CONSUMED", consumedAt: now, releaseReason: `${r.releaseReason ?? ""} (later captured)` }).where(eq(budgetReservations.id, r.id));
+  await tx
+    .update(budgetReservations)
+    .set({ status: "CONSUMED", consumedAt: now, releaseReason: `${r.releaseReason ?? ""} (later captured)` })
+    .where(eq(budgetReservations.id, r.id));
   await tx
     .update(budgetAccounts)
     .set({ spentMinor: sql`${budgetAccounts.spentMinor} + ${capturedMinor}`, updatedAt: now })
@@ -165,5 +179,14 @@ export async function reduceSpend(tx: DbOrTx, intentId: string, refundedMinor: n
 export async function weeklyBudget(ctx: AppContext, organizationId: string, weeklyLimitMinor: number): Promise<BudgetDto> {
   const [org] = await ctx.db.select().from(organizations).where(eq(organizations.id, organizationId));
   if (!org) throw notFound("Organisation");
-  return toBudgetDto(await currentAccount(ctx.db, { organizationId, timeZone: org.timezone, currency: org.currency, weeklyLimitMinor, now: ctx.now(), lock: false }));
+  return toBudgetDto(
+    await currentAccount(ctx.db, {
+      organizationId,
+      timeZone: org.timezone,
+      currency: org.currency,
+      weeklyLimitMinor,
+      now: ctx.now(),
+      lock: false,
+    }),
+  );
 }

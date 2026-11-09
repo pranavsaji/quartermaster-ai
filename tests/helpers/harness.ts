@@ -25,7 +25,9 @@ export interface Client {
 }
 
 /** Boots the real API against in-memory PostgreSQL (PGlite) and a fake PayPal sandbox. */
-export async function createHarness(opts: { channel3Fetch?: typeof fetch; openaiFetch?: typeof fetch; extraEnv?: Record<string, string> } = {}): Promise<Harness> {
+export async function createHarness(
+  opts: { channel3Fetch?: typeof fetch; openaiFetch?: typeof fetch; extraEnv?: Record<string, string> } = {},
+): Promise<Harness> {
   const paypal = new FakePayPal();
   const clock = { now: new Date() };
   const key = generateSigningKey("trk_integration");
@@ -45,7 +47,13 @@ export async function createHarness(opts: { channel3Fetch?: typeof fetch; openai
     ...(opts.openaiFetch ? { OPENAI_API_KEY: "fake-openai" } : {}),
     ...opts.extraEnv,
   };
-  const ctx = await bootstrap({ env, paypalFetch: paypal.fetch, channel3Fetch: opts.channel3Fetch, openaiFetch: opts.openaiFetch, now: () => clock.now });
+  const ctx = await bootstrap({
+    env,
+    paypalFetch: paypal.fetch,
+    channel3Fetch: opts.channel3Fetch,
+    openaiFetch: opts.openaiFetch,
+    now: () => clock.now,
+  });
   await seedDemo(ctx.db, { password: PASSWORD, now: clock.now, reset: true });
   const app = createApp(ctx);
 
@@ -63,8 +71,8 @@ export async function createHarness(opts: { channel3Fetch?: typeof fetch; openai
     };
     return {
       get: (path) => a.get(`/api/v1${path}`),
-      post: (path, body, key = randomUUID()) => withHeaders(a.post(`/api/v1${path}`), key).send((body ?? {})),
-      put: (path, body, key = randomUUID()) => withHeaders(a.put(`/api/v1${path}`), key).send((body ?? {})),
+      post: (path, body, key = randomUUID()) => withHeaders(a.post(`/api/v1${path}`), key).send(body ?? {}),
+      put: (path, body, key = randomUUID()) => withHeaders(a.put(`/api/v1${path}`), key).send(body ?? {}),
     };
   }
 

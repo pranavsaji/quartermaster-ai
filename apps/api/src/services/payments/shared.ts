@@ -15,7 +15,10 @@ export function requirePayPal(ctx: AppContext): void {
 }
 
 export async function loadPayment(db: DbOrTx, organizationId: string, id: string, lock = false): Promise<PaymentRow> {
-  const q = db.select().from(paymentAttempts).where(and(eq(paymentAttempts.id, id), eq(paymentAttempts.organizationId, organizationId)));
+  const q = db
+    .select()
+    .from(paymentAttempts)
+    .where(and(eq(paymentAttempts.id, id), eq(paymentAttempts.organizationId, organizationId)));
   const [row] = lock ? await q.for("update") : await q;
   if (!row) throw notFound("Payment");
   return row;
@@ -106,7 +109,11 @@ export function failureMessageFor(code: string): string {
   }
 }
 
-export async function paymentResult(ctx: AppContext, organizationId: string, paymentId: string): Promise<{ payment: PaymentDto; purchase_order: PurchaseOrderDto }> {
+export async function paymentResult(
+  ctx: AppContext,
+  organizationId: string,
+  paymentId: string,
+): Promise<{ payment: PaymentDto; purchase_order: PurchaseOrderDto }> {
   const payment = await loadPayment(ctx.db, organizationId, paymentId);
   const [po] = await ctx.db.select().from(purchaseOrders).where(eq(purchaseOrders.id, payment.purchaseOrderId));
   const [dto] = await orderDtos(ctx.db, organizationId, [po!]);

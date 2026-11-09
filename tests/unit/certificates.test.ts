@@ -92,7 +92,12 @@ describe("Intent Certificates", () => {
 
   it("rejects a certificate presented for a different order", () => {
     const c = issue();
-    expect(verifyCertificate(c, ctx(c, { expected: { intent_id: "intent_1", organization_id: "org_1", purchase_order_id: "po_2", supplier_id: "sup_1" } })).status).toBe("PAYLOAD_MISMATCH");
+    expect(
+      verifyCertificate(
+        c,
+        ctx(c, { expected: { intent_id: "intent_1", organization_id: "org_1", purchase_order_id: "po_2", supplier_id: "sup_1" } }),
+      ).status,
+    ).toBe("PAYLOAD_MISMATCH");
   });
 
   it("expires at the stated time", () => {
@@ -229,7 +234,9 @@ describe("Intent Certificates", () => {
 
   it("rejects revoked certificates and reports mandate changes", () => {
     const c = issue();
-    expect(verifyCertificate(c, ctx(c, { stored_status: "REVOKED", revoked_reason: "MANDATE_CHANGED: v2" })).status).toBe("MANDATE_CHANGED");
+    expect(verifyCertificate(c, ctx(c, { stored_status: "REVOKED", revoked_reason: "MANDATE_CHANGED: v2" })).status).toBe(
+      "MANDATE_CHANGED",
+    );
     expect(verifyCertificate(c, ctx(c, { stored_status: "REVOKED", revoked_reason: "PAYMENT_FAILED" })).status).toBe("REVOKED");
   });
 

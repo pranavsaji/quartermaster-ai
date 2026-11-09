@@ -1,4 +1,12 @@
-import { COMMITTED_PO_STATUSES, applyBps, isValidBps, type PolicyDecisionKind, type ProductCategory, type PurchaseOrderStatus, type ViolationCode } from "@qm/contracts";
+import {
+  COMMITTED_PO_STATUSES,
+  applyBps,
+  isValidBps,
+  type PolicyDecisionKind,
+  type ProductCategory,
+  type PurchaseOrderStatus,
+  type ViolationCode,
+} from "@qm/contracts";
 import { type Cart, checkCartArithmetic } from "../cart";
 import { digest } from "../canonical";
 import type { SpendMandate } from "../mandates/types";
@@ -136,9 +144,14 @@ const isNonNegativeFinite = (v: unknown): v is number => typeof v === "number" &
 /** Names of mandate fields whose values the engine cannot reason about. */
 function malformedMandateFields(m: SpendMandate): string[] {
   const bad: string[] = [];
-  for (const f of ["weekly_budget_minor", "per_order_limit_minor", "auto_approval_limit_minor"] as const) if (!isNonNegativeMinor(m[f])) bad.push(f);
+  for (const f of ["weekly_budget_minor", "per_order_limit_minor", "auto_approval_limit_minor"] as const)
+    if (!isNonNegativeMinor(m[f])) bad.push(f);
   for (const f of ["max_market_price_premium_pct", "duplicate_window_hours"] as const) if (!isNonNegativeFinite(m[f])) bad.push(f);
-  if (!(typeof m.max_quantity_multiple_of_need === "number" && Number.isFinite(m.max_quantity_multiple_of_need) && m.max_quantity_multiple_of_need > 0)) {
+  if (!(
+    typeof m.max_quantity_multiple_of_need === "number" &&
+    Number.isFinite(m.max_quantity_multiple_of_need) &&
+    m.max_quantity_multiple_of_need > 0
+  )) {
     bad.push("max_quantity_multiple_of_need");
   }
   if (!Array.isArray(m.approved_supplier_ids)) bad.push("approved_supplier_ids");
@@ -165,12 +178,22 @@ function evaluate(input: PolicyInput): PolicyResult {
   }
   const badFields = malformedMandateFields(mandate);
   if (badFields.length > 0) {
-    violate({ code: "POLICY_INPUT_INVALID", severity: "BLOCK", message: "The Spend Mandate is malformed; no valid mandate is in force.", evidence: { fields: badFields } });
+    violate({
+      code: "POLICY_INPUT_INVALID",
+      severity: "BLOCK",
+      message: "The Spend Mandate is malformed; no valid mandate is in force.",
+      evidence: { fields: badFields },
+    });
     return finalize(input, violations, checks, mandate);
   }
   if (!validNow(input.now)) {
     // Freshness, duplicate windows and the mandate's validity are all judged at `now`.
-    violate({ code: "POLICY_INPUT_INVALID", severity: "BLOCK", message: "Evaluation time is invalid; the mandate cannot be applied.", evidence: { reason: "invalid_now" } });
+    violate({
+      code: "POLICY_INPUT_INVALID",
+      severity: "BLOCK",
+      message: "Evaluation time is invalid; the mandate cannot be applied.",
+      evidence: { reason: "invalid_now" },
+    });
     return finalize(input, violations, checks, mandate);
   }
   check("MANDATE_ACTIVE", true, `Mandate v${mandate.version} is active.`);
@@ -178,7 +201,12 @@ function evaluate(input: PolicyInput): PolicyResult {
   // --- Malformed facts from the system of record ----------------------------------------
   const budgetFields = (["limit_minor", "spent_minor", "reserved_minor"] as const).filter((f) => !isNonNegativeMinor(input.budget?.[f]));
   if (budgetFields.length > 0) {
-    violate({ code: "POLICY_INPUT_INVALID", severity: "BLOCK", message: "The budget snapshot is malformed; remaining budget cannot be verified.", evidence: { fields: budgetFields } });
+    violate({
+      code: "POLICY_INPUT_INVALID",
+      severity: "BLOCK",
+      message: "The budget snapshot is malformed; remaining budget cannot be verified.",
+      evidence: { fields: budgetFields },
+    });
   }
   if (input.request_budget_limit_minor !== null && !isMinor(input.request_budget_limit_minor)) {
     violate({
@@ -205,7 +233,11 @@ function evaluate(input: PolicyInput): PolicyResult {
       evidence: { issues: arithmetic },
     });
   }
-  check("CART_ARITHMETIC", arithmetic.length === 0, arithmetic.length === 0 ? "All totals reconcile." : `${arithmetic.length} arithmetic issue(s).`);
+  check(
+    "CART_ARITHMETIC",
+    arithmetic.length === 0,
+    arithmetic.length === 0 ? "All totals reconcile." : `${arithmetic.length} arithmetic issue(s).`,
+  );
 
   if (cart.currency !== mandate.currency) {
     violate({
@@ -366,7 +398,13 @@ function evaluate(input: PolicyInput): PolicyResult {
       }
     }
   }
-  check("LINE_ITEMS_AUTHORIZED", unauthorizedCount === 0, unauthorizedCount === 0 ? "Every line maps to verified catalog items or published terms." : `${unauthorizedCount} unauthorized line(s).`);
+  check(
+    "LINE_ITEMS_AUTHORIZED",
+    unauthorizedCount === 0,
+    unauthorizedCount === 0
+      ? "Every line maps to verified catalog items or published terms."
+      : `${unauthorizedCount} unauthorized line(s).`,
+  );
 
   // --- Quarantine (prompt injection) ---------------------------------------------------
   const quarantined = new Set(input.quarantined_source_ids);
@@ -475,7 +513,8 @@ function evaluate(input: PolicyInput): PolicyResult {
     const ref = input.market.find((m) => m.sku === line.sku);
     // Fresh means observed within the window *and* not in the future (beyond a small clock
     // skew): a future timestamp would otherwise stay "fresh" forever. NaN ages are never fresh.
-    const age = ref?.observed_at !== null && ref?.observed_at !== undefined ? input.now.getTime() - Date.parse(ref.observed_at) : Number.NaN;
+    const age =
+      ref?.observed_at !== null && ref?.observed_at !== undefined ? input.now.getTime() - Date.parse(ref.observed_at) : Number.NaN;
     const fresh = age >= -MARKET_CLOCK_SKEW_MS && age <= maxAgeMs;
     const refPrice = ref?.reference_unit_price_minor ?? null;
     const usableRef = refPrice !== null && Number.isFinite(refPrice) && refPrice > 0;
@@ -486,7 +525,15 @@ function evaluate(input: PolicyInput): PolicyResult {
         message: `No recent, comparable market price is available for ${line.sku}; a human must judge the price.`,
         evidence: {
           sku: line.sku,
-          reason: !ref ? "missing" : !ref.comparable ? "not_comparable" : !fresh ? (age < -MARKET_CLOCK_SKEW_MS ? "future_observation" : "stale") : "invalid_price",
+          reason: !ref
+            ? "missing"
+            : !ref.comparable
+              ? "not_comparable"
+              : !fresh
+                ? age < -MARKET_CLOCK_SKEW_MS
+                  ? "future_observation"
+                  : "stale"
+                : "invalid_price",
         },
       });
       continue;
@@ -504,7 +551,7 @@ function evaluate(input: PolicyInput): PolicyResult {
       continue;
     }
     const candidateUnit = line.unit_price_minor / pack;
-    const premiumPct = ((candidateUnit - (refPrice)) / (refPrice)) * 100;
+    const premiumPct = ((candidateUnit - refPrice) / refPrice) * 100;
     if (!Number.isFinite(premiumPct)) {
       violate({
         code: "MARKET_REFERENCE_UNAVAILABLE",
@@ -593,7 +640,10 @@ function finalize(input: PolicyInput, violations: Violation[], checks: PolicyChe
       : "ALLOW";
   // Written as "not provably within the limit" so NaN can never skip human approval.
   const human_approval_required =
-    decision !== "ALLOW" || !mandate || mandate.human_approval_required !== false || !(input.cart.total_minor <= mandate.auto_approval_limit_minor);
+    decision !== "ALLOW" ||
+    !mandate ||
+    mandate.human_approval_required !== false ||
+    !(input.cart.total_minor <= mandate.auto_approval_limit_minor);
 
   return {
     decision,
@@ -632,7 +682,7 @@ function failClosed(input: PolicyInput, err: unknown): PolicyResult {
     mandate_version: safeVersion(mandate),
     policy_version: POLICY_VERSION,
     input_digest: inputDigest(input),
-    evaluated_at: validNow((input as { now?: unknown } | null | undefined)?.now) ? (input.now).toISOString() : INVALID_TIME,
+    evaluated_at: validNow((input as { now?: unknown } | null | undefined)?.now) ? input.now.toISOString() : INVALID_TIME,
   };
 }
 
@@ -652,7 +702,8 @@ function digestable(value: unknown, ancestors: Set<object> = new Set()): unknown
   if (ancestors.has(value)) return { $cycle: true };
   ancestors.add(value);
   try {
-    if (Array.isArray(value)) return Array.from({ length: value.length }, (_, i) => (i in value ? digestable(value[i], ancestors) : { $hole: true }));
+    if (Array.isArray(value))
+      return Array.from({ length: value.length }, (_, i) => (i in value ? digestable(value[i], ancestors) : { $hole: true }));
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value)) if (v !== undefined) out[k] = digestable(v, ancestors);
     return out;
@@ -676,7 +727,8 @@ const byCodeUnit = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 const sortedBy = <T>(items: readonly T[], key: (t: T) => string): T[] => [...items].sort((a, b) => byCodeUnit(key(a), key(b)));
 const sortedEntries = (record: Record<string, unknown>) => Object.entries(record).sort(([a], [b]) => byCodeUnit(a, b));
 /** Fractional unit prices in micro-minor units, so the digest stays integer for finite values. */
-const micro = (v: number | null) => (v !== null && Number.isFinite(v) && Number.isSafeInteger(Math.round(v * 1_000_000)) ? Math.round(v * 1_000_000) : v);
+const micro = (v: number | null) =>
+  v !== null && Number.isFinite(v) && Number.isSafeInteger(Math.round(v * 1_000_000)) ? Math.round(v * 1_000_000) : v;
 
 /**
  * Every fact the decision depends on, so the digest proves exactly which inputs produced it.

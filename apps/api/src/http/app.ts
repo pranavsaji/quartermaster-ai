@@ -33,7 +33,12 @@ export function createApp(ctx: AppContext) {
       },
     }),
   );
-  app.use(helmet({ contentSecurityPolicy: { directives: { defaultSrc: ["'none'"], frameAncestors: ["'none'"] } }, crossOriginResourcePolicy: { policy: "same-site" } }));
+  app.use(
+    helmet({
+      contentSecurityPolicy: { directives: { defaultSrc: ["'none'"], frameAncestors: ["'none'"] } },
+      crossOriginResourcePolicy: { policy: "same-site" },
+    }),
+  );
 
   // CORS is closed by default: the web app reaches the API through a same-origin proxy.
   app.use((req, res, next) => {
@@ -58,7 +63,13 @@ export function createApp(ctx: AppContext) {
   app.get("/readyz", async (_req, res) => {
     try {
       await ctx.database.ping();
-      res.json({ status: "ready", database: ctx.database.driver, paypal: ctx.paypal.configured, channel3: ctx.channel3.enabled, ai: ctx.openai.enabled });
+      res.json({
+        status: "ready",
+        database: ctx.database.driver,
+        paypal: ctx.paypal.configured,
+        channel3: ctx.channel3.enabled,
+        ai: ctx.openai.enabled,
+      });
     } catch {
       res.status(503).json({ status: "unavailable" });
     }

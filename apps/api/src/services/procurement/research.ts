@@ -77,7 +77,12 @@ export async function researchRequest(ctx: AppContext, user: { id: string; organ
       organizationId: orgId,
       requestId,
       kind: "RESEARCH",
-      limits: { maxToolCalls: 60, maxResearchCalls: ctx.config.agent.maxResearchCalls, deadlineMs: ctx.config.agent.deadlineMs, tokenBudget: ctx.config.agent.tokenBudget },
+      limits: {
+        maxToolCalls: 60,
+        maxResearchCalls: ctx.config.agent.maxResearchCalls,
+        deadlineMs: ctx.config.agent.deadlineMs,
+        tokenBudget: ctx.config.agent.tokenBudget,
+      },
     });
     run.aiMode = ctx.openai.enabled ? "LLM" : "DETERMINISTIC_FALLBACK";
     return await runResearch(ctx, user, requestId, claimed, run, now);
@@ -89,7 +94,9 @@ export async function researchRequest(ctx: AppContext, user: { id: string; organ
       .update(purchaseRequests)
       .set({ status: "FAILED", error: message.slice(0, 500), updatedAt: ctx.now() })
       .where(and(eq(purchaseRequests.id, requestId), eq(purchaseRequests.status, "RESEARCHING")));
-    await run?.finish("FAILED", message).catch((e: unknown) => ctx.log.warn({ err: e, request_id: requestId }, "could not close the agent run"));
+    await run
+      ?.finish("FAILED", message)
+      .catch((e: unknown) => ctx.log.warn({ err: e, request_id: requestId }, "could not close the agent run"));
     throw err;
   }
 }
@@ -104,7 +111,13 @@ async function runResearch(
 ) {
   const orgId = user.organizationId;
   {
-    const intent = (claimed.intent ?? {}) as { inventory_item_ids?: string[]; demand_multiplier?: number; notes?: string; budget_limit_minor?: number | null; required_by?: string | null };
+    const intent = (claimed.intent ?? {}) as {
+      inventory_item_ids?: string[];
+      demand_multiplier?: number;
+      notes?: string;
+      budget_limit_minor?: number | null;
+      required_by?: string | null;
+    };
     const multiplier = claimed.demandMultiplier ?? intent.demand_multiplier ?? 1;
     const requestedIds = intent.inventory_item_ids ?? [];
 
@@ -112,7 +125,15 @@ async function runResearch(
     const fc = await run.tool(
       "forecast.compute",
       { demand_multiplier: multiplier, items: requestedIds.length },
-      () => runForecast(ctx.db, { organizationId: orgId, userId: user.id, demandMultiplier: multiplier, itemIds: requestedIds.length ? requestedIds : undefined, requestId, now }),
+      () =>
+        runForecast(ctx.db, {
+          organizationId: orgId,
+          userId: user.id,
+          demandMultiplier: multiplier,
+          itemIds: requestedIds.length ? requestedIds : undefined,
+          requestId,
+          now,
+        }),
       (r) => `Forecast ${r.lines.length} item(s) at ${multiplier}× demand; ${r.lines.filter((l) => l.needs_reorder).length} need reorder.`,
     );
     await ctx.db.update(purchaseRequests).set({ forecastRunId: fc.run.id }).where(eq(purchaseRequests.id, requestId));
@@ -125,7 +146,11 @@ async function runResearch(
         .update(purchaseRequests)
         .set({
           status: "BLOCKED",
-          recommendation: { summary: "Stock is above reorder points for the requested items — no purchase is needed.", rationale: fc.lines.map((l) => l.explanation), ai_mode: "DETERMINISTIC_FALLBACK" },
+          recommendation: {
+            summary: "Stock is above reorder points for the requested items — no purchase is needed.",
+            rationale: fc.lines.map((l) => l.explanation),
+            ai_mode: "DETERMINISTIC_FALLBACK",
+          },
           researchCompletedAt: ctx.now(),
           updatedAt: ctx.now(),
         })
@@ -142,7 +167,21 @@ async function runResearch(
         const res = await run.tool(
           "market.search",
           { query: item.searchQuery, sku: item.sku },
-          () => researchItem(ctx.db, ctx.channel3, { organizationId: orgId, requestId, item, currency: claimed.currency, now, maxAgeHours: ctx.config.agent.marketReferenceMaxAgeHours, signal: run.signal }, ctx.log),
+          () =>
+            researchItem(
+              ctx.db,
+              ctx.channel3,
+              {
+                organizationId: orgId,
+                requestId,
+                item,
+                currency: claimed.currency,
+                now,
+                maxAgeHours: ctx.config.agent.marketReferenceMaxAgeHours,
+                signal: run.signal,
+              },
+              ctx.log,
+            ),
           (r) =>
             r.reference.status === "DISABLED"
               ? `Market data disabled (no Channel3 key); ${item.name} requires human price review.`
@@ -164,7 +203,14 @@ async function runResearch(
         }
       } catch (err) {
         if (err instanceof AgentBudgetExceeded) {
-          market.push({ inventory_item_id: item.id, reference_unit_price_minor: null, sample_size: 0, observed_at: null, status: "UNAVAILABLE", quotes: [] });
+          market.push({
+            inventory_item_id: item.id,
+            reference_unit_price_minor: null,
+            sample_size: 0,
+            observed_at: null,
+            status: "UNAVAILABLE",
+            quotes: [],
+          });
           continue;
         }
         throw err;
@@ -177,7 +223,11 @@ async function runResearch(
     const mandate = mandateRow ? rowToMandate(mandateRow) : null;
     const supplierRows = await loadSuppliers(ctx.db, orgId);
     const supplierById = new Map(supplierRows.map((s) => [s.id, s]));
-    let catalog = await loadCatalogForItems(ctx.db, orgId, needed.map((n) => n.inventory_item_id));
+    let catalog = await loadCatalogForItems(
+      ctx.db,
+      orgId,
+      needed.map((n) => n.inventory_item_id),
+    );
 
     await run.tool(
       "security.scan",
@@ -187,7 +237,8 @@ async function runResearch(
         for (const c of catalog) {
           const text = `${c.title}\n${c.description}`;
           let verdict = detectPromptInjection(text);
-          if (verdict.score > 0 && !verdict.quarantine) verdict = mergeVerdicts(verdict, await classifyInjection(ctx.openai, run, `catalog:${c.sku}`, text));
+          if (verdict.score > 0 && !verdict.quarantine)
+            verdict = mergeVerdicts(verdict, await classifyInjection(ctx.openai, run, `catalog:${c.sku}`, text));
           if (!verdict.suspicious) continue;
           flagged++;
           if (verdict.quarantine && !c.quarantined) {
@@ -218,7 +269,11 @@ async function runResearch(
             data: { sku: c.sku, score: verdict.score, rules: verdict.signals.map((s) => s.rule), request_id: requestId },
           });
         }
-        catalog = await loadCatalogForItems(ctx.db, orgId, needed.map((n) => n.inventory_item_id));
+        catalog = await loadCatalogForItems(
+          ctx.db,
+          orgId,
+          needed.map((n) => n.inventory_item_id),
+        );
         return flagged;
       },
       (n) => (n ? `${n} supplier listing(s) contained suspicious instructions and were flagged.` : "No suspicious supplier content found."),
@@ -236,7 +291,12 @@ async function runResearch(
             .filter((c) => c.inventoryItemId === line.inventory_item_id)
             .map((c) => {
               const s = supplierById.get(c.supplierId)!;
-              return { offer: toOffer(c), supplier: toSupplierProfile(s, mandate), storefront_lines: storefrontLines(s), quarantined: c.quarantined || s.quarantined };
+              return {
+                offer: toOffer(c),
+                supplier: toSupplierProfile(s, mandate),
+                storefront_lines: storefrontLines(s),
+                quarantined: c.quarantined || s.quarantined,
+              };
             });
           const evaluations = compareOffers({
             needed_units: line.suggested_quantity,
@@ -299,7 +359,8 @@ async function runResearch(
           });
           return { ...p, carts: cap === null ? p.carts : fitCartsToCap(p.carts, cap, priority, storefront) };
         },
-        (p) => `Attempt ${attempt}: ${p.carts.length} cart(s) planned${p.unfilled_item_ids.length ? `, ${p.unfilled_item_ids.length} item(s) without an eligible supplier` : ""}.`,
+        (p) =>
+          `Attempt ${attempt}: ${p.carts.length} cart(s) planned${p.unfilled_item_ids.length ? `, ${p.unfilled_item_ids.length} item(s) without an eligible supplier` : ""}.`,
       );
       if (plan.carts.length === 0) break;
 
@@ -318,11 +379,19 @@ async function runResearch(
                 cart: planned.cart,
                 lineMeta: planned.cart.lines.map((l) => {
                   const match = planned.lines.find((x) => x.offer.sku === l.sku && l.kind === "PRODUCT");
-                  return { inventory_item_id: match?.inventory_item_id ?? null, catalog_item_id: match?.offer.id ?? null, pack_quantity: match?.offer.pack_quantity ?? null };
+                  return {
+                    inventory_item_id: match?.inventory_item_id ?? null,
+                    catalog_item_id: match?.offer.id ?? null,
+                    pack_quantity: match?.offer.pack_quantity ?? null,
+                  };
                 }),
                 snapshot: {
                   supplier: { id: supplier.id, name: supplier.name, fee_terms: supplier.feeTerms, tax_rate_bps: supplier.taxRateBps },
-                  catalog_prices: planned.lines.map((l) => ({ sku: l.offer.sku, unit_price_minor: l.offer.unit_price_minor, pack_quantity: l.offer.pack_quantity })),
+                  catalog_prices: planned.lines.map((l) => ({
+                    sku: l.offer.sku,
+                    unit_price_minor: l.offer.unit_price_minor,
+                    pack_quantity: l.offer.pack_quantity,
+                  })),
                   mandate_version: mandate?.version ?? null,
                   candidate_ids: planned.candidate_ids,
                 },
@@ -330,7 +399,11 @@ async function runResearch(
                 now: ctx.now(),
               });
               const { po: fresh, items } = await loadOrder(tx, orgId, po.id);
-              const ev = await evaluateOrder(tx, orgId, fresh, items, { stage: "EVALUATE", now: ctx.now(), marketMaxAgeHours: ctx.config.agent.marketReferenceMaxAgeHours });
+              const ev = await evaluateOrder(tx, orgId, fresh, items, {
+                stage: "EVALUATE",
+                now: ctx.now(),
+                marketMaxAgeHours: ctx.config.agent.marketReferenceMaxAgeHours,
+              });
               if (ev.result.decision === "BLOCK") {
                 await tx.update(purchaseOrders).set({ status: "BLOCKED", updatedAt: ctx.now() }).where(eq(purchaseOrders.id, po.id));
               }
@@ -340,7 +413,13 @@ async function runResearch(
                 actorType: "SYSTEM",
                 entityType: "purchase_order",
                 entityId: po.id,
-                data: { decision: ev.result.decision, violations: ev.result.violations.map((v) => v.code), total_minor: planned.cart.total_minor, policy_decision_id: ev.decisionId, input_digest: ev.result.input_digest },
+                data: {
+                  decision: ev.result.decision,
+                  violations: ev.result.violations.map((v) => v.code),
+                  total_minor: planned.cart.total_minor,
+                  policy_decision_id: ev.decisionId,
+                  input_digest: ev.result.input_digest,
+                },
               });
               if (ev.result.decision === "BLOCK") {
                 const fee = ev.result.violations.find((v) => v.code === "UNAUTHORIZED_LINE_ITEM");
@@ -349,7 +428,10 @@ async function runResearch(
                   type: fee ? "UNAUTHORIZED_FEE" : "POLICY_VIOLATION",
                   severity: "HIGH",
                   title: `TrustRail blocked a ${supplier.name} cart`,
-                  description: ev.result.violations.filter((v) => v.severity === "BLOCK").map((v) => v.message).join(" "),
+                  description: ev.result.violations
+                    .filter((v) => v.severity === "BLOCK")
+                    .map((v) => v.message)
+                    .join(" "),
                   sourceKind: "purchase_order",
                   sourceId: po.id,
                   evidence: { violations: ev.result.violations, total_minor: planned.cart.total_minor },
@@ -359,13 +441,17 @@ async function runResearch(
               }
               return { po, ev };
             }),
-          (r) => `${supplier.name}: ${r.ev.result.decision}${r.ev.result.violations.length ? ` (${r.ev.result.violations.map((v) => v.code).join(", ")})` : ""}.`,
+          (r) =>
+            `${supplier.name}: ${r.ev.result.decision}${r.ev.result.violations.length ? ` (${r.ev.result.violations.map((v) => v.code).join(", ")})` : ""}.`,
         );
 
         const codes = evaluation.ev.result.violations.map((v) => v.code);
         if (evaluation.ev.result.decision === "BLOCK") {
           attemptBlocked = true;
-          blocked.push({ supplier: supplier.name, reasons: evaluation.ev.result.violations.filter((v) => v.severity === "BLOCK").map((v) => v.message) });
+          blocked.push({
+            supplier: supplier.name,
+            reasons: evaluation.ev.result.violations.filter((v) => v.severity === "BLOCK").map((v) => v.message),
+          });
           excludedSuppliers.add(supplier.id);
         } else {
           attemptAccepted.push({ planned, poId: evaluation.po.id, decision: evaluation.ev.result.decision, violations: codes });
@@ -379,7 +465,12 @@ async function runResearch(
         await ctx.db
           .update(purchaseOrders)
           .set({ status: "SUPERSEDED", updatedAt: ctx.now() })
-          .where(inArray(purchaseOrders.id, attemptAccepted.map((a) => a.poId)));
+          .where(
+            inArray(
+              purchaseOrders.id,
+              attemptAccepted.map((a) => a.poId),
+            ),
+          );
       }
     }
     const covered = new Set(accepted.flatMap((a) => a.planned.lines.map((l) => l.inventory_item_id)));
@@ -398,9 +489,17 @@ async function runResearch(
       })),
       blocked,
       unfilled_items: unfilled.map((id) => itemRows.get(id)?.name ?? id),
-      market_status: market.map((m) => `${itemRows.get(m.inventory_item_id)?.name}: market reference ${m.status.toLowerCase()}${m.reference_unit_price_minor !== null ? ` at ${m.reference_unit_price_minor.toFixed(2)}¢/unit` : ""}.`),
+      market_status: market.map(
+        (m) =>
+          `${itemRows.get(m.inventory_item_id)?.name}: market reference ${m.status.toLowerCase()}${m.reference_unit_price_minor !== null ? ` at ${m.reference_unit_price_minor.toFixed(2)}¢/unit` : ""}.`,
+      ),
     };
-    const explanation = await run.tool("recommendation.explain", { proposals: accepted.length }, () => explainRecommendation(ctx.openai, run, facts), (e) => `Explanation (${e.mode === "LLM" ? "model" : "deterministic"}).`);
+    const explanation = await run.tool(
+      "recommendation.explain",
+      { proposals: accepted.length },
+      () => explainRecommendation(ctx.openai, run, facts),
+      (e) => `Explanation (${e.mode === "LLM" ? "model" : "deterministic"}).`,
+    );
 
     await ctx.db
       .update(purchaseRequests)
@@ -415,8 +514,20 @@ async function runResearch(
     await run.finish("SUCCEEDED");
 
     void (accepted.length
-      ? ctx.notifier.send({ kind: "APPROVAL_REQUIRED", organization_id: orgId, title: "Purchase ready for approval", summary: explanation.summary, link_path: `/procurement/${requestId}` })
-      : ctx.notifier.send({ kind: "PURCHASE_BLOCKED", organization_id: orgId, title: "No compliant purchase found", summary: explanation.summary, link_path: `/procurement/${requestId}` }));
+      ? ctx.notifier.send({
+          kind: "APPROVAL_REQUIRED",
+          organization_id: orgId,
+          title: "Purchase ready for approval",
+          summary: explanation.summary,
+          link_path: `/procurement/${requestId}`,
+        })
+      : ctx.notifier.send({
+          kind: "PURCHASE_BLOCKED",
+          organization_id: orgId,
+          title: "No compliant purchase found",
+          summary: explanation.summary,
+          link_path: `/procurement/${requestId}`,
+        }));
 
     return getRequestDto(ctx.db, orgId, requestId);
   }
@@ -426,7 +537,12 @@ async function runResearch(
  * Jointly trims carts so their combined total fits the owner's cap, dropping the items with the
  * most remaining days of cover first. Quantities are never increased.
  */
-export function fitCartsToCap(carts: PlannedCart[], cap: number, priority: Map<string, number>, storefront: Map<string, StorefrontQuoteLine[]>): PlannedCart[] {
+export function fitCartsToCap(
+  carts: PlannedCart[],
+  cap: number,
+  priority: Map<string, number>,
+  storefront: Map<string, StorefrontQuoteLine[]>,
+): PlannedCart[] {
   let working = carts.map((c) => ({ ...c, lines: [...c.lines] }));
   const total = () => working.reduce((a, c) => a + c.cart.total_minor, 0);
   while (working.length > 0 && total() > cap) {
@@ -447,7 +563,12 @@ export function fitCartsToCap(carts: PlannedCart[], cap: number, priority: Map<s
       working = working.filter((_, i) => i !== ci);
       continue;
     }
-    cart.cart = buildSupplierQuote(cart.supplier, cart.lines.map((l) => ({ offer: l.offer, packs: l.packs })), cart.cart.currency, storefront.get(cart.supplier.id) ?? []);
+    cart.cart = buildSupplierQuote(
+      cart.supplier,
+      cart.lines.map((l) => ({ offer: l.offer, packs: l.packs })),
+      cart.cart.currency,
+      storefront.get(cart.supplier.id) ?? [],
+    );
   }
   return working;
 }

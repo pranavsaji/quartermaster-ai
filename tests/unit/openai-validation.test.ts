@@ -3,10 +3,17 @@ import { z } from "zod";
 import { OpenAIClient, OpenAIError } from "@qm/integrations";
 
 const reply = (content: unknown, extra: Record<string, unknown> = {}) =>
-  new Response(JSON.stringify({ choices: [{ message: { content: typeof content === "string" ? content : JSON.stringify(content) }, finish_reason: "stop" }], usage: { prompt_tokens: 3, completion_tokens: 2 }, ...extra }), {
-    status: 200,
-    headers: { "content-type": "application/json" },
-  });
+  new Response(
+    JSON.stringify({
+      choices: [{ message: { content: typeof content === "string" ? content : JSON.stringify(content) }, finish_reason: "stop" }],
+      usage: { prompt_tokens: 3, completion_tokens: 2 },
+      ...extra,
+    }),
+    {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    },
+  );
 
 function client(fetchImpl: typeof fetch) {
   const logs: { event: string; data: Record<string, unknown> }[] = [];
@@ -38,7 +45,8 @@ describe("OpenAI response validation", () => {
   });
 
   it("aborts an in-flight request when the caller's signal fires", async () => {
-    const hang: typeof fetch = (_u, init) => new Promise((_r, reject) => init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError"))));
+    const hang: typeof fetch = (_u, init) =>
+      new Promise((_r, reject) => init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError"))));
     const { c, logs } = client(hang);
     const controller = new AbortController();
     const pending = c.structured({ ...params, signal: controller.signal });

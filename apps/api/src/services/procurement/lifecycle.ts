@@ -1,7 +1,15 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, inArray } from "drizzle-orm";
 import type { ApproveRequest, CreateProcurementRequest, IntentCertificateDto, PurchaseOrderDto } from "@qm/contracts";
-import { approvalEvents, intentCertificates, inventoryItems, organizations, purchaseOrders, purchaseRequests, spendMandates } from "@qm/database";
+import {
+  approvalEvents,
+  intentCertificates,
+  inventoryItems,
+  organizations,
+  purchaseOrders,
+  purchaseRequests,
+  spendMandates,
+} from "@qm/database";
 import { computeCartHash, issueCertificate, reviewCodes } from "@qm/trustrail";
 import type { AppContext } from "../../context";
 import { conflict, notFound, unprocessable } from "../../errors";
@@ -40,15 +48,28 @@ export async function createRequest(ctx: AppContext, actor: Actor, input: Create
     organizationId: actor.organizationId,
     requestId: req!.id,
     kind: "INTERPRET",
-    limits: { maxToolCalls: 4, maxResearchCalls: 0, deadlineMs: Math.min(20_000, ctx.config.agent.deadlineMs), tokenBudget: ctx.config.agent.tokenBudget },
+    limits: {
+      maxToolCalls: 4,
+      maxResearchCalls: 0,
+      deadlineMs: Math.min(20_000, ctx.config.agent.deadlineMs),
+      tokenBudget: ctx.config.agent.tokenBudget,
+    },
   });
   const items = await ctx.db.select().from(inventoryItems).where(eq(inventoryItems.organizationId, actor.organizationId));
   const refs = items.map((i) => ({ id: i.id, sku: i.sku, name: i.name, category: i.category, keywords: i.keywords }));
   const interpreted = await run.tool(
     "intent.interpret",
     { length: input.instruction.length },
-    () => interpretInstruction(ctx.openai, run, { instruction: input.instruction, inventory: refs, today: localDate(now, org!.timezone).date, now, timeZone: org!.timezone }),
-    (r) => `${r.mode === "LLM" ? "Model" : "Deterministic"} interpretation: ${r.intent.inventory_item_ids.length} item(s), ${r.intent.demand_multiplier}× demand${r.note ? ` (${r.note})` : ""}.`,
+    () =>
+      interpretInstruction(ctx.openai, run, {
+        instruction: input.instruction,
+        inventory: refs,
+        today: localDate(now, org!.timezone).date,
+        now,
+        timeZone: org!.timezone,
+      }),
+    (r) =>
+      `${r.mode === "LLM" ? "Model" : "Deterministic"} interpretation: ${r.intent.inventory_item_ids.length} item(s), ${r.intent.demand_multiplier}× demand${r.note ? ` (${r.note})` : ""}.`,
   );
   run.aiMode = interpreted.mode;
   await run.finish("SUCCEEDED");
@@ -64,7 +85,10 @@ export async function createRequest(ctx: AppContext, actor: Actor, input: Create
   // The request row exists before interpretation so the agent run can record its steps against
   // it; the interpreted intent and the audit entry are written together.
   await ctx.db.transaction(async (tx) => {
-    await tx.update(purchaseRequests).set({ intent, aiMode: interpreted.mode, updatedAt: ctx.now() }).where(eq(purchaseRequests.id, req!.id));
+    await tx
+      .update(purchaseRequests)
+      .set({ intent, aiMode: interpreted.mode, updatedAt: ctx.now() })
+      .where(eq(purchaseRequests.id, req!.id));
     await appendAudit(tx, {
       organizationId: actor.organizationId,
       action: "procurement.request_created",
@@ -80,17 +104,28 @@ export async function createRequest(ctx: AppContext, actor: Actor, input: Create
 
 /** Re-runs TrustRail on every open proposal (e.g. after a mandate change). */
 export async function evaluateRequest(ctx: AppContext, actor: Actor, requestId: string) {
-  const [req] = await ctx.db.select().from(purchaseRequests).where(and(eq(purchaseRequests.id, requestId), eq(purchaseRequests.organizationId, actor.organizationId)));
+  const [req] = await ctx.db
+    .select()
+    .from(purchaseRequests)
+    .where(and(eq(purchaseRequests.id, requestId), eq(purchaseRequests.organizationId, actor.organizationId)));
   if (!req) throw notFound("Procurement request");
-  const open = await ctx.db.select().from(purchaseOrders).where(and(eq(purchaseOrders.requestId, requestId), inArray(purchaseOrders.status, ["PROPOSED", "BLOCKED"])));
+  const open = await ctx.db
+    .select()
+    .from(purchaseOrders)
+    .where(and(eq(purchaseOrders.requestId, requestId), inArray(purchaseOrders.status, ["PROPOSED", "BLOCKED"])));
   for (const po of open) {
     await ctx.db.transaction(async (tx) => {
       const { po: locked, items } = await loadOrder(tx, actor.organizationId, po.id, true);
       // Re-check under the lock: an approval may have committed since the list was read.
       if (locked.status !== "PROPOSED" && locked.status !== "BLOCKED") return;
-      const ev = await evaluateOrder(tx, actor.organizationId, locked, items, { stage: "EVALUATE", now: ctx.now(), marketMaxAgeHours: ctx.config.agent.marketReferenceMaxAgeHours });
+      const ev = await evaluateOrder(tx, actor.organizationId, locked, items, {
+        stage: "EVALUATE",
+        now: ctx.now(),
+        marketMaxAgeHours: ctx.config.agent.marketReferenceMaxAgeHours,
+      });
       const next = ev.result.decision === "BLOCK" ? "BLOCKED" : "PROPOSED";
-      if (next !== locked.status) await tx.update(purchaseOrders).set({ status: next, updatedAt: ctx.now() }).where(eq(purchaseOrders.id, locked.id));
+      if (next !== locked.status)
+        await tx.update(purchaseOrders).set({ status: next, updatedAt: ctx.now() }).where(eq(purchaseOrders.id, locked.id));
       await appendAudit(tx, {
         organizationId: actor.organizationId,
         action: "trustrail.cart_reevaluated",
@@ -117,170 +152,257 @@ export async function approveProposal(
   requestId: string,
   input: ApproveRequest,
 ): Promise<{ purchase_order: PurchaseOrderDto; certificate: IntentCertificateDto }> {
-  const result = await withDeferredFailures(ctx, () => ctx.db.transaction(async (tx) => {
-    const now = ctx.now();
-    // Hold the active mandate (shared) for the whole approval, so the version evaluated is the
-    // version signed and a concurrent mandate update cannot slip between them.
-    const [lockedMandate] = await tx
-      .select()
-      .from(spendMandates)
-      .where(and(eq(spendMandates.organizationId, actor.organizationId), eq(spendMandates.status, "ACTIVE")))
-      .for("share");
-    if (!lockedMandate) throw conflict("MANDATE_INACTIVE", "No active Spend Mandate.");
-    // The request row serialises approval with research and rejection (lock order: mandate →
-    // request → order). Research supersedes proposals, so approval must not run alongside it.
-    const [lockedRequest] = await tx
-      .select({ status: purchaseRequests.status })
-      .from(purchaseRequests)
-      .where(and(eq(purchaseRequests.id, requestId), eq(purchaseRequests.organizationId, actor.organizationId)))
-      .for("update");
-    if (!lockedRequest) throw notFound("Procurement request");
-    if (lockedRequest.status === "RESEARCHING") throw conflict("RESEARCH_IN_PROGRESS", "Research is running for this request; wait for it to finish.");
-    const { po, items } = await loadOrder(tx, actor.organizationId, input.purchase_order_id, true);
-    if (po.requestId !== requestId) throw notFound("Proposal for this request");
-    if (po.status !== "PROPOSED") throw conflict("PROPOSAL_NOT_APPROVABLE", `Proposal is ${po.status}.`);
+  const result = await withDeferredFailures(ctx, () =>
+    ctx.db.transaction(async (tx) => {
+      const now = ctx.now();
+      // Hold the active mandate (shared) for the whole approval, so the version evaluated is the
+      // version signed and a concurrent mandate update cannot slip between them.
+      const [lockedMandate] = await tx
+        .select()
+        .from(spendMandates)
+        .where(and(eq(spendMandates.organizationId, actor.organizationId), eq(spendMandates.status, "ACTIVE")))
+        .for("share");
+      if (!lockedMandate) throw conflict("MANDATE_INACTIVE", "No active Spend Mandate.");
+      // The request row serialises approval with research and rejection (lock order: mandate →
+      // request → order). Research supersedes proposals, so approval must not run alongside it.
+      const [lockedRequest] = await tx
+        .select({ status: purchaseRequests.status })
+        .from(purchaseRequests)
+        .where(and(eq(purchaseRequests.id, requestId), eq(purchaseRequests.organizationId, actor.organizationId)))
+        .for("update");
+      if (!lockedRequest) throw notFound("Procurement request");
+      if (lockedRequest.status === "RESEARCHING")
+        throw conflict("RESEARCH_IN_PROGRESS", "Research is running for this request; wait for it to finish.");
+      const { po, items } = await loadOrder(tx, actor.organizationId, input.purchase_order_id, true);
+      if (po.requestId !== requestId) throw notFound("Proposal for this request");
+      if (po.status !== "PROPOSED") throw conflict("PROPOSAL_NOT_APPROVABLE", `Proposal is ${po.status}.`);
 
-    const liveHash = computeCartHash(cartFromRows(po, items));
-    if (liveHash !== po.cartHash) {
-      throw new DeferredFailure(conflict("CART_CHANGED", "The cart changed after it was proposed. Re-run research."), (db) =>
-        recordFinding(db, {
-          organizationId: actor.organizationId,
-          type: "CART_TAMPERING",
-          severity: "CRITICAL",
-          title: "Stored cart no longer matches its recorded hash",
-          description: "Line items or totals were altered after the proposal was created. Approval refused.",
-          sourceKind: "purchase_order",
-          sourceId: po.id,
-          evidence: { recorded: po.cartHash, recomputed: liveHash },
-          relatedPurchaseOrderId: po.id,
-          relatedRequestId: requestId,
-        }).then(() => undefined),
-      );
-    }
-    if (input.cart_hash !== po.cartHash) throw conflict("CART_CHANGED", "The cart you reviewed is not the current cart. Reload and review again.", { current_cart_hash: po.cartHash });
-
-    const ev = await evaluateOrder(tx, actor.organizationId, po, items, { stage: "APPROVE", now, lockBudget: true, marketMaxAgeHours: ctx.config.agent.marketReferenceMaxAgeHours });
-    if (ev.result.decision === "BLOCK") {
-      const violations = ev.result.violations;
-      throw new DeferredFailure(unprocessable("POLICY_BLOCKED", "TrustRail blocks this purchase.", { violations }), async (db) => {
-        // Only a still-PROPOSED order is marked blocked: a concurrent approval may have succeeded.
-        const changed = await db
-          .update(purchaseOrders)
-          .set({ status: "BLOCKED", updatedAt: ctx.now() })
-          .where(and(eq(purchaseOrders.id, po.id), eq(purchaseOrders.status, "PROPOSED")))
-          .returning({ id: purchaseOrders.id });
-        if (changed.length === 0) return;
-        await recordFinding(db, {
-          organizationId: actor.organizationId,
-          type: "POLICY_VIOLATION",
-          severity: "HIGH",
-          title: "Approval attempt blocked by TrustRail",
-          description: violations.filter((v) => v.severity === "BLOCK").map((v) => v.message).join(" "),
-          sourceKind: "purchase_order",
-          sourceId: po.id,
-          evidence: { violations, stage: "APPROVE" },
-          relatedPurchaseOrderId: po.id,
-          relatedRequestId: requestId,
+      const liveHash = computeCartHash(cartFromRows(po, items));
+      if (liveHash !== po.cartHash) {
+        throw new DeferredFailure(conflict("CART_CHANGED", "The cart changed after it was proposed. Re-run research."), (db) =>
+          recordFinding(db, {
+            organizationId: actor.organizationId,
+            type: "CART_TAMPERING",
+            severity: "CRITICAL",
+            title: "Stored cart no longer matches its recorded hash",
+            description: "Line items or totals were altered after the proposal was created. Approval refused.",
+            sourceKind: "purchase_order",
+            sourceId: po.id,
+            evidence: { recorded: po.cartHash, recomputed: liveHash },
+            relatedPurchaseOrderId: po.id,
+            relatedRequestId: requestId,
+          }).then(() => undefined),
+        );
+      }
+      if (input.cart_hash !== po.cartHash)
+        throw conflict("CART_CHANGED", "The cart you reviewed is not the current cart. Reload and review again.", {
+          current_cart_hash: po.cartHash,
         });
-        await appendAudit(db, { organizationId: actor.organizationId, action: "trustrail.approval_blocked", actorType: "USER", actorId: actor.id, entityType: "purchase_order", entityId: po.id, data: { violations: violations.map((v) => v.code) } });
-        await refreshRequestStatus(db, requestId, ctx.now());
+
+      const ev = await evaluateOrder(tx, actor.organizationId, po, items, {
+        stage: "APPROVE",
+        now,
+        lockBudget: true,
+        marketMaxAgeHours: ctx.config.agent.marketReferenceMaxAgeHours,
       });
-    }
-    const required = reviewCodes(ev.result);
-    const missing = required.filter((c) => !input.acknowledged_review_codes.includes(c));
-    if (missing.length) throw unprocessable("REVIEW_ACKNOWLEDGEMENT_REQUIRED", "Acknowledge every review item before approving.", { missing });
+      if (ev.result.decision === "BLOCK") {
+        const violations = ev.result.violations;
+        throw new DeferredFailure(unprocessable("POLICY_BLOCKED", "TrustRail blocks this purchase.", { violations }), async (db) => {
+          // Only a still-PROPOSED order is marked blocked: a concurrent approval may have succeeded.
+          const changed = await db
+            .update(purchaseOrders)
+            .set({ status: "BLOCKED", updatedAt: ctx.now() })
+            .where(and(eq(purchaseOrders.id, po.id), eq(purchaseOrders.status, "PROPOSED")))
+            .returning({ id: purchaseOrders.id });
+          if (changed.length === 0) return;
+          await recordFinding(db, {
+            organizationId: actor.organizationId,
+            type: "POLICY_VIOLATION",
+            severity: "HIGH",
+            title: "Approval attempt blocked by TrustRail",
+            description: violations
+              .filter((v) => v.severity === "BLOCK")
+              .map((v) => v.message)
+              .join(" "),
+            sourceKind: "purchase_order",
+            sourceId: po.id,
+            evidence: { violations, stage: "APPROVE" },
+            relatedPurchaseOrderId: po.id,
+            relatedRequestId: requestId,
+          });
+          await appendAudit(db, {
+            organizationId: actor.organizationId,
+            action: "trustrail.approval_blocked",
+            actorType: "USER",
+            actorId: actor.id,
+            entityType: "purchase_order",
+            entityId: po.id,
+            data: { violations: violations.map((v) => v.code) },
+          });
+          await refreshRequestStatus(db, requestId, ctx.now());
+        });
+      }
+      const required = reviewCodes(ev.result);
+      const missing = required.filter((c) => !input.acknowledged_review_codes.includes(c));
+      if (missing.length)
+        throw unprocessable("REVIEW_ACKNOWLEDGEMENT_REQUIRED", "Acknowledge every review item before approving.", { missing });
 
-    const mandate = rowToMandate(lockedMandate);
-    if (ev.result.mandate_version !== mandate.version) throw conflict("MANDATE_CHANGED", "The Spend Mandate changed during approval. Review again.");
+      const mandate = rowToMandate(lockedMandate);
+      if (ev.result.mandate_version !== mandate.version)
+        throw conflict("MANDATE_CHANGED", "The Spend Mandate changed during approval. Review again.");
 
-    const [approval] = await tx
-      .insert(approvalEvents)
-      .values({
+      const [approval] = await tx
+        .insert(approvalEvents)
+        .values({
+          organizationId: actor.organizationId,
+          purchaseOrderId: po.id,
+          userId: actor.id,
+          action: "APPROVED",
+          cartHash: po.cartHash,
+          acknowledgedReviewCodes: required,
+          note: input.note ?? null,
+          ip: actor.ip ?? null,
+          userAgent: actor.userAgent?.slice(0, 300) ?? null,
+          createdAt: now,
+        })
+        .returning();
+
+      const intentId = randomUUID();
+      const signed = issueCertificate(
+        {
+          intent_id: intentId,
+          organization_id: actor.organizationId,
+          buyer_id: actor.id,
+          purchase_order_id: po.id,
+          supplier_id: po.supplierId,
+          cart_hash: po.cartHash,
+          mandate_id: mandate.id,
+          mandate_version: mandate.version,
+          policy_decision_id: ev.decisionId,
+          currency: po.currency,
+          approved_amount_minor: po.totalMinor,
+          approved_at: now,
+          ttl_minutes: mandate.certificate_ttl_minutes,
+        },
+        ctx.signingKey,
+      );
+
+      const [org] = await tx.select().from(organizations).where(eq(organizations.id, actor.organizationId));
+      const account = await currentAccount(tx, {
         organizationId: actor.organizationId,
-        purchaseOrderId: po.id,
-        userId: actor.id,
-        action: "APPROVED",
-        cartHash: po.cartHash,
-        acknowledgedReviewCodes: required,
-        note: input.note ?? null,
-        ip: actor.ip ?? null,
-        userAgent: actor.userAgent?.slice(0, 300) ?? null,
-        createdAt: now,
-      })
-      .returning();
+        timeZone: org!.timezone,
+        currency: org!.currency,
+        weeklyLimitMinor: mandate.weekly_budget_minor,
+        now,
+        lock: true,
+      });
 
-    const intentId = randomUUID();
-    const signed = issueCertificate(
-      {
-        intent_id: intentId,
-        organization_id: actor.organizationId,
-        buyer_id: actor.id,
-        purchase_order_id: po.id,
-        supplier_id: po.supplierId,
-        cart_hash: po.cartHash,
-        mandate_id: mandate.id,
-        mandate_version: mandate.version,
-        policy_decision_id: ev.decisionId,
-        currency: po.currency,
-        approved_amount_minor: po.totalMinor,
-        approved_at: now,
-        ttl_minutes: mandate.certificate_ttl_minutes,
-      },
-      ctx.signingKey,
-    );
-
-    const [org] = await tx.select().from(organizations).where(eq(organizations.id, actor.organizationId));
-    const account = await currentAccount(tx, { organizationId: actor.organizationId, timeZone: org!.timezone, currency: org!.currency, weeklyLimitMinor: mandate.weekly_budget_minor, now, lock: true });
-
-    const [cert] = await tx
-      .insert(intentCertificates)
-      .values({
-        id: intentId,
+      const [cert] = await tx
+        .insert(intentCertificates)
+        .values({
+          id: intentId,
+          organizationId: actor.organizationId,
+          purchaseOrderId: po.id,
+          buyerId: actor.id,
+          policyDecisionId: ev.decisionId,
+          approvalEventId: approval!.id,
+          payload: signed.payload as unknown as Record<string, unknown>,
+          signature: signed.signature,
+          keyId: signed.key_id,
+          status: "ACTIVE",
+          issuedAt: now,
+          expiresAt: new Date(signed.payload.expires_at),
+        })
+        .returning();
+      const reservation = await reserve(tx, account, {
         organizationId: actor.organizationId,
+        intentId,
         purchaseOrderId: po.id,
-        buyerId: actor.id,
-        policyDecisionId: ev.decisionId,
-        approvalEventId: approval!.id,
-        payload: signed.payload as unknown as Record<string, unknown>,
-        signature: signed.signature,
-        keyId: signed.key_id,
-        status: "ACTIVE",
-        issuedAt: now,
-        expiresAt: new Date(signed.payload.expires_at),
-      })
-      .returning();
-    const reservation = await reserve(tx, account, { organizationId: actor.organizationId, intentId, purchaseOrderId: po.id, amountMinor: po.totalMinor, now });
+        amountMinor: po.totalMinor,
+        now,
+      });
 
-    await tx.update(purchaseOrders).set({ status: "APPROVED", updatedAt: now }).where(eq(purchaseOrders.id, po.id));
-    await tx.update(purchaseRequests).set({ approvedAt: now }).where(eq(purchaseRequests.id, requestId));
-    await refreshRequestStatus(tx, requestId, now);
+      await tx.update(purchaseOrders).set({ status: "APPROVED", updatedAt: now }).where(eq(purchaseOrders.id, po.id));
+      await tx.update(purchaseRequests).set({ approvedAt: now }).where(eq(purchaseRequests.id, requestId));
+      await refreshRequestStatus(tx, requestId, now);
 
-    const base = { organizationId: actor.organizationId, actorType: "USER" as const, actorId: actor.id };
-    await appendAudit(tx, { ...base, action: "approval.recorded", entityType: "purchase_order", entityId: po.id, data: { cart_hash: po.cartHash, total_minor: po.totalMinor, acknowledged: required, policy_decision_id: ev.decisionId } });
-    await appendAudit(tx, { ...base, action: "certificate.issued", entityType: "intent_certificate", entityId: intentId, data: { key_id: signed.key_id, expires_at: signed.payload.expires_at, amount_minor: po.totalMinor, mandate_version: mandate.version } });
-    await appendAudit(tx, { ...base, action: "budget.reserved", entityType: "budget_reservation", entityId: reservation.id, data: { amount_minor: po.totalMinor, intent_id: intentId, period_start: account.periodStart } });
+      const base = { organizationId: actor.organizationId, actorType: "USER" as const, actorId: actor.id };
+      await appendAudit(tx, {
+        ...base,
+        action: "approval.recorded",
+        entityType: "purchase_order",
+        entityId: po.id,
+        data: { cart_hash: po.cartHash, total_minor: po.totalMinor, acknowledged: required, policy_decision_id: ev.decisionId },
+      });
+      await appendAudit(tx, {
+        ...base,
+        action: "certificate.issued",
+        entityType: "intent_certificate",
+        entityId: intentId,
+        data: {
+          key_id: signed.key_id,
+          expires_at: signed.payload.expires_at,
+          amount_minor: po.totalMinor,
+          mandate_version: mandate.version,
+        },
+      });
+      await appendAudit(tx, {
+        ...base,
+        action: "budget.reserved",
+        entityType: "budget_reservation",
+        entityId: reservation.id,
+        data: { amount_minor: po.totalMinor, intent_id: intentId, period_start: account.periodStart },
+      });
 
-    const [dto] = await orderDtos(tx, actor.organizationId, [{ ...po, status: "APPROVED" }]);
-    return { purchase_order: dto!, certificate: toCertificateDto(cert!) };
-  }));
+      const [dto] = await orderDtos(tx, actor.organizationId, [{ ...po, status: "APPROVED" }]);
+      return { purchase_order: dto!, certificate: toCertificateDto(cert!) };
+    }),
+  );
   return result;
 }
 
 export async function rejectRequest(ctx: AppContext, actor: Actor, requestId: string, reason: string, purchaseOrderId?: string) {
   await ctx.db.transaction(async (tx) => {
-    const [req] = await tx.select().from(purchaseRequests).where(and(eq(purchaseRequests.id, requestId), eq(purchaseRequests.organizationId, actor.organizationId))).for("update");
+    const [req] = await tx
+      .select()
+      .from(purchaseRequests)
+      .where(and(eq(purchaseRequests.id, requestId), eq(purchaseRequests.organizationId, actor.organizationId)))
+      .for("update");
     if (!req) throw notFound("Procurement request");
-    const scope = and(eq(purchaseOrders.requestId, requestId), eq(purchaseOrders.status, "PROPOSED"), purchaseOrderId ? eq(purchaseOrders.id, purchaseOrderId) : undefined);
+    const scope = and(
+      eq(purchaseOrders.requestId, requestId),
+      eq(purchaseOrders.status, "PROPOSED"),
+      purchaseOrderId ? eq(purchaseOrders.id, purchaseOrderId) : undefined,
+    );
     const open = await tx.select().from(purchaseOrders).where(scope).for("update");
     if (purchaseOrderId && open.length === 0) throw conflict("PROPOSAL_NOT_OPEN", "That proposal is no longer open for rejection.");
-    if (open.length === 0 && !["DRAFT", "BLOCKED", "FAILED"].includes(req.status)) throw conflict("NOTHING_TO_REJECT", "There is no open proposal to reject.");
+    if (open.length === 0 && !["DRAFT", "BLOCKED", "FAILED"].includes(req.status))
+      throw conflict("NOTHING_TO_REJECT", "There is no open proposal to reject.");
     for (const po of open) {
       await tx.update(purchaseOrders).set({ status: "REJECTED", updatedAt: ctx.now() }).where(eq(purchaseOrders.id, po.id));
-      await tx.insert(approvalEvents).values({ organizationId: actor.organizationId, purchaseOrderId: po.id, userId: actor.id, action: "REJECTED", cartHash: po.cartHash, note: reason, ip: actor.ip ?? null, userAgent: actor.userAgent?.slice(0, 300) ?? null });
+      await tx.insert(approvalEvents).values({
+        organizationId: actor.organizationId,
+        purchaseOrderId: po.id,
+        userId: actor.id,
+        action: "REJECTED",
+        cartHash: po.cartHash,
+        note: reason,
+        ip: actor.ip ?? null,
+        userAgent: actor.userAgent?.slice(0, 300) ?? null,
+      });
     }
-    if (open.length === 0) await tx.update(purchaseRequests).set({ status: "REJECTED", updatedAt: ctx.now() }).where(eq(purchaseRequests.id, requestId));
+    if (open.length === 0)
+      await tx.update(purchaseRequests).set({ status: "REJECTED", updatedAt: ctx.now() }).where(eq(purchaseRequests.id, requestId));
     else await refreshRequestStatus(tx, requestId, ctx.now());
-    await appendAudit(tx, { organizationId: actor.organizationId, action: "procurement.rejected", actorType: "USER", actorId: actor.id, entityType: "purchase_request", entityId: requestId, data: { reason, proposals: open.map((p) => p.id) } });
+    await appendAudit(tx, {
+      organizationId: actor.organizationId,
+      action: "procurement.rejected",
+      actorType: "USER",
+      actorId: actor.id,
+      entityType: "purchase_request",
+      entityId: requestId,
+      data: { reason, proposals: open.map((p) => p.id) },
+    });
   });
   return getRequestDto(ctx.db, actor.organizationId, requestId);
 }

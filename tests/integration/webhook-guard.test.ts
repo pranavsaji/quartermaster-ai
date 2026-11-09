@@ -14,7 +14,8 @@ afterAll(async () => {
 });
 
 const event = JSON.stringify({ id: "WH-GUARD-1", event_type: "CHECKOUT.ORDER.APPROVED", resource: { id: "UNKNOWN-ORDER" } });
-const send = (headers: Record<string, string>, body = event) => request(h.app).post("/api/v1/webhooks/paypal").set(headers).set("content-type", "application/json").send(body);
+const send = (headers: Record<string, string>, body = event) =>
+  request(h.app).post("/api/v1/webhooks/paypal").set(headers).set("content-type", "application/json").send(body);
 const at = (offsetMs: number) => new Date(h.clock.now.getTime() + offsetMs).toISOString();
 
 describe("PayPal webhook guard", () => {

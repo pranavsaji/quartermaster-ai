@@ -58,12 +58,27 @@ export interface MarketResearchResult {
 export async function researchItem(
   db: DbOrTx,
   channel3: Channel3Client,
-  args: { organizationId: string; requestId: string; item: InventoryRow; currency: string; now: Date; maxAgeHours: number; signal?: AbortSignal },
+  args: {
+    organizationId: string;
+    requestId: string;
+    item: InventoryRow;
+    currency: string;
+    now: Date;
+    maxAgeHours: number;
+    signal?: AbortSignal;
+  },
   log?: Pick<Logger, "warn">,
 ): Promise<MarketResearchResult> {
   if (!channel3.enabled) {
     return {
-      reference: { inventory_item_id: args.item.id, reference_unit_price_minor: null, sample_size: 0, observed_at: null, status: "DISABLED", quotes: [] },
+      reference: {
+        inventory_item_id: args.item.id,
+        reference_unit_price_minor: null,
+        sample_size: 0,
+        observed_at: null,
+        status: "DISABLED",
+        quotes: [],
+      },
       suspicious: [],
       error: null,
     };
@@ -121,7 +136,13 @@ export async function researchItem(
     quotes = await db
       .select()
       .from(marketQuotes)
-      .where(and(eq(marketQuotes.organizationId, args.organizationId), eq(marketQuotes.inventoryItemId, args.item.id), gte(marketQuotes.observedAt, since)))
+      .where(
+        and(
+          eq(marketQuotes.organizationId, args.organizationId),
+          eq(marketQuotes.inventoryItemId, args.item.id),
+          gte(marketQuotes.observedAt, since),
+        ),
+      )
       .orderBy(desc(marketQuotes.observedAt))
       .limit(24);
   }

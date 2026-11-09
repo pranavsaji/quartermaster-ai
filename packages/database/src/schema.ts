@@ -1,12 +1,5 @@
 import { sql, type SQL } from "drizzle-orm";
-import {
-  DELIVERY_STATUSES,
-  INVOICE_STATUSES,
-  PAYMENT_STATUSES,
-  PO_STATUSES,
-  REFUND_STATUSES,
-  REQUEST_STATUSES,
-} from "@qm/contracts";
+import { DELIVERY_STATUSES, INVOICE_STATUSES, PAYMENT_STATUSES, PO_STATUSES, REFUND_STATUSES, REQUEST_STATUSES } from "@qm/contracts";
 import {
   bigint,
   boolean,
@@ -29,9 +22,13 @@ const money = (name: string) => bigint(name, { mode: "number" });
 const ts = (name: string) => timestamp(name, { withTimezone: true, mode: "date" });
 const createdAt = () => ts("created_at").notNull().defaultNow();
 const updatedAt = () => ts("updated_at").notNull().defaultNow();
-const orgId = () => uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" });
+const orgId = () =>
+  uuid("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" });
 /** A CHECK constraint restricting a text column to the given values (kept in sync with contracts). */
-const oneOf = (column: SQL.Aliased | SQL | AnyPgColumn, values: readonly string[]): SQL => sql`${column} in (${sql.raw(values.map((v) => `'${v}'`).join(", "))})`;
+const oneOf = (column: SQL.Aliased | SQL | AnyPgColumn, values: readonly string[]): SQL =>
+  sql`${column} in (${sql.raw(values.map((v) => `'${v}'`).join(", "))})`;
 
 /* ================================================================ Identity */
 
@@ -63,7 +60,9 @@ export const memberships = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     organizationId: orgId(),
-    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
     role: text("role", { enum: ["OWNER", "MANAGER", "VIEWER"] }).notNull(),
     createdAt: createdAt(),
   },
@@ -75,7 +74,9 @@ export const sessions = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     tokenHash: text("token_hash").notNull(),
-    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
     organizationId: orgId(),
     expiresAt: ts("expires_at").notNull(),
     revokedAt: ts("revoked_at"),
@@ -105,7 +106,9 @@ export const inventoryItems = pgTable(
     preferredSupplierId: uuid("preferred_supplier_id"),
     searchQuery: text("search_query").notNull(),
     keywords: jsonb("keywords").$type<string[]>().notNull().default([]),
-    dataSource: text("data_source", { enum: ["CHANNEL3_MARKET", "SANDBOX_SUPPLIER", "SYNTHETIC"] }).notNull().default("SYNTHETIC"),
+    dataSource: text("data_source", { enum: ["CHANNEL3_MARKET", "SANDBOX_SUPPLIER", "SYNTHETIC"] })
+      .notNull()
+      .default("SYNTHETIC"),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -117,7 +120,9 @@ export const stockMovements = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     organizationId: orgId(),
-    inventoryItemId: uuid("inventory_item_id").notNull().references(() => inventoryItems.id, { onDelete: "cascade" }),
+    inventoryItemId: uuid("inventory_item_id")
+      .notNull()
+      .references(() => inventoryItems.id, { onDelete: "cascade" }),
     quantityDelta: integer("quantity_delta").notNull(),
     reason: text("reason").notNull(),
     referenceType: text("reference_type"),
@@ -134,7 +139,9 @@ export const consumptionHistory = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     organizationId: orgId(),
-    inventoryItemId: uuid("inventory_item_id").notNull().references(() => inventoryItems.id, { onDelete: "cascade" }),
+    inventoryItemId: uuid("inventory_item_id")
+      .notNull()
+      .references(() => inventoryItems.id, { onDelete: "cascade" }),
     day: date("day", { mode: "string" }).notNull(),
     quantity: integer("quantity").notNull(),
     dataSource: text("data_source").notNull().default("SYNTHETIC"),
@@ -201,7 +208,9 @@ export const supplierCatalogItems = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     organizationId: orgId(),
-    supplierId: uuid("supplier_id").notNull().references(() => suppliers.id, { onDelete: "cascade" }),
+    supplierId: uuid("supplier_id")
+      .notNull()
+      .references(() => suppliers.id, { onDelete: "cascade" }),
     sku: text("sku").notNull(),
     title: text("title").notNull(),
     description: text("description").notNull().default(""),
@@ -225,7 +234,9 @@ export const marketQuotes = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     organizationId: orgId(),
     requestId: uuid("request_id"),
-    inventoryItemId: uuid("inventory_item_id").notNull().references(() => inventoryItems.id, { onDelete: "cascade" }),
+    inventoryItemId: uuid("inventory_item_id")
+      .notNull()
+      .references(() => inventoryItems.id, { onDelete: "cascade" }),
     source: text("source").notNull().default("CHANNEL3_MARKET"),
     externalProductId: text("external_product_id").notNull(),
     title: text("title").notNull(),
@@ -254,7 +265,9 @@ export const purchaseRequests = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     organizationId: orgId(),
-    createdBy: uuid("created_by").notNull().references(() => users.id),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id),
     status: text("status", { enum: REQUEST_STATUSES }).notNull().default("DRAFT"),
     instruction: text("instruction").notNull(),
     currency: text("currency").notNull(),
@@ -277,7 +290,9 @@ export const purchaseRequests = pgTable(
   (t) => [
     index("purchase_requests_org_idx").on(t.organizationId, t.createdAt),
     // The sweeper looks for research abandoned by a crashed process.
-    index("purchase_requests_researching_idx").on(t.researchStartedAt).where(sql`${t.status} = 'RESEARCHING'`),
+    index("purchase_requests_researching_idx")
+      .on(t.researchStartedAt)
+      .where(sql`${t.status} = 'RESEARCHING'`),
     check("purchase_requests_status_ck", oneOf(t.status, REQUEST_STATUSES)),
     check("purchase_requests_budget_ck", sql`${t.budgetLimitMinor} is null or ${t.budgetLimitMinor} > 0`),
   ],
@@ -288,10 +303,16 @@ export const purchaseCandidates = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     organizationId: orgId(),
-    requestId: uuid("request_id").notNull().references(() => purchaseRequests.id, { onDelete: "cascade" }),
+    requestId: uuid("request_id")
+      .notNull()
+      .references(() => purchaseRequests.id, { onDelete: "cascade" }),
     inventoryItemId: uuid("inventory_item_id").notNull(),
-    supplierId: uuid("supplier_id").notNull().references(() => suppliers.id),
-    catalogItemId: uuid("catalog_item_id").notNull().references(() => supplierCatalogItems.id),
+    supplierId: uuid("supplier_id")
+      .notNull()
+      .references(() => suppliers.id),
+    catalogItemId: uuid("catalog_item_id")
+      .notNull()
+      .references(() => supplierCatalogItems.id),
     packs: integer("packs").notNull(),
     units: integer("units").notNull(),
     quote: jsonb("quote").$type<Record<string, unknown>>().notNull(),
@@ -311,7 +332,9 @@ export const purchaseOrders = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     organizationId: orgId(),
     requestId: uuid("request_id").references(() => purchaseRequests.id, { onDelete: "set null" }),
-    supplierId: uuid("supplier_id").notNull().references(() => suppliers.id),
+    supplierId: uuid("supplier_id")
+      .notNull()
+      .references(() => suppliers.id),
     number: text("number").notNull(),
     status: text("status", { enum: PO_STATUSES }).notNull().default("PROPOSED"),
     currency: text("currency").notNull(),
@@ -344,7 +367,9 @@ export const purchaseOrderItems = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     organizationId: orgId(),
-    purchaseOrderId: uuid("purchase_order_id").notNull().references(() => purchaseOrders.id, { onDelete: "cascade" }),
+    purchaseOrderId: uuid("purchase_order_id")
+      .notNull()
+      .references(() => purchaseOrders.id, { onDelete: "cascade" }),
     position: integer("position").notNull(),
     kind: text("kind", { enum: ["PRODUCT", "SHIPPING", "TAX", "FEE"] }).notNull(),
     sku: text("sku"),
@@ -378,9 +403,13 @@ export const spendMandates = pgTable(
     approvedSupplierIds: jsonb("approved_supplier_ids").$type<string[]>().notNull(),
     allowedCategories: jsonb("allowed_categories").$type<string[]>().notNull(),
     maxMarketPricePremiumPct: integer("max_market_price_premium_pct").notNull(),
-    marketPriceAction: text("market_price_action", { enum: ["REVIEW", "BLOCK"] }).notNull().default("REVIEW"),
+    marketPriceAction: text("market_price_action", { enum: ["REVIEW", "BLOCK"] })
+      .notNull()
+      .default("REVIEW"),
     duplicateWindowHours: integer("duplicate_window_hours").notNull().default(24),
-    duplicateAction: text("duplicate_action", { enum: ["REVIEW", "BLOCK"] }).notNull().default("REVIEW"),
+    duplicateAction: text("duplicate_action", { enum: ["REVIEW", "BLOCK"] })
+      .notNull()
+      .default("REVIEW"),
     subscriptionsAllowed: boolean("subscriptions_allowed").notNull().default(false),
     certificateTtlMinutes: integer("certificate_ttl_minutes").notNull().default(30),
     maxQuantityMultipleOfNeed: doublePrecision("max_quantity_multiple_of_need").notNull().default(2),
@@ -389,7 +418,9 @@ export const spendMandates = pgTable(
   },
   (t) => [
     uniqueIndex("mandates_org_version_uq").on(t.organizationId, t.version),
-    uniqueIndex("mandates_org_active_uq").on(t.organizationId).where(sql`${t.status} = 'ACTIVE'`),
+    uniqueIndex("mandates_org_active_uq")
+      .on(t.organizationId)
+      .where(sql`${t.status} = 'ACTIVE'`),
   ],
 );
 
@@ -398,7 +429,9 @@ export const policyDecisions = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     organizationId: orgId(),
-    purchaseOrderId: uuid("purchase_order_id").notNull().references(() => purchaseOrders.id, { onDelete: "cascade" }),
+    purchaseOrderId: uuid("purchase_order_id")
+      .notNull()
+      .references(() => purchaseOrders.id, { onDelete: "cascade" }),
     requestId: uuid("request_id"),
     stage: text("stage", { enum: ["EVALUATE", "APPROVE", "CAPTURE"] }).notNull(),
     decision: text("decision", { enum: ["ALLOW", "REVIEW_REQUIRED", "BLOCK"] }).notNull(),
@@ -411,14 +444,21 @@ export const policyDecisions = pgTable(
     inputDigest: text("input_digest").notNull(),
     createdAt: createdAt(),
   },
-  (t) => [index("policy_decisions_po_idx").on(t.purchaseOrderId, t.createdAt), index("policy_decisions_org_idx").on(t.organizationId, t.createdAt)],
+  (t) => [
+    index("policy_decisions_po_idx").on(t.purchaseOrderId, t.createdAt),
+    index("policy_decisions_org_idx").on(t.organizationId, t.createdAt),
+  ],
 );
 
 export const approvalEvents = pgTable("approval_events", {
   id: uuid("id").primaryKey().defaultRandom(),
   organizationId: orgId(),
-  purchaseOrderId: uuid("purchase_order_id").notNull().references(() => purchaseOrders.id, { onDelete: "cascade" }),
-  userId: uuid("user_id").notNull().references(() => users.id),
+  purchaseOrderId: uuid("purchase_order_id")
+    .notNull()
+    .references(() => purchaseOrders.id, { onDelete: "cascade" }),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id),
   action: text("action", { enum: ["APPROVED", "REJECTED"] }).notNull(),
   cartHash: text("cart_hash").notNull(),
   acknowledgedReviewCodes: jsonb("acknowledged_review_codes").$type<string[]>().notNull().default([]),
@@ -441,21 +481,35 @@ export const intentCertificates = pgTable(
   {
     id: uuid("id").primaryKey(),
     organizationId: orgId(),
-    purchaseOrderId: uuid("purchase_order_id").notNull().references(() => purchaseOrders.id, { onDelete: "cascade" }),
-    buyerId: uuid("buyer_id").notNull().references(() => users.id),
-    policyDecisionId: uuid("policy_decision_id").notNull().references(() => policyDecisions.id),
-    approvalEventId: uuid("approval_event_id").notNull().references(() => approvalEvents.id),
+    purchaseOrderId: uuid("purchase_order_id")
+      .notNull()
+      .references(() => purchaseOrders.id, { onDelete: "cascade" }),
+    buyerId: uuid("buyer_id")
+      .notNull()
+      .references(() => users.id),
+    policyDecisionId: uuid("policy_decision_id")
+      .notNull()
+      .references(() => policyDecisions.id),
+    approvalEventId: uuid("approval_event_id")
+      .notNull()
+      .references(() => approvalEvents.id),
     payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
     signature: text("signature").notNull(),
-    keyId: text("key_id").notNull().references(() => signingKeys.keyId),
-    status: text("status", { enum: ["ACTIVE", "CONSUMED", "REVOKED", "EXPIRED"] }).notNull().default("ACTIVE"),
+    keyId: text("key_id")
+      .notNull()
+      .references(() => signingKeys.keyId),
+    status: text("status", { enum: ["ACTIVE", "CONSUMED", "REVOKED", "EXPIRED"] })
+      .notNull()
+      .default("ACTIVE"),
     revokedReason: text("revoked_reason"),
     issuedAt: ts("issued_at").notNull(),
     expiresAt: ts("expires_at").notNull(),
     consumedAt: ts("consumed_at"),
   },
   (t) => [
-    uniqueIndex("certificates_po_active_uq").on(t.purchaseOrderId).where(sql`${t.status} in ('ACTIVE','CONSUMED')`),
+    uniqueIndex("certificates_po_active_uq")
+      .on(t.purchaseOrderId)
+      .where(sql`${t.status} in ('ACTIVE','CONSUMED')`),
     index("certificates_org_status_idx").on(t.organizationId, t.status, t.expiresAt),
     // The sweeper expires certificates across organisations.
     index("certificates_status_expiry_idx").on(t.status, t.expiresAt),
@@ -488,11 +542,15 @@ export const budgetReservations = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     organizationId: orgId(),
-    budgetAccountId: uuid("budget_account_id").notNull().references(() => budgetAccounts.id),
+    budgetAccountId: uuid("budget_account_id")
+      .notNull()
+      .references(() => budgetAccounts.id),
     intentId: uuid("intent_id").notNull(),
     purchaseOrderId: uuid("purchase_order_id").notNull(),
     amountMinor: money("amount_minor").notNull(),
-    status: text("status", { enum: ["ACTIVE", "CONSUMED", "RELEASED"] }).notNull().default("ACTIVE"),
+    status: text("status", { enum: ["ACTIVE", "CONSUMED", "RELEASED"] })
+      .notNull()
+      .default("ACTIVE"),
     releaseReason: text("release_reason"),
     createdAt: createdAt(),
     releasedAt: ts("released_at"),
@@ -508,8 +566,12 @@ export const paymentAttempts = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     organizationId: orgId(),
-    intentId: uuid("intent_id").notNull().references(() => intentCertificates.id),
-    purchaseOrderId: uuid("purchase_order_id").notNull().references(() => purchaseOrders.id),
+    intentId: uuid("intent_id")
+      .notNull()
+      .references(() => intentCertificates.id),
+    purchaseOrderId: uuid("purchase_order_id")
+      .notNull()
+      .references(() => purchaseOrders.id),
     status: text("status", { enum: PAYMENT_STATUSES }).notNull().default("CREATED"),
     amountMinor: money("amount_minor").notNull(),
     currency: text("currency").notNull(),
@@ -566,7 +628,9 @@ export const refunds = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     organizationId: orgId(),
-    paymentAttemptId: uuid("payment_attempt_id").notNull().references(() => paymentAttempts.id),
+    paymentAttemptId: uuid("payment_attempt_id")
+      .notNull()
+      .references(() => paymentAttempts.id),
     paypalRefundId: text("paypal_refund_id"),
     /** Stable per logical refund (derived from the client's Idempotency-Key); reused on retry. */
     requestKey: text("request_key"),
@@ -592,8 +656,12 @@ export const deliveries = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     organizationId: orgId(),
-    purchaseOrderId: uuid("purchase_order_id").notNull().references(() => purchaseOrders.id),
-    supplierId: uuid("supplier_id").notNull().references(() => suppliers.id),
+    purchaseOrderId: uuid("purchase_order_id")
+      .notNull()
+      .references(() => purchaseOrders.id),
+    supplierId: uuid("supplier_id")
+      .notNull()
+      .references(() => suppliers.id),
     status: text("status", { enum: DELIVERY_STATUSES }).notNull().default("SCHEDULED"),
     expectedDate: date("expected_date", { mode: "string" }).notNull(),
     originalExpectedDate: date("original_expected_date", { mode: "string" }).notNull(),
@@ -615,8 +683,12 @@ export const goodsReceipts = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     organizationId: orgId(),
-    deliveryId: uuid("delivery_id").notNull().references(() => deliveries.id),
-    purchaseOrderItemId: uuid("purchase_order_item_id").notNull().references(() => purchaseOrderItems.id),
+    deliveryId: uuid("delivery_id")
+      .notNull()
+      .references(() => deliveries.id),
+    purchaseOrderItemId: uuid("purchase_order_item_id")
+      .notNull()
+      .references(() => purchaseOrderItems.id),
     unitsReceived: integer("units_received").notNull(),
     receivedBy: uuid("received_by").notNull(),
     note: text("note"),
@@ -634,7 +706,9 @@ export const invoices = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     organizationId: orgId(),
-    supplierId: uuid("supplier_id").notNull().references(() => suppliers.id),
+    supplierId: uuid("supplier_id")
+      .notNull()
+      .references(() => suppliers.id),
     purchaseOrderId: uuid("purchase_order_id").references(() => purchaseOrders.id),
     invoiceNumber: text("invoice_number").notNull(),
     invoiceNumberNormalized: text("invoice_number_normalized").notNull(),
@@ -653,7 +727,9 @@ export const invoices = pgTable(
     index("invoices_supplier_number_idx").on(t.organizationId, t.supplierId, t.invoiceNumberNormalized),
     index("invoices_content_idx").on(t.organizationId, t.contentHash),
     // At most one settled invoice per purchase order.
-    uniqueIndex("invoices_po_settled_uq").on(t.purchaseOrderId).where(sql`${t.settlementAllowed} = true`),
+    uniqueIndex("invoices_po_settled_uq")
+      .on(t.purchaseOrderId)
+      .where(sql`${t.settlementAllowed} = true`),
     check("invoices_status_ck", oneOf(t.status, INVOICE_STATUSES)),
   ],
 );
@@ -662,7 +738,9 @@ export const invoiceMatches = pgTable(
   "invoice_matches",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    invoiceId: uuid("invoice_id").notNull().references(() => invoices.id, { onDelete: "cascade" }),
+    invoiceId: uuid("invoice_id")
+      .notNull()
+      .references(() => invoices.id, { onDelete: "cascade" }),
     check: text("check").notNull(),
     passed: boolean("passed").notNull(),
     severity: text("severity"),
@@ -678,7 +756,9 @@ export const agentRuns = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     organizationId: orgId(),
-    requestId: uuid("request_id").notNull().references(() => purchaseRequests.id, { onDelete: "cascade" }),
+    requestId: uuid("request_id")
+      .notNull()
+      .references(() => purchaseRequests.id, { onDelete: "cascade" }),
     kind: text("kind").notNull(),
     status: text("status").notNull(),
     aiMode: text("ai_mode").notNull(),
@@ -697,7 +777,9 @@ export const toolExecutions = pgTable(
   {
     id: uuid("id").primaryKey().defaultRandom(),
     organizationId: orgId(),
-    agentRunId: uuid("agent_run_id").notNull().references(() => agentRuns.id, { onDelete: "cascade" }),
+    agentRunId: uuid("agent_run_id")
+      .notNull()
+      .references(() => agentRuns.id, { onDelete: "cascade" }),
     tool: text("tool").notNull(),
     status: text("status", { enum: ["SUCCEEDED", "FAILED", "SKIPPED"] }).notNull(),
     input: jsonb("input").$type<Record<string, unknown>>().notNull().default({}),
@@ -725,7 +807,10 @@ export const securityFindings = pgTable(
     relatedRequestId: uuid("related_request_id"),
     createdAt: createdAt(),
   },
-  (t) => [index("security_findings_org_idx").on(t.organizationId, t.createdAt), index("security_findings_request_idx").on(t.relatedRequestId)],
+  (t) => [
+    index("security_findings_org_idx").on(t.organizationId, t.createdAt),
+    index("security_findings_request_idx").on(t.relatedRequestId),
+  ],
 );
 
 export const auditEvents = pgTable(

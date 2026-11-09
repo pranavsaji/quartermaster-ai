@@ -64,9 +64,12 @@ describe("property: canonical encoding", () => {
 
   it("rejects every non-integer number", () => {
     fc.assert(
-      fc.property(fc.double().filter((d) => !Number.isSafeInteger(d)), (d) => {
-        expect(() => canonicalize({ d })).toThrow(TypeError);
-      }),
+      fc.property(
+        fc.double().filter((d) => !Number.isSafeInteger(d)),
+        (d) => {
+          expect(() => canonicalize({ d })).toThrow(TypeError);
+        },
+      ),
       RUNS,
     );
   });
@@ -87,10 +90,15 @@ describe("property: money", () => {
 
   it("round-trips decimal strings with exactly two places", () => {
     fc.assert(
-      fc.property(fc.bigInt({ min: 0n, max: 90_071_992_547_408n }), fc.integer({ min: 0, max: 99 }), fc.boolean(), (whole, cents, negative) => {
-        const s = `${negative && (whole > 0n || cents > 0) ? "-" : ""}${whole}.${String(cents).padStart(2, "0")}`;
-        expect(minorToDecimalString(decimalStringToMinor(s, "USD"), "USD")).toBe(s);
-      }),
+      fc.property(
+        fc.bigInt({ min: 0n, max: 90_071_992_547_408n }),
+        fc.integer({ min: 0, max: 99 }),
+        fc.boolean(),
+        (whole, cents, negative) => {
+          const s = `${negative && (whole > 0n || cents > 0) ? "-" : ""}${whole}.${String(cents).padStart(2, "0")}`;
+          expect(minorToDecimalString(decimalStringToMinor(s, "USD"), "USD")).toBe(s);
+        },
+      ),
       RUNS,
     );
   });
@@ -99,12 +107,28 @@ describe("property: money", () => {
 describe("property: carts", () => {
   const amount = fc.integer({ min: 0, max: 1_000_000 });
   const line: fc.Arbitrary<CartLine> = fc.oneof(
-    fc.record({ quantity: fc.integer({ min: 1, max: 10_000 }), unit: amount, sku: fc.string({ minLength: 1, maxLength: 6 }) }).map(
-      ({ quantity, unit, sku }): CartLine => ({ kind: "PRODUCT", sku, description: sku, category: "food_packaging", quantity, unit_price_minor: unit, line_total_minor: quantity * unit }),
-    ),
-    fc.record({ kind: fc.constantFrom("SHIPPING" as const, "FEE" as const, "TAX" as const), amount }).map(
-      ({ kind, amount: a }): CartLine => ({ kind, sku: kind === "TAX" ? null : "X", description: kind, category: null, quantity: 1, unit_price_minor: a, line_total_minor: a }),
-    ),
+    fc
+      .record({ quantity: fc.integer({ min: 1, max: 10_000 }), unit: amount, sku: fc.string({ minLength: 1, maxLength: 6 }) })
+      .map(({ quantity, unit, sku }): CartLine => ({
+        kind: "PRODUCT",
+        sku,
+        description: sku,
+        category: "food_packaging",
+        quantity,
+        unit_price_minor: unit,
+        line_total_minor: quantity * unit,
+      })),
+    fc
+      .record({ kind: fc.constantFrom("SHIPPING" as const, "FEE" as const, "TAX" as const), amount })
+      .map(({ kind, amount: a }): CartLine => ({
+        kind,
+        sku: kind === "TAX" ? null : "X",
+        description: kind,
+        category: null,
+        quantity: 1,
+        unit_price_minor: a,
+        line_total_minor: a,
+      })),
   );
 
   it("buildCart always produces a cart that passes checkCartArithmetic", () => {
@@ -278,7 +302,10 @@ describe("property: listings and invoices", () => {
     "x",
     "×",
   );
-  const title = fc.oneof(fc.array(titleTokens, { maxLength: 10 }).map((t) => t.join(" ")), fc.string({ unit: "binary", maxLength: 80 }));
+  const title = fc.oneof(
+    fc.array(titleTokens, { maxLength: 10 }).map((t) => t.join(" ")),
+    fc.string({ unit: "binary", maxLength: 80 }),
+  );
 
   it("parsePackQuantity never throws and returns a positive safe integer or null", () => {
     fc.assert(
@@ -298,7 +325,9 @@ describe("property: listings and invoices", () => {
   it("normalizeInvoiceNumber is idempotent and alphanumeric", () => {
     const invoiceish = fc.oneof(
       fc.string({ unit: "binary", maxLength: 24 }),
-      fc.array(fc.constantFrom("INV", "INVOICE", "inv", "#", "-", "0", "00", "42", "A", " ", "Ｉｎｖ", "４２"), { maxLength: 8 }).map((t) => t.join("")),
+      fc
+        .array(fc.constantFrom("INV", "INVOICE", "inv", "#", "-", "0", "00", "42", "A", " ", "Ｉｎｖ", "４２"), { maxLength: 8 })
+        .map((t) => t.join("")),
     );
     fc.assert(
       fc.property(invoiceish, (n) => {

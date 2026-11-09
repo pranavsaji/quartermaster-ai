@@ -1,5 +1,11 @@
 import { and, eq, inArray } from "drizzle-orm";
-import { PAYABLE_PO_STATUSES, PRE_CAPTURE_PAYMENT_STATUSES, type ProductCategory, type SpendMandateDto, type SpendMandateInput } from "@qm/contracts";
+import {
+  PAYABLE_PO_STATUSES,
+  PRE_CAPTURE_PAYMENT_STATUSES,
+  type ProductCategory,
+  type SpendMandateDto,
+  type SpendMandateInput,
+} from "@qm/contracts";
 import {
   budgetAccounts,
   intentCertificates,
@@ -68,7 +74,10 @@ export function toMandateDto(r: MandateRow): SpendMandateDto {
 }
 
 export async function getActiveMandateRow(db: DbOrTx, organizationId: string, lock = false): Promise<MandateRow | null> {
-  const q = db.select().from(spendMandates).where(and(eq(spendMandates.organizationId, organizationId), eq(spendMandates.status, "ACTIVE")));
+  const q = db
+    .select()
+    .from(spendMandates)
+    .where(and(eq(spendMandates.organizationId, organizationId), eq(spendMandates.status, "ACTIVE")));
   const [row] = lock ? await q.for("update") : await q;
   return row ?? null;
 }
@@ -148,12 +157,22 @@ export async function updateMandate(
         .returning({ id: intentCertificates.id });
       if (changed.length === 0) continue;
       await releaseReservation(tx, c.id, "MANDATE_CHANGED", args.now);
-      if (payment) await transitionPayment(tx, payment, "VOIDED", { failureCode: "MANDATE_CHANGED", failureMessage: "The spend mandate changed before payment." }, args.now);
+      if (payment)
+        await transitionPayment(
+          tx,
+          payment,
+          "VOIDED",
+          { failureCode: "MANDATE_CHANGED", failureMessage: "The spend mandate changed before payment." },
+          args.now,
+        );
       await tx
         .update(purchaseOrders)
         .set({ status: "PROPOSED", updatedAt: args.now })
         .where(and(eq(purchaseOrders.id, c.purchaseOrderId), inArray(purchaseOrders.status, [...PAYABLE_PO_STATUSES])));
-      const [po] = await tx.select({ requestId: purchaseOrders.requestId }).from(purchaseOrders).where(eq(purchaseOrders.id, c.purchaseOrderId));
+      const [po] = await tx
+        .select({ requestId: purchaseOrders.requestId })
+        .from(purchaseOrders)
+        .where(eq(purchaseOrders.id, c.purchaseOrderId));
       if (po?.requestId) await refreshRequestStatus(tx, po.requestId, args.now);
       revokedIds.push(c.id);
       revoked++;
@@ -189,7 +208,13 @@ export async function updateMandate(
     actorId: args.userId,
     entityType: "spend_mandate",
     entityId: next!.id,
-    data: { from_version: current.version, to_version: next!.version, tightened, revoked_certificates: revoked, mandate: toMandateDto(next!) },
+    data: {
+      from_version: current.version,
+      to_version: next!.version,
+      tightened,
+      revoked_certificates: revoked,
+      mandate: toMandateDto(next!),
+    },
   });
 
   return { mandate: next!, revokedCertificates: revoked };

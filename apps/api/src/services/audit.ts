@@ -136,7 +136,10 @@ const VERIFY_BATCH = 1_000;
  * Recomputes the organisation's hash chain from the first event. Reads in fixed-size batches so
  * memory stays bounded however long the log grows.
  */
-export async function verifyAuditChain(db: DbOrTx, organizationId: string): Promise<{ valid: boolean; events_checked: number; first_invalid_sequence: number | null }> {
+export async function verifyAuditChain(
+  db: DbOrTx,
+  organizationId: string,
+): Promise<{ valid: boolean; events_checked: number; first_invalid_sequence: number | null }> {
   let prev: string | null = null;
   let expectedSeq = 1;
   let checked = 0;

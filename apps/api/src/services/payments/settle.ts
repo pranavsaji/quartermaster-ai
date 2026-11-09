@@ -25,7 +25,8 @@ export async function reconcilePayment(ctx: AppContext, paymentId: string): Prom
     const moved = await transitionPayment(ctx.db, p, "PAYER_APPROVED", {}, ctx.now());
     return moved ? "PAYER_APPROVED" : statusOf((await loadPaymentForSystem(ctx.db, paymentId))!);
   }
-  if (order.status === "VOIDED") return applyTerminalFailure(ctx, paymentId, "VOIDED", "PAYPAL_ORDER_VOIDED", "PayPal voided the order.", "PAYPAL");
+  if (order.status === "VOIDED")
+    return applyTerminalFailure(ctx, paymentId, "VOIDED", "PAYPAL_ORDER_VOIDED", "PayPal voided the order.", "PAYPAL");
   return statusOf(p);
 }
 
@@ -45,7 +46,14 @@ export async function voidAbandonedCapture(ctx: AppContext, paymentId: string, s
   await ctx.db.update(paymentAttempts).set({ lastReconciledAt: now }).where(eq(paymentAttempts.id, paymentId));
   if (order.status === "COMPLETED") return finalizeFromOrder(ctx, paymentId, order, "SYSTEM", null);
   if (extractCapture(order)) return "CAPTURE_PENDING"; // a capture exists (e.g. PENDING); wait for it
-  return applyTerminalFailure(ctx, paymentId, "VOIDED", "CAPTURE_ABANDONED", "Capture never reached PayPal before the approval expired.", "SYSTEM");
+  return applyTerminalFailure(
+    ctx,
+    paymentId,
+    "VOIDED",
+    "CAPTURE_ABANDONED",
+    "Capture never reached PayPal before the approval expired.",
+    "SYSTEM",
+  );
 }
 
 /**
@@ -74,9 +82,19 @@ export async function applyTerminalFailure(
       .update(purchaseOrders)
       .set({ status: "CANCELLED", updatedAt: now })
       .where(and(eq(purchaseOrders.id, p.purchaseOrderId), inArray(purchaseOrders.status, [...PAYABLE_PO_STATUSES])));
-    const [po] = await tx.select({ requestId: purchaseOrders.requestId }).from(purchaseOrders).where(eq(purchaseOrders.id, p.purchaseOrderId));
+    const [po] = await tx
+      .select({ requestId: purchaseOrders.requestId })
+      .from(purchaseOrders)
+      .where(eq(purchaseOrders.id, p.purchaseOrderId));
     if (po?.requestId) await refreshRequestStatus(tx, po.requestId, now);
-    await appendAudit(tx, { organizationId: p.organizationId, action: `payment.${status.toLowerCase()}`, actorType, entityType: "payment_attempt", entityId: p.id, data: { code, message } });
+    await appendAudit(tx, {
+      organizationId: p.organizationId,
+      action: `payment.${status.toLowerCase()}`,
+      actorType,
+      entityType: "payment_attempt",
+      entityId: p.id,
+      data: { code, message },
+    });
     return status;
   });
 }
@@ -86,14 +104,27 @@ export async function applyTerminalFailure(
  * converted to spend, certificate consumed, order PAID and a synthetic delivery scheduled.
  * Idempotent and monotonic — duplicate or out-of-order calls never regress state.
  */
-export async function finalizeFromOrder(ctx: AppContext, paymentId: string, order: PayPalOrder, actorType: ActorType, actorId: string | null): Promise<PaymentStatus> {
+export async function finalizeFromOrder(
+  ctx: AppContext,
+  paymentId: string,
+  order: PayPalOrder,
+  actorType: ActorType,
+  actorId: string | null,
+): Promise<PaymentStatus> {
   const capture = extractCapture(order);
   if (!capture) {
     const p = await loadPaymentForSystem(ctx.db, paymentId);
     return p ? statusOf(p) : "FAILED";
   }
   if (capture.status === "DECLINED" || capture.status === "FAILED") {
-    return applyTerminalFailure(ctx, paymentId, "FAILED", `CAPTURE_${capture.status}`, `PayPal reported the capture as ${capture.status.toLowerCase()}.`, "PAYPAL");
+    return applyTerminalFailure(
+      ctx,
+      paymentId,
+      "FAILED",
+      `CAPTURE_${capture.status}`,
+      `PayPal reported the capture as ${capture.status.toLowerCase()}.`,
+      "PAYPAL",
+    );
   }
 
   const after = new AfterCommit();
@@ -140,7 +171,14 @@ export async function finalizeFromOrder(ctx: AppContext, paymentId: string, orde
     const expectedDate = expected.toISOString().slice(0, 10);
     await tx
       .insert(deliveries)
-      .values({ organizationId: p.organizationId, purchaseOrderId: po.id, supplierId: po.supplierId, status: "SCHEDULED", expectedDate, originalExpectedDate: expectedDate })
+      .values({
+        organizationId: p.organizationId,
+        purchaseOrderId: po.id,
+        supplierId: po.supplierId,
+        status: "SCHEDULED",
+        expectedDate,
+        originalExpectedDate: expectedDate,
+      })
       .onConflictDoNothing({ target: deliveries.purchaseOrderId });
     if (po.requestId) await refreshRequestStatus(tx, po.requestId, now);
 
@@ -151,9 +189,22 @@ export async function finalizeFromOrder(ctx: AppContext, paymentId: string, orde
       actorId,
       entityType: "payment_attempt",
       entityId: p.id,
-      data: { paypal_order_id: order.id, paypal_capture_id: capture.id, captured_minor: captured, approved_minor: p.amountMinor, intent_id: p.intentId },
+      data: {
+        paypal_order_id: order.id,
+        paypal_capture_id: capture.id,
+        captured_minor: captured,
+        approved_minor: p.amountMinor,
+        intent_id: p.intentId,
+      },
     });
-    await appendAudit(tx, { organizationId: p.organizationId, action: "fulfillment.delivery_scheduled", actorType: "SYSTEM", entityType: "purchase_order", entityId: po.id, data: { expected_date: expectedDate, synthetic: true } });
+    await appendAudit(tx, {
+      organizationId: p.organizationId,
+      action: "fulfillment.delivery_scheduled",
+      actorType: "SYSTEM",
+      entityType: "purchase_order",
+      entityId: po.id,
+      data: { expected_date: expectedDate, synthetic: true },
+    });
     if (mismatch) {
       await recordFinding(tx, {
         organizationId: p.organizationId,

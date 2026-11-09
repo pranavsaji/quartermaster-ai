@@ -1,8 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { Channel3Client, Channel3Error, flattenOffers, isHttpUrl, normaliseDomain } from "@qm/integrations";
 
-const respond = (body: unknown) => async () => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
-const offer = (over: Record<string, unknown> = {}) => ({ url: "https://shop.example/p", domain: "shop.example", price: { price: 10, currency: "USD" }, availability: "InStock", ...over });
+const respond = (body: unknown) => async () =>
+  new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+const offer = (over: Record<string, unknown> = {}) => ({
+  url: "https://shop.example/p",
+  domain: "shop.example",
+  price: { price: 10, currency: "USD" },
+  availability: "InStock",
+  ...over,
+});
 
 function client(fetchImpl: typeof fetch) {
   const logs: { event: string; data: Record<string, unknown> }[] = [];
@@ -47,8 +54,18 @@ describe("Channel3 result validation", () => {
           { id: 5, title: "bad id", offers: [] },
           { id: "no-title", offers: [offer()] },
           "not an object",
-          { id: "bad-offers", title: "Gloves", offers: [offer({ price: { price: "10", currency: "USD" } }), offer({ price: { price: -1, currency: "USD" } }), null] },
-          { id: "imgs", title: "Lids", images: [{ url: "https://cdn.example/i.png" }, { url: "javascript:x" }], brands: "nope", offers: [offer()] },
+          {
+            id: "bad-offers",
+            title: "Gloves",
+            offers: [offer({ price: { price: "10", currency: "USD" } }), offer({ price: { price: -1, currency: "USD" } }), null],
+          },
+          {
+            id: "imgs",
+            title: "Lids",
+            images: [{ url: "https://cdn.example/i.png" }, { url: "javascript:x" }],
+            brands: "nope",
+            offers: [offer()],
+          },
         ],
       }),
     );
@@ -69,7 +86,8 @@ describe("Channel3 result validation", () => {
   });
 
   it("aborts with the caller's signal", async () => {
-    const hang: typeof fetch = (_u, init) => new Promise((_r, reject) => init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError"))));
+    const hang: typeof fetch = (_u, init) =>
+      new Promise((_r, reject) => init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError"))));
     const { c } = client(hang);
     const controller = new AbortController();
     const pending = c.search({ query: "x", signal: controller.signal });

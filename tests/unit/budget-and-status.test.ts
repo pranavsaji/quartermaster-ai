@@ -56,7 +56,11 @@ describe("request status derivation", () => {
 
 describe("audit hashing helpers", () => {
   it("makes arbitrary data hashable without losing information", () => {
-    expect(toHashable({ a: 1.25, b: new Date("2026-01-01T00:00:00Z"), c: undefined, d: [1, null] })).toEqual({ a: "1.25", b: "2026-01-01T00:00:00.000Z", d: [1, null] });
+    expect(toHashable({ a: 1.25, b: new Date("2026-01-01T00:00:00Z"), c: undefined, d: [1, null] })).toEqual({
+      a: "1.25",
+      b: "2026-01-01T00:00:00.000Z",
+      d: [1, null],
+    });
   });
 });
 
@@ -64,7 +68,9 @@ describe("configuration", () => {
   it("refuses insecure production configuration", () => {
     expect(() => loadConfig({ NODE_ENV: "production" })).toThrow(/DATABASE_URL/);
     expect(() => loadConfig({ NODE_ENV: "production", DATABASE_URL: "pglite://memory", TRUSTRAIL_SIGNING_KEY: "x" })).toThrow(/PGlite/);
-    expect(() => loadConfig({ NODE_ENV: "production", DATABASE_URL: "postgres://x", TRUSTRAIL_SIGNING_KEY: "x", PAYPAL_ENV: "live" })).toThrow(/Live PayPal/);
+    expect(() =>
+      loadConfig({ NODE_ENV: "production", DATABASE_URL: "postgres://x", TRUSTRAIL_SIGNING_KEY: "x", PAYPAL_ENV: "live" }),
+    ).toThrow(/Live PayPal/);
   });
 
   it("requires PayPal credentials in pairs and secures production cookies", () => {

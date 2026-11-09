@@ -6,7 +6,14 @@
   "description": "External integrations: Channel3 market search, OpenAI structured outputs, Zapier notifications.",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
-  "exports": { ".": "./src/index.ts" },
-  "scripts": { "typecheck": "tsc -p tsconfig.json" },
-  "dependencies": { "@qm/contracts": "workspace:*", "zod": "^4.6.7" }
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@qm/contracts": "workspace:*",
+    "zod": "^4.6.7"
+  }
 }
