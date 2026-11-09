@@ -718,7 +718,11 @@ async function finishResearch(rc: ResearchContext, demand: Demand, market: Marke
       total_minor: a.planned.cart.total_minor,
       decision: a.decision,
       violations: a.violations,
-      lines: a.planned.lines.map((l) => `${l.packs} × ${l.offer.title} (${l.units} units)`),
+      // Name the counting unit, so "2 packs, 36 units" cannot be read as 36 packs.
+      lines: a.planned.lines.map((l) => {
+        const unit = demand.itemRows.get(l.inventory_item_id)?.unit ?? "units";
+        return `${l.packs} pack(s) of "${l.offer.title}", ${l.units} ${unit} in total`;
+      }),
     })),
     blocked: outcome.blocked,
     unfilled_items: unfilled.map((id) => demand.itemRows.get(id)?.name ?? id),
