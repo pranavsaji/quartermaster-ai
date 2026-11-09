@@ -1,6 +1,5 @@
-import type { PaymentStatus } from "@qm/contracts";
+import type { IntentCertificatePayload, PaymentStatus } from "@qm/contracts";
 import type { VerificationResult } from "../certificates/certificate";
-import type { IntentCertificatePayload } from "@qm/contracts";
 
 /** The subset of a PayPal Orders v2 order that TrustRail inspects before capture. */
 export interface ProviderOrderView {
@@ -60,8 +59,10 @@ export function guardCapture(input: CaptureGuardInput): CaptureGuardResult {
   }
   if (o.custom_id !== c.intent_id) fail("INTENT_BINDING", "PayPal order is not bound to this intent.");
   if (o.reference_id !== c.purchase_order_id) fail("PO_BINDING", "PayPal order is not bound to this purchase order.");
-  if (input.expected_payee_merchant_id && o.payee_merchant_id && o.payee_merchant_id !== input.expected_payee_merchant_id) {
-    fail("PAYEE_MISMATCH", "Funds would go to an unexpected merchant account.");
+  // When a payee is configured it must be positively confirmed: an order that does not report
+  // its payee is not evidence that the funds go to the right merchant.
+  if (input.expected_payee_merchant_id && o.payee_merchant_id !== input.expected_payee_merchant_id) {
+    fail("PAYEE_MISMATCH", o.payee_merchant_id ? "Funds would go to an unexpected merchant account." : "PayPal order does not identify its payee; the expected merchant cannot be confirmed.");
   }
 
   if (!input.reservation || input.reservation.status !== "ACTIVE") fail("NO_RESERVATION", "No active budget reservation backs this payment.");
