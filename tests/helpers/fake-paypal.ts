@@ -27,14 +27,22 @@ export class FakePayPal {
   serverErrorAfterNextCapture = false;
   /** Next refund: perform it but drop the response. */
   dropNextRefundResponse = false;
+  /** Next refund: reject it with this PayPal error without refunding anything. */
+  rejectNextRefund: { status: number; issue: string } | null = null;
   refundCount = 0;
   /** Status PayPal reports for new refunds. */
   refundStatus: "COMPLETED" | "PENDING" = "COMPLETED";
   /** Next create: report this amount instead of the requested one (provider-side mismatch). */
   tamperNextCreateAmount: string | null = null;
+  /**
+   * Next create: fail without creating an order — "network" drops the connection, a status/issue
+   * pair answers with that PayPal error.
+   */
+  failNextCreate: "network" | { status: number; issue: string } | null = null;
   /** Bodies of verify-webhook-signature calls, so tests can assert exactly what was sent. */
   verificationRequests: Record<string, unknown>[] = [];
-  captureStatus: "COMPLETED" | "PENDING" = "COMPLETED";
+  /** Status PayPal reports for new captures (DECLINED/FAILED: the capture call succeeds but the capture did not). */
+  captureStatus: "COMPLETED" | "PENDING" | "DECLINED" | "FAILED" = "COMPLETED";
   /** Applied to GET responses to simulate a provider-side amount discrepancy. */
   tamperAmount: string | null = null;
   private seq = 0;
@@ -59,6 +67,12 @@ export class FakePayPal {
     if (requestId && this.requestIds.has(requestId)) return json(200, this.requestIds.get(requestId));
 
     if (method === "POST" && url.pathname === "/v2/checkout/orders") {
+      if (this.failNextCreate) {
+        const fault = this.failNextCreate;
+        this.failNextCreate = null;
+        if (fault === "network") throw new TypeError("fetch failed: ECONNRESET");
+        return json(fault.status, { name: fault.issue, details: [{ issue: fault.issue, description: "injected fault" }] });
+      }
       const body = JSON.parse(String(init?.body)) as CreateOrderRequest;
       const unit = body.purchase_units[0]!;
       const b = unit.amount.breakdown;
@@ -149,6 +163,11 @@ export class FakePayPal {
 
     const refundMatch = /^\/v2\/payments\/captures\/([^/]+)\/refund$/.exec(url.pathname);
     if (refundMatch && method === "POST") {
+      if (this.rejectNextRefund) {
+        const fault = this.rejectNextRefund;
+        this.rejectNextRefund = null;
+        return json(fault.status, { name: fault.issue, details: [{ issue: fault.issue, description: "injected fault" }] });
+      }
       const body = JSON.parse(String(init?.body ?? "{}")) as { amount?: { value: string; currency_code: string } };
       const refund = { id: `REF${this.nonce}${++this.seq}`, status: this.refundStatus, amount: body.amount };
       this.refundCount++;
@@ -207,8 +226,10 @@ export class FakePayPal {
     this.failNextCaptureBeforeProcessing = false;
     this.serverErrorAfterNextCapture = false;
     this.dropNextRefundResponse = false;
+    this.rejectNextRefund = null;
     this.refundStatus = "COMPLETED";
     this.tamperNextCreateAmount = null;
+    this.failNextCreate = null;
     this.tamperAmount = null;
     this.captureStatus = "COMPLETED";
   }
