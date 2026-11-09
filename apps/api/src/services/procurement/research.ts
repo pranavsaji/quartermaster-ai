@@ -707,7 +707,8 @@ async function explain(rc: ResearchContext, facts: ExplanationFacts) {
 async function finishResearch(rc: ResearchContext, demand: Demand, market: MarketReferenceDto[], outcome: PlanOutcome) {
   const { ctx, run } = rc;
   const { accepted } = outcome;
-  const covered = new Set(accepted.flatMap((a) => a.planned.lines.map((l) => l.inventory_item_id)));
+  // One line can cover several items that share an offer; count every item it covers.
+  const covered = new Set(accepted.flatMap((a) => a.planned.lines.flatMap((l) => l.inventory_item_ids)));
   const unfilled = demand.needed.map((l) => l.inventory_item_id).filter((id) => !covered.has(id));
   const facts: ExplanationFacts = {
     intent_notes: rc.intent.notes ?? "",
