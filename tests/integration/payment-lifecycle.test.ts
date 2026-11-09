@@ -97,14 +97,15 @@ describe("capture", () => {
   it("never reports a real capture as failed when recording it locally fails", async () => {
     const o = await approvedOrder("CLN-GLOVES", "Restock gloves for the capture test");
     h.paypal.approve(o.paypalOrderId);
-    // Fail the first database transaction after PayPal has captured (simulated deadlock).
+    // Fail the first database transaction after PayPal has captured with an error that is not
+    // retried (the connection was terminated by an administrator).
     const realCapture = h.ctx.paypal.captureOrder.bind(h.ctx.paypal);
     const realTransaction = h.ctx.db.transaction.bind(h.ctx.db);
     h.ctx.paypal.captureOrder = async (...args) => {
       const res = await realCapture(...args);
       h.ctx.db.transaction = async () => {
         h.ctx.db.transaction = realTransaction;
-        throw Object.assign(new Error("deadlock detected"), { code: "40P01" });
+        throw Object.assign(new Error("terminating connection due to administrator command"), { code: "57P01" });
       };
       return res;
     };
@@ -112,7 +113,7 @@ describe("capture", () => {
       const res = await owner.post(`/payments/${o.paymentId}/capture`, { paypal_order_id: o.paypalOrderId });
       expect(res.status).toBe(200);
       expect(res.body.payment.status).toBe("CAPTURE_PENDING");
-      expect(res.body.payment.failure_message ?? "").not.toMatch(/deadlock/);
+      expect(res.body.payment.failure_message ?? "").not.toMatch(/terminating/);
     } finally {
       h.ctx.paypal.captureOrder = realCapture;
       h.ctx.db.transaction = realTransaction;
