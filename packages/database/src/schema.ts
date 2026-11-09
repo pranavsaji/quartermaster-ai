@@ -282,6 +282,8 @@ export const purchaseRequests = pgTable(
     market: jsonb("market").$type<unknown[]>().notNull().default([]),
     forecastRunId: uuid("forecast_run_id"),
     error: text("error"),
+    /** Identifies the research run that currently owns the request; finishing writes must match it. */
+    researchClaim: uuid("research_claim"),
     researchStartedAt: ts("research_started_at"),
     researchCompletedAt: ts("research_completed_at"),
     approvedAt: ts("approved_at"),

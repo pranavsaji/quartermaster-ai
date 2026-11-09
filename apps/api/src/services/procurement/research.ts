@@ -1,4 +1,5 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import { COMMITTED_PO_STATUSES, currencyExponent, type MarketReferenceDto } from "@qm/contracts";
 import { purchaseCandidates, purchaseOrders, purchaseRequests, supplierCatalogItems } from "@qm/database";
 import {
@@ -127,7 +128,7 @@ export async function researchRequest(ctx: AppContext, user: { id: string; organ
     });
   } catch (err) {
     // Clean-up must never replace the error that caused it.
-    await failResearch(ctx, requestId, run, createdProposalIds, err).catch((cleanup: unknown) =>
+    await failResearch(ctx, requestId, claimed.researchClaim, run, createdProposalIds, err).catch((cleanup: unknown) =>
       ctx.log.error({ err: cleanup, request_id: requestId }, "could not record a failed research run"),
     );
     throw err;
@@ -138,6 +139,19 @@ export async function researchRequest(ctx: AppContext, user: { id: string; organ
  * Finishing writes are conditional on the request still RESEARCHING: if the sweeper already
  * failed it as abandoned, this run must not resurrect it (its proposals are withdrawn instead).
  */
+/**
+ * WHERE clause matching the request only while this run still owns it: still RESEARCHING and
+ * still carrying this run's claim. A run that was failed as abandoned and then re-claimed by a new
+ * research request can no longer change the request.
+ */
+function ownsRequest(requestId: string, claim: string | null) {
+  return and(
+    eq(purchaseRequests.id, requestId),
+    eq(purchaseRequests.status, "RESEARCHING"),
+    claim ? eq(purchaseRequests.researchClaim, claim) : isNull(purchaseRequests.researchClaim),
+  );
+}
+
 function assertStillResearching(rows: { id: string }[]): void {
   if (rows.length === 0) throw conflict("RESEARCH_INTERRUPTED", "Research ran too long and was stopped. Run it again.");
 }
@@ -149,7 +163,14 @@ function assertStillResearching(rows: { id: string }[]): void {
  * authored for clients, anything else stays in the logs. The request is still RESEARCHING while
  * its proposals are withdrawn, so approval (which refuses RESEARCHING) cannot interleave.
  */
-async function failResearch(ctx: AppContext, requestId: string, run: AgentRun | null, createdProposalIds: string[], err: unknown) {
+async function failResearch(
+  ctx: AppContext,
+  requestId: string,
+  claim: string | null,
+  run: AgentRun | null,
+  createdProposalIds: string[],
+  err: unknown,
+) {
   ctx.log.error({ err, request_id: requestId }, "research failed");
   const message = err instanceof AppError ? err.message : "Research failed unexpectedly. Try again.";
   if (createdProposalIds.length) {
@@ -161,7 +182,7 @@ async function failResearch(ctx: AppContext, requestId: string, run: AgentRun | 
   await ctx.db
     .update(purchaseRequests)
     .set({ status: "FAILED", error: message.slice(0, 500), updatedAt: ctx.now() })
-    .where(and(eq(purchaseRequests.id, requestId), eq(purchaseRequests.status, "RESEARCHING")));
+    .where(ownsRequest(requestId, claim));
   await run
     ?.finish("FAILED", message)
     .catch((e: unknown) => ctx.log.warn({ err: e, request_id: requestId }, "could not close the agent run"));
@@ -197,7 +218,7 @@ async function claimRequest(ctx: AppContext, orgId: string, requestId: string, n
     await tx.delete(purchaseCandidates).where(eq(purchaseCandidates.requestId, requestId));
     const [updated] = await tx
       .update(purchaseRequests)
-      .set({ status: "RESEARCHING", researchStartedAt: now, error: null, updatedAt: now })
+      .set({ status: "RESEARCHING", researchClaim: randomUUID(), researchStartedAt: now, error: null, updatedAt: now })
       .where(eq(purchaseRequests.id, requestId))
       .returning();
     return updated!;
@@ -270,7 +291,7 @@ async function finishNothingToBuy(rc: ResearchContext, demand: Demand) {
       researchCompletedAt: ctx.now(),
       updatedAt: ctx.now(),
     })
-    .where(and(eq(purchaseRequests.id, rc.requestId), eq(purchaseRequests.status, "RESEARCHING")))
+    .where(ownsRequest(rc.requestId, rc.request.researchClaim))
     .returning({ id: purchaseRequests.id })
     .then(assertStillResearching);
   await run.finish("SUCCEEDED");
@@ -715,7 +736,7 @@ async function finishResearch(rc: ResearchContext, demand: Demand, market: Marke
       researchCompletedAt: ctx.now(),
       updatedAt: ctx.now(),
     })
-    .where(and(eq(purchaseRequests.id, rc.requestId), eq(purchaseRequests.status, "RESEARCHING")))
+    .where(ownsRequest(rc.requestId, rc.request.researchClaim))
     .returning({ id: purchaseRequests.id })
     .then(assertStillResearching);
   await refreshRequestStatus(ctx.db, rc.requestId, ctx.now());

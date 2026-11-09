@@ -50,4 +50,37 @@ describe("interrupted research", () => {
     expect(orders.length).toBeGreaterThan(0);
     expect(orders.every((o) => o.status === "SUPERSEDED")).toBe(true);
   });
+
+  it("cannot touch a request another research run has claimed since", async () => {
+    const created = await owner.post("/procurement/requests", { instruction: DEMO_INSTRUCTION });
+    const id = created.body.id as string;
+    // Simulate: this run is failed as abandoned and a new run claims the request again before
+    // this one reaches its final write.
+    await h.ctx.db.execute(sql`
+      create or replace function qm_test_reclaim_research() returns trigger language plpgsql as $$
+      begin
+        if new.tool = 'recommendation.explain' then
+          update purchase_requests set status = 'RESEARCHING', research_claim = gen_random_uuid()
+          where status = 'RESEARCHING';
+        end if;
+        return new;
+      end $$`);
+    await h.ctx.db.execute(sql`
+      create trigger qm_test_reclaim_research after insert on tool_executions
+      for each row execute function qm_test_reclaim_research()`);
+    let otherClaim: string | null = null;
+    try {
+      const res = await owner.post(`/procurement/requests/${id}/research`);
+      expect(res.status).toBe(409);
+      expect(res.body.error.code).toBe("RESEARCH_INTERRUPTED");
+    } finally {
+      await h.ctx.db.execute(sql`drop trigger if exists qm_test_reclaim_research on tool_executions`);
+    }
+    const [req] = await h.ctx.db.select().from(purchaseRequests).where(eq(purchaseRequests.id, id));
+    otherClaim = req!.researchClaim;
+    // The other run still owns the request: the interrupted run neither finished nor failed it.
+    expect(req!.status).toBe("RESEARCHING");
+    expect(otherClaim).not.toBeNull();
+    expect(req!.error).toBeNull();
+  });
 });
