@@ -1,9 +1,9 @@
 import type { PurchaseOrderDto } from "@qm/contracts";
-import { act, screen } from "@testing-library/react";
+import { act, fireEvent, screen } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ProposalCard } from "@/components/procurement/ProposalCard";
-import { delivery, jsonResponse, mockFetch, payment, purchaseOrder, renderWithSession } from "./helpers";
+import { certificate, delivery, jsonResponse, mockFetch, payment, purchaseOrder, renderWithSession } from "./helpers";
 
 /** The request page in miniature: `onChange` replaces the proposal, as RequestDetail does. */
 function Harness({ initial, onReload = vi.fn() }: { initial: PurchaseOrderDto; onReload?: () => void }) {
@@ -71,6 +71,37 @@ describe("ProposalCard payment transitions", () => {
 
     expect(onReload).toHaveBeenCalledTimes(1);
     expect(screen.getByText("Payment: Completed")).toBeInTheDocument();
+  });
+
+  it("drops a verification result when the certificate changes", async () => {
+    const cert = certificate();
+    mockFetch({
+      "GET /api/v1/intents/intent-1/verify": [
+        jsonResponse({
+          intent_id: "intent-1",
+          status: "VALID",
+          valid: true,
+          checks: [],
+          certificate: cert,
+          verified_at: "2026-11-09T10:00:00.000Z",
+        }),
+      ],
+    });
+    const paid = purchaseOrder({ status: "PAID", certificate: cert });
+    const { rerender } = renderWithSession(<ProposalCard requestId="req-1" po={paid} onChange={vi.fn()} onReload={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "Verify" }));
+    expect(await screen.findByText("Certificate is valid.")).toBeInTheDocument();
+
+    rerender(
+      <ProposalCard
+        requestId="req-1"
+        po={{ ...paid, certificate: { ...cert, status: "CONSUMED" } }}
+        onChange={vi.fn()}
+        onReload={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText("Certificate is valid.")).not.toBeInTheDocument();
+    expect(screen.getByText("Certificate: Consumed")).toBeInTheDocument();
   });
 
   it("does not re-read the order while the payment is still settling", async () => {

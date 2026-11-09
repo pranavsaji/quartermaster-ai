@@ -27,7 +27,8 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
  * countdown and an on-demand server-side verification of every check.
  */
 export function CertificatePanel({ certificate }: { certificate: IntentCertificateDto }) {
-  const now = useNow(1000);
+  // Only an active certificate shows a ticking countdown.
+  const now = useNow(1000, certificate.status === "ACTIVE");
   const remaining = countdown(certificate.expires_at, now);
   const [verification, setVerification] = useState<CertificateVerificationDto | null>(null);
   const verify = useAction(async () => {

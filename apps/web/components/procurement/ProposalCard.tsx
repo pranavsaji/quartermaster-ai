@@ -191,7 +191,8 @@ export function ProposalCard({
           </Notice>
         ) : null}
 
-        {cert ? <CertificatePanel certificate={cert} /> : null}
+        {/* Keyed by certificate and status: a verification result belongs to the certificate it checked. */}
+        {cert ? <CertificatePanel key={`${cert.id}:${cert.status}`} certificate={cert} /> : null}
 
         {payable && can("pay") && cert ? (
           <section aria-label="Pay with PayPal" className="rounded-xl border border-line bg-canvas/50 p-4">

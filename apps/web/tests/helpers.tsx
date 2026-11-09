@@ -1,5 +1,6 @@
 import type {
   DeliveryDto,
+  IntentCertificateDto,
   InventoryItemDto,
   PaymentDto,
   PolicyDecisionDto,
@@ -166,6 +167,37 @@ export function purchaseOrder(overrides: Partial<PurchaseOrderDto> = {}): Purcha
     payment: null,
     delivery: null,
     created_at: "2026-11-09T10:00:00.000Z",
+    ...overrides,
+  };
+}
+
+export function certificate(overrides: Partial<IntentCertificateDto> = {}): IntentCertificateDto {
+  return {
+    id: "intent-1",
+    status: "ACTIVE",
+    key_id: "key-2026",
+    signature: "c2lnbmF0dXJl",
+    algorithm: "Ed25519",
+    issued_at: "2026-11-09T10:00:00.000Z",
+    expires_at: "2099-01-01T00:00:00.000Z",
+    payload: {
+      certificate_version: 1,
+      intent_id: "intent-1",
+      organization_id: "org-1",
+      buyer_id: "u-1",
+      purchase_order_id: "po-1",
+      supplier_id: "sup-1",
+      cart_hash: "sha256:cart-1",
+      mandate_id: "mandate-1",
+      mandate_version: 3,
+      policy_decision_id: "dec-1",
+      currency: "USD",
+      approved_amount_minor: 10000,
+      approved_at: "2026-11-09T10:00:00.000Z",
+      expires_at: "2099-01-01T00:00:00.000Z",
+      nonce: "nonce-1",
+      key_id: "key-2026",
+    },
     ...overrides,
   };
 }
