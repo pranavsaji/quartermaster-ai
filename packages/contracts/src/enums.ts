@@ -67,6 +67,8 @@ export const VIOLATION_CODES = [
   "SUBSCRIPTION_NOT_ALLOWED",
   "QUARANTINED_SOURCE",
   "QUANTITY_EXCEEDS_NEED",
+  /** The facts TrustRail was given are malformed; evaluation fails closed. */
+  "POLICY_INPUT_INVALID",
 ] as const;
 export type ViolationCode = (typeof VIOLATION_CODES)[number];
 

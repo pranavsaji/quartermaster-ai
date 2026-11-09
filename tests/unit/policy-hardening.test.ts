@@ -41,7 +41,7 @@ describe("policy engine — totality", () => {
 
   it("blocks an invalid clock", () => {
     const r = blocked(baseInput({ now: new Date(Number.NaN) }));
-    expect(r.violations[0]).toMatchObject({ code: "MANDATE_INACTIVE", evidence: { reason: "invalid_now" } });
+    expect(r.violations[0]).toMatchObject({ code: "POLICY_INPUT_INVALID", evidence: { reason: "invalid_now" } });
     expect(r.evaluated_at).toBe("invalid-time");
   });
 
@@ -56,11 +56,11 @@ describe("policy engine — totality", () => {
     ["approved_supplier_ids", null],
   ] as const)("blocks a mandate with malformed %s", (field, value) => {
     const r = blocked(baseInput({ mandate: mandate({ [field]: value }) }));
-    expect(r.violations[0]).toMatchObject({ code: "MANDATE_INACTIVE", evidence: { fields: [field] } });
+    expect(r.violations[0]).toMatchObject({ code: "POLICY_INPUT_INVALID", evidence: { fields: [field] } });
   });
 
   it("blocks a malformed budget snapshot or request budget", () => {
-    expect(blocked(baseInput({ budget: { limit_minor: 50_000, spent_minor: Number.NaN, reserved_minor: 0 } })).violations.map((v) => v.code)).toContain("WEEKLY_BUDGET_EXCEEDED");
+    expect(blocked(baseInput({ budget: { limit_minor: 50_000, spent_minor: Number.NaN, reserved_minor: 0 } })).violations.map((v) => v.code)).toContain("POLICY_INPUT_INVALID");
     expect(blocked(baseInput({ request_budget_limit_minor: 1.5 })).violations.map((v) => v.code)).toContain("REQUEST_BUDGET_EXCEEDED");
     // A negative request limit is legal (other committed orders already used it up) and simply exceeded.
     expect(blocked(baseInput({ request_budget_limit_minor: -100 })).violations.map((v) => v.code)).toContain("REQUEST_BUDGET_EXCEEDED");
@@ -68,7 +68,7 @@ describe("policy engine — totality", () => {
 
   it("fails closed when the input is structurally broken", () => {
     const r = blocked({ ...baseInput(), catalog: null as never });
-    expect(r.violations).toEqual([expect.objectContaining({ code: "MANDATE_INACTIVE", evidence: expect.objectContaining({ reason: "evaluation_error" }) })]);
+    expect(r.violations).toEqual([expect.objectContaining({ code: "POLICY_INPUT_INVALID", evidence: expect.objectContaining({ reason: "evaluation_error" }) })]);
     expect(r.mandate_version).toBe(1);
     expect(() => evaluatePolicy(null as never)).not.toThrow();
     expect(evaluatePolicy(null as never).decision).toBe("BLOCK");

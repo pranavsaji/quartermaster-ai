@@ -1,4 +1,4 @@
-import { applyBps, isValidBps, type PolicyDecisionKind, type ProductCategory, type PurchaseOrderStatus, type ViolationCode } from "@qm/contracts";
+import { COMMITTED_PO_STATUSES, applyBps, isValidBps, type PolicyDecisionKind, type ProductCategory, type PurchaseOrderStatus, type ViolationCode } from "@qm/contracts";
 import { type Cart, checkCartArithmetic } from "../cart";
 import { digest } from "../canonical";
 import type { SpendMandate } from "../mandates/types";
@@ -51,7 +51,8 @@ export interface PriorOrder {
  * Purchase-order statuses that commit spend: they count against request budgets and as
  * potential duplicates. Single source of truth for TrustRail and its callers.
  */
-export const COMMITTED_ORDER_STATUSES = ["APPROVED", "PAYMENT_PENDING", "PAID", "FULFILLED"] as const satisfies readonly PurchaseOrderStatus[];
+/** Orders that hold or have spent budget (shared with the API through @qm/contracts). */
+export const COMMITTED_ORDER_STATUSES = COMMITTED_PO_STATUSES;
 export type CommittedOrderStatus = (typeof COMMITTED_ORDER_STATUSES)[number];
 
 export function isCommittedOrderStatus(status: string): status is CommittedOrderStatus {
@@ -164,12 +165,12 @@ function evaluate(input: PolicyInput): PolicyResult {
   }
   const badFields = malformedMandateFields(mandate);
   if (badFields.length > 0) {
-    violate({ code: "MANDATE_INACTIVE", severity: "BLOCK", message: "The Spend Mandate is malformed; no valid mandate is in force.", evidence: { fields: badFields } });
+    violate({ code: "POLICY_INPUT_INVALID", severity: "BLOCK", message: "The Spend Mandate is malformed; no valid mandate is in force.", evidence: { fields: badFields } });
     return finalize(input, violations, checks, mandate);
   }
   if (!validNow(input.now)) {
     // Freshness, duplicate windows and the mandate's validity are all judged at `now`.
-    violate({ code: "MANDATE_INACTIVE", severity: "BLOCK", message: "Evaluation time is invalid; the mandate cannot be applied.", evidence: { reason: "invalid_now" } });
+    violate({ code: "POLICY_INPUT_INVALID", severity: "BLOCK", message: "Evaluation time is invalid; the mandate cannot be applied.", evidence: { reason: "invalid_now" } });
     return finalize(input, violations, checks, mandate);
   }
   check("MANDATE_ACTIVE", true, `Mandate v${mandate.version} is active.`);
@@ -177,7 +178,7 @@ function evaluate(input: PolicyInput): PolicyResult {
   // --- Malformed facts from the system of record ----------------------------------------
   const budgetFields = (["limit_minor", "spent_minor", "reserved_minor"] as const).filter((f) => !isNonNegativeMinor(input.budget?.[f]));
   if (budgetFields.length > 0) {
-    violate({ code: "WEEKLY_BUDGET_EXCEEDED", severity: "BLOCK", message: "The budget snapshot is malformed; remaining budget cannot be verified.", evidence: { fields: budgetFields } });
+    violate({ code: "POLICY_INPUT_INVALID", severity: "BLOCK", message: "The budget snapshot is malformed; remaining budget cannot be verified.", evidence: { fields: budgetFields } });
   }
   if (input.request_budget_limit_minor !== null && !isMinor(input.request_budget_limit_minor)) {
     violate({
@@ -620,7 +621,7 @@ function failClosed(input: PolicyInput, err: unknown): PolicyResult {
     decision: "BLOCK",
     violations: [
       {
-        code: "MANDATE_INACTIVE",
+        code: "POLICY_INPUT_INVALID",
         severity: "BLOCK",
         message: "Policy input is malformed; evaluation failed closed.",
         evidence: { reason: "evaluation_error", error: (err instanceof Error ? err.message : String(err)).slice(0, 200) },
