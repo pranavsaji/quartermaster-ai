@@ -152,6 +152,14 @@ export function evaluatePolicy(input: PolicyInput): PolicyResult {
 
   if (!supplier || !supplier.active) {
     violate({ code: "SUPPLIER_INACTIVE", severity: "BLOCK", message: "Supplier is unknown or inactive." });
+  } else if (supplier.id !== cart.supplier_id) {
+    // Terms from one supplier must never authorise another supplier's cart.
+    violate({
+      code: "SUPPLIER_INACTIVE",
+      severity: "BLOCK",
+      message: "Supplier terms provided do not belong to the cart's supplier.",
+      evidence: { cart_supplier_id: cart.supplier_id, terms_supplier_id: supplier.id },
+    });
   } else if (!isValidBps(supplier.tax_rate_bps)) {
     violate({
       code: "SUPPLIER_INACTIVE",

@@ -11,6 +11,17 @@ const withSupplier = (patch: Partial<NonNullable<PolicyInput["supplier"]>>, line
   return input;
 };
 
+describe("policy engine — supplier binding", () => {
+  it("blocks when the supplier terms belong to a different supplier than the cart", () => {
+    const r = evaluatePolicy(withSupplier({ id: "33333333-3333-4333-8333-333333333333" }));
+    expect(r.decision).toBe("BLOCK");
+    expect(r.violations.find((v) => v.code === "SUPPLIER_INACTIVE")).toMatchObject({
+      message: "Supplier terms provided do not belong to the cart's supplier.",
+      evidence: { cart_supplier_id: SUPPLIER, terms_supplier_id: "33333333-3333-4333-8333-333333333333" },
+    });
+  });
+});
+
 describe("policy engine — tax rounding", () => {
   it("expects exactly the tax that quote building charges (one shared rounding helper)", () => {
     // 10_806 × 8.25 % = 891.495 → 891 under half-up on the exact product.
