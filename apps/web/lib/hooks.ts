@@ -130,3 +130,54 @@ export function useInterval(tick: () => void, intervalMs: number, active: boolea
     return () => window.clearInterval(id);
   }, [intervalMs, active]);
 }
+
+export interface PagedState<T> {
+  items: T[] | undefined;
+  error: unknown;
+  hasMore: boolean;
+  loadingMore: boolean;
+  loadMore: () => void;
+  reload: () => void;
+  refreshing: boolean;
+}
+
+/** Cursor-paginated list: first page on mount, "load more" appends the next one. */
+export function usePagedResource<T>(
+  fetchPage: (cursor: string | null, signal?: AbortSignal) => Promise<{ items: T[]; next_cursor: string | null }>,
+  deps: DependencyList,
+): PagedState<T> {
+  const first = useResource((signal) => fetchPage(null, signal), deps);
+  const [extra, setExtra] = useState<{ items: T[]; cursor: string | null } | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [moreError, setMoreError] = useState<unknown>(undefined);
+  const fetchRef = useRef(fetchPage);
+  fetchRef.current = fetchPage;
+
+  // Reset appended pages whenever the first page is (re)loaded.
+  useEffect(() => {
+    setExtra(null);
+    setMoreError(undefined);
+  }, [first.data]);
+
+  const cursor = extra ? extra.cursor : (first.data?.next_cursor ?? null);
+
+  const loadMore = useCallback(() => {
+    if (!cursor || loadingMore) return;
+    setLoadingMore(true);
+    fetchRef
+      .current(cursor)
+      .then((page) => setExtra((prev) => ({ items: [...(prev?.items ?? []), ...page.items], cursor: page.next_cursor })))
+      .catch(setMoreError)
+      .finally(() => setLoadingMore(false));
+  }, [cursor, loadingMore]);
+
+  return {
+    items: first.data ? [...first.data.items, ...(extra?.items ?? [])] : undefined,
+    error: first.error ?? moreError,
+    hasMore: Boolean(cursor),
+    loadingMore,
+    loadMore,
+    reload: first.reload,
+    refreshing: first.refreshing,
+  };
+}
