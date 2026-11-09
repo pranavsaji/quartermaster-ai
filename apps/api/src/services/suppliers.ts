@@ -11,7 +11,7 @@ export function toSupplierProfile(s: SupplierRow, mandate: SpendMandate | null):
   return {
     id: s.id,
     name: s.name,
-    approved: !!mandate?.approved_supplier_ids.includes(s.id),
+    approved: Boolean(mandate?.approved_supplier_ids.includes(s.id)),
     active: s.active,
     checkout_eligible: s.checkoutEligible,
     lead_time_days: s.leadTimeDays,
@@ -64,7 +64,7 @@ export function toSupplierDto(s: SupplierRow, mandate: SpendMandate | null): Sup
   return {
     id: s.id,
     name: s.name,
-    approved: !!mandate?.approved_supplier_ids.includes(s.id),
+    approved: Boolean(mandate?.approved_supplier_ids.includes(s.id)),
     active: s.active,
     checkout_eligible: s.checkoutEligible,
     lead_time_days: s.leadTimeDays,

@@ -1,5 +1,5 @@
 import { and, eq, gte, inArray, sql } from "drizzle-orm";
-import type { ForecastRunDto, InventoryAdjustmentRequest, InventoryItemDto, ProductCategory, DataSource } from "@qm/contracts";
+import type { ForecastRunDto, InventoryAdjustmentRequest, InventoryItemDto, ProductCategory } from "@qm/contracts";
 import {
   consumptionHistory,
   deliveries,
@@ -124,7 +124,7 @@ export function toInventoryDto(item: LoadedItem): InventoryItemDto {
     days_of_cover: daysOfCover(available, usage),
     status: stockStatus(available, reorderPoint, input.safety_stock),
     preferred_supplier_id: row.preferredSupplierId,
-    data_source: row.dataSource as DataSource,
+    data_source: row.dataSource,
   };
 }
 

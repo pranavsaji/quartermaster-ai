@@ -158,7 +158,7 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
       throw new Error("DATABASE_SSL=disable is refused in production; use TLS, or set DATABASE_ALLOW_INSECURE_TRANSPORT=true for a trusted private network");
     }
   }
-  if (!!e.PAYPAL_CLIENT_ID !== !!e.PAYPAL_CLIENT_SECRET) {
+  if (Boolean(e.PAYPAL_CLIENT_ID) !== Boolean(e.PAYPAL_CLIENT_SECRET)) {
     throw new Error("PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET must be set together");
   }
   if (production && e.PAYPAL_CLIENT_ID) {

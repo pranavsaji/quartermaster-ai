@@ -50,7 +50,7 @@ describe("request status derivation", () => {
     [["REJECTED"], "REJECTED"],
     [["EXPIRED"], "CANCELLED"],
   ])("%j → %s", (statuses, expected) => {
-    expect(deriveRequestStatus(statuses as string[], "DRAFT")).toBe(expected);
+    expect(deriveRequestStatus(statuses, "DRAFT")).toBe(expected);
   });
 });
 

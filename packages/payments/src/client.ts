@@ -50,11 +50,11 @@ export class PayPalClient {
   }
 
   get configured(): boolean {
-    return !!this.config.clientId && !!this.config.clientSecret;
+    return Boolean(this.config.clientId) && Boolean(this.config.clientSecret);
   }
 
   get webhookConfigured(): boolean {
-    return this.configured && !!this.config.webhookId;
+    return this.configured && Boolean(this.config.webhookId);
   }
 
   /* ------------------------------------------------------------------ OAuth */

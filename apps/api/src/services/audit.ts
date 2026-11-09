@@ -33,7 +33,8 @@ export function toHashable(value: unknown): unknown {
     }
     return out;
   }
-  return String(value);
+  // Only symbols and functions remain; they never appear in audit data.
+  return "[unserializable]";
 }
 
 export function auditHash(e: {

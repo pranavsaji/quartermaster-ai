@@ -30,7 +30,7 @@ export class Notifier {
   }
 
   get enabled(): boolean {
-    return !!this.config.webhookUrl;
+    return Boolean(this.config.webhookUrl);
   }
 
   async send(n: Notification): Promise<void> {

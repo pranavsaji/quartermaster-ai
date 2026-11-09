@@ -28,7 +28,7 @@ export async function loadPaymentForSystem(db: DbOrTx, id: string, lock = false)
   return row;
 }
 
-export const statusOf = (p: Pick<PaymentRow, "status">): PaymentStatus => p.status as PaymentStatus;
+export const statusOf = (p: Pick<PaymentRow, "status">): PaymentStatus => p.status;
 
 /**
  * Named exceptions to the forward-only payment state machine. Each one is a deliberate,

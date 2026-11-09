@@ -63,8 +63,8 @@ export async function createHarness(opts: { channel3Fetch?: typeof fetch; openai
     };
     return {
       get: (path) => a.get(`/api/v1${path}`),
-      post: (path, body, key = randomUUID()) => withHeaders(a.post(`/api/v1${path}`), key).send((body ?? {}) as object),
-      put: (path, body, key = randomUUID()) => withHeaders(a.put(`/api/v1${path}`), key).send((body ?? {}) as object),
+      post: (path, body, key = randomUUID()) => withHeaders(a.post(`/api/v1${path}`), key).send((body ?? {})),
+      put: (path, body, key = randomUUID()) => withHeaders(a.put(`/api/v1${path}`), key).send((body ?? {})),
     };
   }
 

@@ -11,7 +11,7 @@ const STALE_MS = 2 * 60_000;
 function stableStringify(value: unknown): string {
   if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
   if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
-  return `{${Object.keys(value as object)
+  return `{${Object.keys(value)
     .sort()
     .map((k) => `${JSON.stringify(k)}:${stableStringify((value as Record<string, unknown>)[k])}`)
     .join(",")}}`;
@@ -80,7 +80,7 @@ export function idempotent(ctx: AppContext, route: string, handler: (req: Reques
       }
       const stored = await ctx.db
         .update(idempotencyKeys)
-        .set({ status: "COMPLETED", responseStatus: result.status, responseBody: result.body as never })
+        .set({ status: "COMPLETED", responseStatus: result.status, responseBody: result.body })
         .where(owned)
         .returning({ id: idempotencyKeys.id });
       if (stored.length === 0) {

@@ -70,7 +70,7 @@ describe("Intent Certificates", () => {
 
   it("rejects a signature from another key", () => {
     const other = generateSigningKey("trk_test");
-    const c = issueCertificate({ ...issue().payload, approved_at: approvedAt, ttl_minutes: 15 } as never, other);
+    const c = issueCertificate({ ...issue().payload, approved_at: approvedAt, ttl_minutes: 15 }, other);
     expect(verifyCertificate(c, ctx(c)).status).toBe("SIGNATURE_INVALID");
   });
 

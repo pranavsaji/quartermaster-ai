@@ -26,7 +26,7 @@ export interface Channel3Offer {
   url: string;
   domain: string;
   price: Channel3Price;
-  availability: "InStock" | "OutOfStock" | string;
+  availability: "InStock" | "OutOfStock" | (string & {});
   condition?: "new" | "used" | null;
 }
 
@@ -76,7 +76,7 @@ export class Channel3Client {
   }
 
   get enabled(): boolean {
-    return !!this.config.apiKey;
+    return Boolean(this.config.apiKey);
   }
 
   async search(params: Channel3SearchParams): Promise<Channel3SearchResponse> {
@@ -120,7 +120,7 @@ export class Channel3Client {
 export function isHttpUrl(value: string): boolean {
   try {
     const u = new URL(value);
-    return (u.protocol === "https:" || u.protocol === "http:") && !!u.hostname && !u.username && !u.password;
+    return (u.protocol === "https:" || u.protocol === "http:") && Boolean(u.hostname) && !u.username && !u.password;
   } catch {
     return false;
   }

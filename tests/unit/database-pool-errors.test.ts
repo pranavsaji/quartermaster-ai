@@ -13,7 +13,7 @@ describe("PostgreSQL pool errors", () => {
     const listeners: ((err: Error) => void)[] = [];
     const on = vi.spyOn(pg.Pool.prototype, "on").mockImplementation(function (this: unknown, event: string | symbol, fn: (...a: never[]) => void) {
       if (event === "error") listeners.push(fn as (err: Error) => void);
-      return this as never;
+      return this;
     });
     const seen: Error[] = [];
     const handle = await createDatabase({ url: "postgres://127.0.0.1:1/none", onPoolError: (err) => seen.push(err) });

@@ -75,7 +75,7 @@ export class OpenAIClient {
   }
 
   get enabled(): boolean {
-    return !!this.config.apiKey;
+    return Boolean(this.config.apiKey);
   }
 
   get model(): string {

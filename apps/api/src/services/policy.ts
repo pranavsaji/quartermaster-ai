@@ -51,7 +51,7 @@ export async function evaluateOrder(
     currency: org!.currency,
     weeklyLimitMinor: mandate?.weekly_budget_minor ?? 0,
     now: opts.now,
-    lock: !!opts.lockBudget,
+    lock: Boolean(opts.lockBudget),
   });
   let reserved = account.reservedMinor;
   if (opts.excludeOwnReservationForIntent) {

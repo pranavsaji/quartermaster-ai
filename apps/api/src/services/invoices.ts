@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
-import type { AnalyzeInvoiceRequest, InvoiceDto, InvoiceStatus, Severity } from "@qm/contracts";
+import type { AnalyzeInvoiceRequest, InvoiceDto, Severity } from "@qm/contracts";
 import { invoiceMatches, invoices, paymentAttempts, purchaseOrderItems, purchaseOrders, suppliers, type DbOrTx } from "@qm/database";
 import { analyzeInvoice, normalizeInvoiceNumber } from "@qm/quartermaster";
 import type { AppContext } from "../context";
@@ -19,7 +19,7 @@ function toDto(r: InvoiceRow, matches: (typeof invoiceMatches.$inferSelect)[]): 
     invoice_date: r.invoiceDate,
     currency: r.currency,
     total_minor: r.totalMinor,
-    status: r.status as InvoiceStatus,
+    status: r.status,
     settlement_allowed: r.settlementAllowed,
     matches: matches.map((m) => ({ check: m.check, passed: m.passed, severity: (m.severity as Severity | null) ?? null, detail: m.detail })),
     created_at: r.createdAt.toISOString(),
@@ -58,7 +58,7 @@ export async function analyzeAndRecordInvoice(ctx: AppContext, actor: Actor, inp
           currency: po.currency,
           total_minor: po.totalMinor,
           status: po.status,
-          payment_completed: !!payment && ["COMPLETED", "PARTIALLY_REFUNDED"].includes(payment.status),
+          payment_completed: payment !== undefined && ["COMPLETED", "PARTIALLY_REFUNDED"].includes(payment.status),
           items: items.map((i) => ({ kind: i.kind, sku: i.sku, quantity: i.quantity, unit_price_minor: i.unitPriceMinor, line_total_minor: i.lineTotalMinor })),
         };
       }
@@ -78,7 +78,7 @@ export async function analyzeAndRecordInvoice(ctx: AppContext, actor: Actor, inp
         purchase_order_id: e.purchaseOrderId,
         total_minor: e.totalMinor,
         content_hash: e.contentHash,
-        status: e.status as InvoiceStatus,
+        status: e.status,
       })),
     );
 

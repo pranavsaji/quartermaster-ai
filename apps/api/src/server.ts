@@ -24,7 +24,7 @@ const server = app.listen(ctx.config.port, () => {
 server.headersTimeout = 65_000;
 server.requestTimeout = 120_000;
 
-const { shutdown } = createShutdown({
+const lifecycle = createShutdown({
   server,
   log: ctx.log,
   sweeper,
@@ -33,14 +33,14 @@ const { shutdown } = createShutdown({
   exit: (code) => process.exit(code),
 });
 
-process.on("SIGTERM", () => void shutdown("SIGTERM"));
-process.on("SIGINT", () => void shutdown("SIGINT"));
+process.on("SIGTERM", () => void lifecycle.shutdown("SIGTERM"));
+process.on("SIGINT", () => void lifecycle.shutdown("SIGINT"));
 // The process state is unknown after either of these: log, drain what we can, exit non-zero.
 process.on("uncaughtException", (err) => {
   ctx.log.fatal({ err }, "uncaught exception");
-  void shutdown("uncaughtException", 1);
+  void lifecycle.shutdown("uncaughtException", 1);
 });
 process.on("unhandledRejection", (err) => {
   ctx.log.fatal({ err }, "unhandled rejection");
-  void shutdown("unhandledRejection", 1);
+  void lifecycle.shutdown("unhandledRejection", 1);
 });

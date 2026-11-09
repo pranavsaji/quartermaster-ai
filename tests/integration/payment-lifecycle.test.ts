@@ -84,7 +84,7 @@ describe("capture", () => {
       h.ctx.db.transaction = (async () => {
         h.ctx.db.transaction = realTransaction;
         throw Object.assign(new Error("deadlock detected"), { code: "40P01" });
-      }) as typeof h.ctx.db.transaction;
+      });
       return res;
     };
     try {

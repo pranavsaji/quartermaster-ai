@@ -9,7 +9,6 @@ import type {
   ProcurementRequestDto,
   ProcurementRequestSummaryDto,
   RecommendationDto,
-  RequestStatus,
 } from "@qm/contracts";
 import {
   agentRuns,
@@ -93,7 +92,7 @@ export async function getRequestDto(db: DbOrTx, organizationId: string, id: stri
   const live = proposals.filter((p) => p.status !== "SUPERSEDED");
   return {
     id: req.id,
-    status: req.status as RequestStatus,
+    status: req.status,
     instruction: req.instruction,
     currency: req.currency,
     budget_limit_minor: req.budgetLimitMinor,
@@ -133,7 +132,7 @@ export async function listRequests(db: DbOrTx, organizationId: string, limit: nu
       const t = totals.filter((x) => x.requestId === r.id && !["SUPERSEDED", "BLOCKED", "REJECTED"].includes(x.status));
       return {
         id: r.id,
-        status: r.status as RequestStatus,
+        status: r.status,
         instruction: r.instruction,
         total_minor: t.length ? t.reduce((a, x) => a + x.total, 0) : null,
         currency: r.currency,

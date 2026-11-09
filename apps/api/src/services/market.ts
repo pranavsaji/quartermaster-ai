@@ -103,7 +103,7 @@ export async function researchItem(
         priceMinor,
         currency: o.currency,
         packQuantity: units,
-        normalizedUnitPriceMinor: comparable ? priceMinor / units! : null,
+        normalizedUnitPriceMinor: comparable ? priceMinor / units : null,
         comparable,
         availability: String(o.availability ?? "unknown").slice(0, 40),
         suspicious: verdict.suspicious,

@@ -5,9 +5,7 @@ import type {
   DeliveryDto,
   IntentCertificateDto,
   IntentCertificatePayload,
-  LineKind,
   PaymentDto,
-  PaymentStatus,
   PolicyDecisionDto,
   ProductCategory,
   PurchaseOrderDto,
@@ -99,7 +97,7 @@ export function cartFromRows(po: PurchaseOrderRow, items: PurchaseOrderItemRow[]
   const lines: CartLine[] = [...items]
     .sort((a, b) => a.position - b.position)
     .map((i) => ({
-      kind: i.kind as LineKind,
+      kind: i.kind,
       sku: i.sku,
       description: i.description,
       category: (i.category as ProductCategory | null) ?? null,
@@ -165,7 +163,7 @@ export function toPaymentDto(p: typeof paymentAttempts.$inferSelect): PaymentDto
     id: p.id,
     intent_id: p.intentId,
     purchase_order_id: p.purchaseOrderId,
-    status: p.status as PaymentStatus,
+    status: p.status,
     paypal_order_id: p.paypalOrderId,
     paypal_capture_id: p.paypalCaptureId,
     amount_minor: p.amountMinor,
@@ -185,7 +183,7 @@ export function toDeliveryDto(d: typeof deliveries.$inferSelect): DeliveryDto {
     id: d.id,
     purchase_order_id: d.purchaseOrderId,
     supplier_id: d.supplierId,
-    status: d.status as DeliveryDto["status"],
+    status: d.status,
     expected_date: d.expectedDate,
     original_expected_date: d.originalExpectedDate,
     delivered_at: d.deliveredAt?.toISOString() ?? null,
@@ -218,7 +216,7 @@ export async function orderDtos(db: DbOrTx, organizationId: string, pos: Purchas
       request_id: po.requestId,
       supplier_id: po.supplierId,
       supplier_name: supplierName.get(po.supplierId) ?? "Unknown supplier",
-      status: po.status as PurchaseOrderDto["status"],
+      status: po.status,
       currency: po.currency,
       subtotal_minor: po.subtotalMinor,
       shipping_minor: po.shippingMinor,
@@ -230,7 +228,7 @@ export async function orderDtos(db: DbOrTx, organizationId: string, pos: Purchas
         .filter((i) => i.purchaseOrderId === po.id)
         .map((i) => ({
           id: i.id,
-          kind: i.kind as LineKind,
+          kind: i.kind,
           sku: i.sku,
           description: i.description,
           category: (i.category as ProductCategory | null) ?? null,

@@ -21,7 +21,7 @@ export async function refreshRequestStatus(tx: DbOrTx, requestId: string, now: D
   const [req] = await tx.select({ status: purchaseRequests.status }).from(purchaseRequests).where(eq(purchaseRequests.id, requestId));
   if (!req) return "FAILED";
   const pos = await tx.select({ status: purchaseOrders.status }).from(purchaseOrders).where(eq(purchaseOrders.requestId, requestId));
-  const next = deriveRequestStatus(pos.map((p) => p.status), req.status as RequestStatus);
+  const next = deriveRequestStatus(pos.map((p) => p.status), req.status);
   if (next !== req.status) await tx.update(purchaseRequests).set({ status: next, updatedAt: now }).where(eq(purchaseRequests.id, requestId));
   return next;
 }
