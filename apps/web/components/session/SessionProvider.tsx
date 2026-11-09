@@ -56,7 +56,8 @@ export function useLoadSession(): SessionLoadState {
         return;
       }
     }
-    window.location.assign("/login");
+    // A full page load (not router.push) so no cached data from this session survives.
+    window.location.replace("/login");
   }, []);
 
   const session = useMemo<Session | null>(() => {

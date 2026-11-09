@@ -67,7 +67,6 @@ export interface ForecastInput {
 const get = <T>(path: string, options?: RequestOptions) => request<T>("GET", path, options);
 const post = <T>(path: string, body?: unknown, options?: RequestOptions) =>
   request<T>("POST", path, { ...options, body: body ?? {} });
-const put = <T>(path: string, body: unknown, options?: RequestOptions) => request<T>("PUT", path, { ...options, body });
 
 /** POST/PUT to an (I) endpoint with a per-action idempotency key. */
 function idempotent<T>(method: "POST" | "PUT", path: string, body: unknown, options?: RequestOptions): Promise<T> {

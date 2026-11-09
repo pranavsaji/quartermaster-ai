@@ -11,7 +11,6 @@ type PayPalButtonAttributes = DetailedHTMLProps<HTMLAttributes<HTMLElement>, HTM
 };
 
 declare module "react" {
-  // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace JSX {
     interface IntrinsicElements {
       "paypal-button": PayPalButtonAttributes;

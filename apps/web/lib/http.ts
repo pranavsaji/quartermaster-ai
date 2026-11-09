@@ -94,7 +94,8 @@ function redirectToLogin(): void {
   if (window.location.pathname.startsWith("/login")) return;
   redirecting = true;
   const next = `${window.location.pathname}${window.location.search}`;
-  window.location.assign(`/login?next=${encodeURIComponent(next)}`);
+  // A full page load: the session is gone, so drop all client state with it.
+  window.location.replace(`/login?next=${encodeURIComponent(next)}`);
 }
 
 async function readBody(response: Response): Promise<unknown> {
