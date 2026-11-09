@@ -8,23 +8,27 @@ import { Checkbox, Field, Textarea } from "@/components/ui/Field";
 import { api } from "@/lib/api";
 import { money } from "@/lib/format";
 import { useAction } from "@/lib/hooks";
-import { RejectDialog } from "./RejectDialog";
 
 /**
  * Owner approval for one proposal. Every REVIEW-severity violation must be
  * explicitly acknowledged; the cart hash sent is exactly the one displayed, so
  * the API rejects the approval if the cart changed underneath the owner.
+ *
+ * Acknowledgements belong to one policy decision: render it with
+ * `key={po.policy_decision?.id}` so a re-evaluation (e.g. a price premium that
+ * grew from 12% to 40%) starts with every box unticked.
  */
 export function ApprovalForm({
   requestId,
   po,
   onApproved,
-  onRejected,
+  onReject,
 }: {
   requestId: string;
   po: PurchaseOrderDto;
   onApproved: (result: ApprovalResponse) => void;
-  onRejected: () => void;
+  /** Opens the reject dialog, which the card owns so it survives this form unmounting. */
+  onReject: () => void;
 }) {
   const reviewCodes = useMemo(
     () => Array.from(new Set((po.policy_decision?.violations ?? []).filter((v) => v.severity === "REVIEW").map((v) => v.code))),
@@ -32,9 +36,10 @@ export function ApprovalForm({
   );
   const [acked, setAcked] = useState<Set<string>>(new Set());
   const [note, setNote] = useState("");
-  const [rejectOpen, setRejectOpen] = useState(false);
 
-  const allAcked = reviewCodes.every((c) => acked.has(c));
+  // Count only codes in the current decision, never a stale tick for a code that is gone.
+  const ackedCount = reviewCodes.filter((c) => acked.has(c)).length;
+  const allAcked = ackedCount === reviewCodes.length;
   const messages = new Map((po.policy_decision?.violations ?? []).map((v) => [v.code, v.message]));
 
   const approve = useAction(async () => {
@@ -67,7 +72,7 @@ export function ApprovalForm({
       {reviewCodes.length > 0 ? (
         <fieldset className="mt-3 space-y-2.5">
           <legend className="mb-1 text-[12.5px] font-medium text-review">
-            Acknowledge each review item to continue ({acked.size}/{reviewCodes.length})
+            Acknowledge each review item to continue ({ackedCount}/{reviewCodes.length})
           </legend>
           {reviewCodes.map((code) => (
             <Checkbox
@@ -97,23 +102,11 @@ export function ApprovalForm({
         <Button variant="primary" onClick={() => void approve.run()} loading={approve.pending} disabled={!allAcked}>
           Approve &amp; sign
         </Button>
-        <Button variant="danger" onClick={() => setRejectOpen(true)} disabled={approve.pending}>
+        <Button variant="danger" onClick={onReject} disabled={approve.pending}>
           Reject
         </Button>
         {!allAcked ? <span className="self-center text-[12px] text-ink-3">Tick every review item to enable approval.</span> : null}
       </div>
-
-      {rejectOpen ? (
-        <RejectDialog
-          requestId={requestId}
-          purchaseOrderId={po.id}
-          title={`Reject ${po.number}?`}
-          description={`Only this ${po.supplier_name} cart is rejected; other proposals on the request stay open. The reason is recorded in the audit log.`}
-          confirmLabel="Reject proposal"
-          onClose={() => setRejectOpen(false)}
-          onRejected={onRejected}
-        />
-      ) : null}
     </div>
   );
 }
