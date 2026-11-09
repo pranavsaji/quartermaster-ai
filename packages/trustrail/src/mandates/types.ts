@@ -35,6 +35,9 @@ export const MANDATE_SECURITY_FIELDS = [
   "duplicate_action",
   "subscriptions_allowed",
   "max_quantity_multiple_of_need",
+  "auto_approval_limit_minor",
+  "human_approval_required",
+  "certificate_ttl_minutes",
 ] as const satisfies readonly (keyof SpendMandate)[];
 
 export function mandateTightened(prev: SpendMandate, next: SpendMandate): boolean {
@@ -49,5 +52,8 @@ export function mandateTightened(prev: SpendMandate, next: SpendMandate): boolea
   if (prev.subscriptions_allowed && !next.subscriptions_allowed) return true;
   if (next.max_quantity_multiple_of_need < prev.max_quantity_multiple_of_need) return true;
   if (prev.currency !== next.currency) return true;
+  if (next.auto_approval_limit_minor < prev.auto_approval_limit_minor) return true;
+  if (!prev.human_approval_required && next.human_approval_required) return true;
+  if (next.certificate_ttl_minutes < prev.certificate_ttl_minutes) return true;
   return false;
 }
