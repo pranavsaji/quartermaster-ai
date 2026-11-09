@@ -61,15 +61,19 @@ export async function createRequest(ctx: AppContext, actor: Actor, input: Create
     required_by: input.required_by ?? interpreted.intent.required_by,
     ai_mode: interpreted.mode,
   };
-  await ctx.db.update(purchaseRequests).set({ intent, aiMode: interpreted.mode, updatedAt: ctx.now() }).where(eq(purchaseRequests.id, req!.id));
-  await appendAudit(ctx.db, {
-    organizationId: actor.organizationId,
-    action: "procurement.request_created",
-    actorType: "USER",
-    actorId: actor.id,
-    entityType: "purchase_request",
-    entityId: req!.id,
-    data: { instruction: input.instruction, intent },
+  // The request row exists before interpretation so the agent run can record its steps against
+  // it; the interpreted intent and the audit entry are written together.
+  await ctx.db.transaction(async (tx) => {
+    await tx.update(purchaseRequests).set({ intent, aiMode: interpreted.mode, updatedAt: ctx.now() }).where(eq(purchaseRequests.id, req!.id));
+    await appendAudit(tx, {
+      organizationId: actor.organizationId,
+      action: "procurement.request_created",
+      actorType: "USER",
+      actorId: actor.id,
+      entityType: "purchase_request",
+      entityId: req!.id,
+      data: { instruction: input.instruction, intent },
+    });
   });
   return getRequestDto(ctx.db, actor.organizationId, req!.id);
 }
@@ -82,6 +86,8 @@ export async function evaluateRequest(ctx: AppContext, actor: Actor, requestId: 
   for (const po of open) {
     await ctx.db.transaction(async (tx) => {
       const { po: locked, items } = await loadOrder(tx, actor.organizationId, po.id, true);
+      // Re-check under the lock: an approval may have committed since the list was read.
+      if (locked.status !== "PROPOSED" && locked.status !== "BLOCKED") return;
       const ev = await evaluateOrder(tx, actor.organizationId, locked, items, { stage: "EVALUATE", now: ctx.now(), marketMaxAgeHours: ctx.config.agent.marketReferenceMaxAgeHours });
       const next = ev.result.decision === "BLOCK" ? "BLOCKED" : "PROPOSED";
       if (next !== locked.status) await tx.update(purchaseOrders).set({ status: next, updatedAt: ctx.now() }).where(eq(purchaseOrders.id, locked.id));
@@ -121,6 +127,15 @@ export async function approveProposal(
       .where(and(eq(spendMandates.organizationId, actor.organizationId), eq(spendMandates.status, "ACTIVE")))
       .for("share");
     if (!lockedMandate) throw conflict("MANDATE_INACTIVE", "No active Spend Mandate.");
+    // The request row serialises approval with research and rejection (lock order: mandate →
+    // request → order). Research supersedes proposals, so approval must not run alongside it.
+    const [lockedRequest] = await tx
+      .select({ status: purchaseRequests.status })
+      .from(purchaseRequests)
+      .where(and(eq(purchaseRequests.id, requestId), eq(purchaseRequests.organizationId, actor.organizationId)))
+      .for("update");
+    if (!lockedRequest) throw notFound("Procurement request");
+    if (lockedRequest.status === "RESEARCHING") throw conflict("RESEARCH_IN_PROGRESS", "Research is running for this request; wait for it to finish.");
     const { po, items } = await loadOrder(tx, actor.organizationId, input.purchase_order_id, true);
     if (po.requestId !== requestId) throw notFound("Proposal for this request");
     if (po.status !== "PROPOSED") throw conflict("PROPOSAL_NOT_APPROVABLE", `Proposal is ${po.status}.`);
