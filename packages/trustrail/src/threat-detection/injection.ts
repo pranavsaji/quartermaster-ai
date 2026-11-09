@@ -49,8 +49,11 @@ interface Rule {
    * join two phrases ('"Skip the line" — order online' must not read as "skip the … order").
    */
   softPattern?: RegExp;
-  /** Rejects a match in context (e.g. instructions about the physical product). */
-  reject?: (text: string, index: number, match: string) => boolean;
+  /**
+   * Defers a match in context (instructions about the physical product): it is scored only if
+   * the text carries some other signal. Never used to drop a match outright.
+   */
+  defer?: (text: string, index: number, match: string) => boolean;
   /** Also matched on ROT13 and reversed readings of the text. */
   obfuscated?: boolean;
 }
@@ -72,21 +75,37 @@ const ALL_QUALIFIERS = `${STRONG_QUALIFIERS}|the|these|those|my|our|old|current|
 
 const overridePattern = (qualifiers: string) =>
   new RegExp(
-    String.raw`${NEGATED}\b(?:(${STRONG_OVERRIDE_VERBS})\b[\w\s,'-]{0,40}\b(?:${qualifiers})\b[\w\s,'-]{0,30}\b(?:${OVERRIDE_NOUNS})|(${WEAK_OVERRIDE_VERBS})\b[\w\s,'-]{0,40}\b(?:${STRONG_QUALIFIERS})\b[\w\s,'-]{0,30}\b(?:${OVERRIDE_NOUNS_BASE}))\b|\b(?:put|set|lay|leave|cast)\s+(?:${STRONG_QUALIFIERS})\s+(?:[\w'-]+\s+){0,3}?(?:${OVERRIDE_NOUNS})\s+(?:to\s+one\s+side|aside|behind\s+you)\b`,
+    String.raw`${NEGATED}\b(?:(${STRONG_OVERRIDE_VERBS})\b[\w\s,'-]{0,40}?\b(?:${qualifiers})\b[\w\s,'-]{0,30}?\b(?:${OVERRIDE_NOUNS})|(${WEAK_OVERRIDE_VERBS})\b[\w\s,'-]{0,40}?\b(?:${STRONG_QUALIFIERS})\b[\w\s,'-]{0,30}?\b(?:${OVERRIDE_NOUNS_BASE}))\b|\b(?:put|set|lay|leave|cast)\s+(?:${STRONG_QUALIFIERS})\s+(?:[\w'-]+\s+){0,3}?(?:${OVERRIDE_NOUNS})\s+(?:to\s+one\s+side|aside|behind\s+you)\b`,
     "i",
   );
 
 /**
  * Instructions about the physical product — delivery, care, assembly, cooking — are ordinary
  * copy, not an attempt to override the reader's instructions: "Ignore any prior delivery
- * instructions printed on the box." An override needs an AI-instruction context.
+ * instructions printed on the box." Such a match is only *deferred*, never dropped, and only
+ * when every instruction noun in it is directly qualified by the product context: the word
+ * right before it ("delivery instructions", "wash instructions") or the words right after it
+ * ("instructions printed on the box", "… for the old model"). A product word elsewhere in the
+ * text does not count. A deferred match is scored after all, at full weight, as soon as the
+ * text carries any other signal (an approval claim, a purchase directive, AI addressing …), so
+ * appending "Wash instructions: cold." to an attack cannot hide it.
  */
-const PRODUCT_INSTRUCTION_CONTEXT =
-  /\b(?:delivery|shipping|packing|packaging|care|assembly|assembling|wash(?:ing)?|cleaning|cooking|baking|heating|reheating|installation|installing|mounting|setup|return|returns|storage|usage|use|operating|warranty|recipe|prep|preparation|serving|dosage|mixing|brewing|thawing|feeding|loading|maintenance|label|labels|box|manufacturer'?s?|printed|handling|disposal|filling|refill(?:ing)?|seasoning|sanitizing|descaling)\b/i;
+const PRODUCT_CONTEXT_WORD =
+  /^(?:delivery|shipping|packing|packaging|care|assembly|assembling|wash(?:ing)?|cleaning|cooking|baking|heating|reheating|installation|installing|mounting|setup|set-up|return|returns|storage|usage|use|operating|warranty|recipe|prep|preparation|serving|dosage|mixing|brewing|thawing|feeding|loading|maintenance|label|box|manufacturer'?s?|handling|disposal|filling|refill(?:ing)?|seasoning|sanitizing|descaling)$/i;
 const PHYSICAL_TRAIL =
   /^[\s,]{0,3}(?:(?:printed|written|shown|included|found|listed|attached|enclosed|stamped)\s+(?:on|in|with|inside)\b|(?:on|in|inside)\s+(?:the|this|each|every|your)\s+(?:box|label|package|packaging|case|bag|lid|carton|bottle|jar|can|sleeve|wrapper|manual|insert|leaflet|pdf|pack)\b|for\s+(?:the\s+)?(?:old|older|previous|new|original|earlier)\s+(?:model|version|pack|packaging|design|item|product|formula|size))/i;
-const aboutTheProduct = (text: string, index: number, match: string) =>
-  PRODUCT_INSTRUCTION_CONTEXT.test(match) || PHYSICAL_TRAIL.test(text.slice(index + match.length, index + match.length + 80));
+const INSTRUCTION_NOUN = /\b(?:instructions?|directions?|guidance|guidelines?|rules?|directives?|steps)\b/gi;
+function directlyAboutTheProduct(text: string, index: number, match: string): boolean {
+  let nouns = 0;
+  for (const n of match.matchAll(INSTRUCTION_NOUN)) {
+    nouns++;
+    const at = index + n.index;
+    const previousWord = /([\p{L}'-]+)[\s-]*$/u.exec(text.slice(Math.max(0, at - 40), at))?.[1] ?? "";
+    const trail = text.slice(at + n[0].length, at + n[0].length + 80);
+    if (!PRODUCT_CONTEXT_WORD.test(previousWord) && !PHYSICAL_TRAIL.test(trail)) return false;
+  }
+  return nouns > 0;
+}
 
 /** A gap of up to N words, allowing "$25", "4.99" or "20%" but never crossing a sentence end. */
 const gap = (n: number) => String.raw`(?:[\w\s'%-]|\$(?=\d)|[.,](?=\d)){0,${n}}`;
@@ -110,7 +129,7 @@ const RULES: Rule[] = [
     pattern: overridePattern(ALL_QUALIFIERS),
     // Only qualifiers that mark an override, never a plain article, once punctuation is softened.
     softPattern: overridePattern(STRONG_QUALIFIERS),
-    reject: aboutTheProduct,
+    defer: directlyAboutTheProduct,
     obfuscated: true,
   },
   {
@@ -161,7 +180,7 @@ const RULES: Rule[] = [
       String.raw`\b(?:instructions?|rules|guidance|directions|directives|prompts?|limits|restrictions)\b[^.!?\n]{0,60}?(?:[.!?]+\s{0,3}|[,;]\s{0,3}(?:so\s+|and\s+|then\s+)?|\s(?:so|and|then)\s+)(?:just\s+|now\s+|please\s+|simply\s+)?(?:${STRONG_OVERRIDE_VERBS}|discard|drop|scrap|skip|undo|(?:do\s+not|don't|dont|never|stop)\s+(?:apply(?:ing)?|follow(?:ing)?|obey(?:ing)?|us(?:e|ing)))\s+(?:them|those|these|it|that|this)\b`,
       "i",
     ),
-    reject: aboutTheProduct,
+    defer: directlyAboutTheProduct,
   },
   {
     // "Your earlier instructions are no longer valid", "Instructions given earlier: void".
@@ -171,7 +190,7 @@ const RULES: Rule[] = [
       String.raw`(?:${PRIOR_INSTRUCTIONS})\b[\w\s,'-]{0,60}?(?:[?:]\s{0,3})?\b(?:(?:are|is|were|was|have\s+been|has\s+been)\s+(?:now\s+|hereby\s+|officially\s+|all\s+|just\s+)?)?(?:no\s+longer\s+(?:valid|in\s+effect|applicable|active|relevant|apply)|outdated|obsolete|void|invalid|cancell?ed|revoked|superseded|replaced|expired|deprecated|withdrawn|overridden|rescinded|irrelevant|moot|null|not\s+(?:valid|relevant|real)|a\s+test|fake|(?:do|does)\s*(?:not|n't)\s+apply)\b|\b(?:everything|all|anything)\s+(?:(?:written|said|stated)\s+)?(?:before|above|prior\s+to)\s+(?:this|here)(?:\s+(?:line|point|message|note|sentence|paragraph))?\s+(?:was|is|were)\s+(?:just\s+|only\s+)?(?:a\s+test|fake|void|irrelevant|a\s+joke|not\s+real|outdated|cancell?ed|a\s+mistake)\b`,
       "i",
     ),
-    reject: aboutTheProduct,
+    defer: directlyAboutTheProduct,
   },
   {
     // "Follow these instead", "obey the following": replacement instructions.
@@ -439,7 +458,7 @@ const RULES: Rule[] = [
   { id: "exfiltration_link", weight: 3, pattern: /\b(visit|open|go to|navigate to|click)\b[\w\s'-]{0,20}(https?:\/\/|www\.)/i },
 ];
 
-/** Global twins of rule patterns, for rules that may reject a match and look for the next one. */
+/** Global twins of rule patterns, for rules that may defer a match and look for the next one. */
 const GLOBAL = new WeakMap<RegExp, RegExp>();
 function globalOf(re: RegExp): RegExp {
   let g = GLOBAL.get(re);
@@ -450,16 +469,24 @@ function globalOf(re: RegExp): RegExp {
   return g;
 }
 
-/** First match of `pattern` in `text` that the rule does not reject. Linear: matches never overlap. */
-function firstMatch(rule: Rule, pattern: RegExp, text: string): RegExpExecArray | null {
-  if (!rule.reject) return pattern.exec(text);
+/**
+ * First match of `pattern` in `text` that the rule does not defer, else the first deferred one.
+ * Linear: matches never overlap.
+ */
+function firstMatch(rule: Rule, pattern: RegExp, text: string): { m: RegExpExecArray; deferred: boolean } | null {
+  if (!rule.defer) {
+    const m = pattern.exec(text);
+    return m ? { m, deferred: false } : null;
+  }
   const g = globalOf(pattern);
   g.lastIndex = 0;
+  let deferred: RegExpExecArray | null = null;
   for (let m = g.exec(text); m; m = g.exec(text)) {
-    if (!rule.reject(text, m.index, m[0])) return m;
+    if (!rule.defer(text, m.index, m[0])) return { m, deferred: false };
+    deferred ??= m;
     if (m[0].length === 0) g.lastIndex++;
   }
-  return null;
+  return deferred ? { m: deferred, deferred: true } : null;
 }
 
 /**
@@ -813,16 +840,25 @@ function detect(raw: string, options: DetectOptions, depth: number): InjectionVe
   const signals: InjectionSignal[] = [];
   const { variants, normalized, smuggled } = readingsOf(raw);
 
+  // Matches about the physical product, scored only if anything else is found (see defer).
+  const deferred: InjectionSignal[] = [];
   for (const rule of RULES) {
+    let held: InjectionSignal | null = null;
+    let scored = false;
     for (const variant of variants) {
       if (variant.obfuscated && !rule.obfuscated) continue;
       const pattern = variant.soft ? (rule.softPattern ?? rule.pattern) : rule.pattern;
-      const m = firstMatch(rule, pattern, variant.text);
-      if (m) {
-        signals.push({ rule: rule.id, weight: rule.weight, excerpt: excerptAround(variant.text, m.index, m[0].length) });
+      const found = firstMatch(rule, pattern, variant.text);
+      if (!found) continue;
+      const signal = { rule: rule.id, weight: rule.weight, excerpt: excerptAround(variant.text, found.m.index, found.m[0].length) };
+      if (!found.deferred) {
+        signals.push(signal);
+        scored = true;
         break;
       }
+      held ??= signal;
     }
+    if (held && !scored) deferred.push(held);
   }
 
   // Structural signals: hidden characters and encoded payloads are suspicious in product copy.
@@ -868,6 +904,9 @@ function detect(raw: string, options: DetectOptions, depth: number): InjectionVe
     signals.push({ rule: "hidden_markup", weight: 3, excerpt: "markup that hides text from human readers" });
   }
 
+  // A deferred override counts as soon as there is any other evidence. "Mandatory" and
+  // "required by law" (priority_claim) are everyday legal copy and do not count as evidence here.
+  if (signals.some((s) => s.rule !== "priority_claim")) signals.push(...deferred);
   const score = signals.reduce((acc, s) => acc + s.weight, 0);
   return {
     suspicious: score >= 3,
