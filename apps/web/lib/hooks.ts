@@ -1,7 +1,23 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type DependencyList } from "react";
+import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, type DependencyList } from "react";
 import { isAbortError } from "./http";
+
+/**
+ * Counts how often `deps` have changed (shallow, like an effect's dependency
+ * array) without spreading them into a hook's own dependency list. Uses the
+ * "store information from previous renders" pattern, so no effect or ref write.
+ */
+function useDepsVersion(deps: DependencyList): number {
+  const [tracked, setTracked] = useState({ deps, version: 0 });
+  const changed = tracked.deps.length !== deps.length || tracked.deps.some((d, i) => !Object.is(d, deps[i]));
+  if (changed) {
+    const next = { deps, version: tracked.version + 1 };
+    setTracked(next);
+    return next.version;
+  }
+  return tracked.version;
+}
 
 export interface ResourceState<T> {
   data: T | undefined;
@@ -10,9 +26,19 @@ export interface ResourceState<T> {
   loading: boolean;
   /** True while a background reload is in flight (data may be stale). */
   refreshing: boolean;
+  /** `data` was loaded for previous `deps` (e.g. an old filter) and its replacement is in flight. */
+  stale: boolean;
+  /** When `data` was last loaded or replaced (epoch ms), for "showing data from …" notices. */
+  updatedAt: number | undefined;
   reload: () => void;
   /** Replace the cached value, e.g. with a mutation response. */
   setData: (next: T | ((prev: T | undefined) => T)) => void;
+}
+
+interface Loaded<T> {
+  value: T | undefined;
+  version: number;
+  at: number | undefined;
 }
 
 /**
@@ -25,12 +51,12 @@ export function useResource<T>(
   options: { enabled?: boolean } = {},
 ): ResourceState<T> {
   const enabled = options.enabled ?? true;
-  const [data, setDataState] = useState<T | undefined>(undefined);
-  const [error, setError] = useState<unknown>(undefined);
+  const depsVersion = useDepsVersion(deps);
+  const [loaded, setLoaded] = useState<Loaded<T>>({ value: undefined, version: -1, at: undefined });
+  const [failure, setFailure] = useState<{ error: unknown; version: number } | null>(null);
   const [inFlight, setInFlight] = useState(enabled);
-  const [version, setVersion] = useState(0);
-  const fetcherRef = useRef(fetcher);
-  fetcherRef.current = fetcher;
+  const [reloads, setReloads] = useState(0);
+  const fetchLatest = useEffectEvent(fetcher);
 
   useEffect(() => {
     if (!enabled) {
@@ -39,34 +65,42 @@ export function useResource<T>(
     }
     const controller = new AbortController();
     setInFlight(true);
-    fetcherRef
-      .current(controller.signal)
+    fetchLatest(controller.signal)
       .then((result) => {
         if (controller.signal.aborted) return;
-        setDataState(result);
-        setError(undefined);
+        setLoaded({ value: result, version: depsVersion, at: Date.now() });
+        setFailure(null);
       })
       .catch((err: unknown) => {
         if (controller.signal.aborted || isAbortError(err)) return;
-        setError(err);
+        setFailure({ error: err, version: depsVersion });
       })
       .finally(() => {
         if (!controller.signal.aborted) setInFlight(false);
       });
     return () => controller.abort();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, version, ...deps]);
+  }, [enabled, reloads, depsVersion]);
 
-  const reload = useCallback(() => setVersion((v) => v + 1), []);
-  const setData = useCallback((next: T | ((prev: T | undefined) => T)) => {
-    setDataState((prev) => (typeof next === "function" ? (next as (p: T | undefined) => T)(prev) : next));
-  }, []);
+  const reload = useCallback(() => setReloads((n) => n + 1), []);
+  const setData = useCallback(
+    (next: T | ((prev: T | undefined) => T)) => {
+      setLoaded((prev) => ({
+        value: typeof next === "function" ? (next as (p: T | undefined) => T)(prev.value) : next,
+        version: depsVersion,
+        at: Date.now(),
+      }));
+    },
+    [depsVersion],
+  );
 
+  const data = loaded.value;
   return {
     data,
-    error,
+    error: failure && failure.version === depsVersion ? failure.error : undefined,
     loading: inFlight && data === undefined,
     refreshing: inFlight && data !== undefined,
+    stale: data !== undefined && loaded.version !== depsVersion,
+    updatedAt: loaded.at,
     reload,
     setData,
   };
@@ -88,7 +122,10 @@ export function useAction<A extends unknown[], R>(action: (...args: A) => Promis
   const [error, setError] = useState<unknown>(undefined);
   const busy = useRef(false);
   const actionRef = useRef(action);
-  actionRef.current = action;
+  // `run` is stable but must call the latest `action`; refs are updated after render, never during it.
+  useLayoutEffect(() => {
+    actionRef.current = action;
+  });
 
   const run = useCallback(async (...args: A): Promise<R | undefined> => {
     if (busy.current) return undefined;
@@ -120,69 +157,205 @@ export function useNow(intervalMs = 1000): number {
   return now;
 }
 
-/** Calls `tick` every `intervalMs` while `active` is true. */
+/** @deprecated Use `usePoller`, which never overlaps or aborts a slow tick. */
 export function useInterval(tick: () => void, intervalMs: number, active: boolean): void {
-  const tickRef = useRef(tick);
-  tickRef.current = tick;
+  const onTick = useEffectEvent(tick);
   useEffect(() => {
     if (!active) return;
-    const id = window.setInterval(() => tickRef.current(), intervalMs);
+    const id = window.setInterval(() => onTick(), intervalMs);
     return () => window.clearInterval(id);
   }, [intervalMs, active]);
 }
 
+export interface PollerOptions {
+  /** Poll only while true. */
+  active: boolean;
+  /** Delay before the first poll and between successful polls. */
+  intervalMs: number;
+  /** Upper bound for the delay after failures (and successes, with `growth`). */
+  maxIntervalMs?: number;
+  /** Multiply the delay by this after each successful poll (default 1: constant). Failures always double it. */
+  growth?: number;
+  /** Stop after this many polls; `exhausted` then becomes true until `restart()`. */
+  maxAttempts?: number;
+}
+
+export interface PollerState {
+  /** The last poll failed (cleared by the next success). */
+  error: unknown;
+  /** `maxAttempts` was reached while still active. */
+  exhausted: boolean;
+  /** Reset the attempt count and delay and poll again now. */
+  restart: () => void;
+}
+
+/**
+ * Sequential poller: the next poll is scheduled only after the previous one
+ * settles (so a slow request is never aborted by the next tick), failures back
+ * off, polling pauses while the tab is hidden, and the in-flight request is
+ * aborted when polling stops or the component unmounts.
+ */
+export function usePoller(task: (signal: AbortSignal) => Promise<void>, options: PollerOptions): PollerState {
+  const { active, intervalMs, maxIntervalMs = intervalMs * 8, growth = 1, maxAttempts } = options;
+  const runTask = useEffectEvent(task);
+  const [error, setError] = useState<unknown>(undefined);
+  const [exhausted, setExhausted] = useState(false);
+  const [generation, setGeneration] = useState(0);
+  const [wasActive, setWasActive] = useState(active);
+  if (wasActive !== active) {
+    setWasActive(active);
+    if (active) setExhausted(false);
+  }
+  const startImmediately = generation > 0;
+
+  useEffect(() => {
+    if (!active || exhausted) return;
+    let stopped = false;
+    let timer: number | undefined;
+    let controller: AbortController | null = null;
+    let waitingForVisible = false;
+    let attempts = 0;
+    let delay = intervalMs;
+
+    const schedule = (ms: number) => {
+      timer = window.setTimeout(() => void tick(), ms);
+    };
+
+    const tick = async () => {
+      if (stopped) return;
+      if (document.hidden) {
+        waitingForVisible = true;
+        return;
+      }
+      controller = new AbortController();
+      attempts += 1;
+      try {
+        await runTask(controller.signal);
+        if (stopped) return;
+        setError(undefined);
+        delay = Math.min(delay * growth, maxIntervalMs);
+      } catch (err) {
+        if (stopped || isAbortError(err)) return;
+        setError(err);
+        delay = Math.min(delay * 2, maxIntervalMs);
+      } finally {
+        controller = null;
+      }
+      if (maxAttempts !== undefined && attempts >= maxAttempts) {
+        setExhausted(true);
+        return;
+      }
+      schedule(delay);
+    };
+
+    const onVisibilityChange = () => {
+      if (!document.hidden && waitingForVisible) {
+        waitingForVisible = false;
+        schedule(0);
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    schedule(startImmediately ? 0 : intervalMs);
+
+    return () => {
+      stopped = true;
+      window.clearTimeout(timer);
+      controller?.abort();
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [active, exhausted, intervalMs, maxIntervalMs, growth, maxAttempts, generation, startImmediately]);
+
+  const restart = useCallback(() => {
+    setExhausted(false);
+    setError(undefined);
+    setGeneration((g) => g + 1);
+  }, []);
+
+  return { error, exhausted: active && exhausted, restart };
+}
+
 export interface PagedState<T> {
   items: T[] | undefined;
+  /** Failure loading the first page. */
   error: unknown;
+  /** Failure loading the next page; the items already shown are still valid. */
+  moreError: unknown;
   hasMore: boolean;
   loadingMore: boolean;
   loadMore: () => void;
   reload: () => void;
   refreshing: boolean;
+  /** The items belong to previous `deps` (e.g. an old filter) while the new first page loads. */
+  stale: boolean;
+  updatedAt: number | undefined;
 }
 
-/** Cursor-paginated list: first page on mount, "load more" appends the next one. */
+interface Page<T> {
+  items: T[];
+  next_cursor: string | null;
+}
+
+/**
+ * Cursor-paginated list: first page on mount, "load more" appends the next one.
+ * Appended pages belong to the first page they were loaded after, so a reload
+ * or filter change discards them, and a "load more" still in flight for the old
+ * first page is aborted and can never be appended to the new one.
+ */
 export function usePagedResource<T>(
-  fetchPage: (cursor: string | null, signal?: AbortSignal) => Promise<{ items: T[]; next_cursor: string | null }>,
+  fetchPage: (cursor: string | null, signal?: AbortSignal) => Promise<Page<T>>,
   deps: DependencyList,
 ): PagedState<T> {
   const first = useResource((signal) => fetchPage(null, signal), deps);
-  const [extra, setExtra] = useState<{ items: T[]; cursor: string | null } | null>(null);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [moreError, setMoreError] = useState<unknown>(undefined);
-  const fetchRef = useRef(fetchPage);
-  fetchRef.current = fetchPage;
+  const base = first.data;
+  const [extra, setExtra] = useState<{ base: Page<T>; items: T[]; cursor: string | null } | null>(null);
+  const [more, setMore] = useState<{ base: Page<T>; loading: boolean; error: unknown } | null>(null);
+  const controllerRef = useRef<AbortController | null>(null);
 
-  // Reset appended pages whenever the first page is (re)loaded.
-  useEffect(() => {
-    setExtra(null);
-    setMoreError(undefined);
-  }, [first.data]);
+  const current = extra && extra.base === base ? extra : null;
+  const moreState = more && more.base === base ? more : null;
+  const cursor = current ? current.cursor : (base?.next_cursor ?? null);
+  const loadingMore = moreState?.loading ?? false;
 
-  const cursor = extra ? extra.cursor : (first.data?.next_cursor ?? null);
+  // Abort a "load more" that belongs to a superseded first page.
+  useEffect(() => () => controllerRef.current?.abort(), [base]);
 
   const loadMore = useCallback(() => {
-    if (!cursor || loadingMore) return;
-    setLoadingMore(true);
-    fetchRef
-      .current(cursor)
-      .then((page) => setExtra((prev) => ({ items: [...(prev?.items ?? []), ...page.items], cursor: page.next_cursor })))
-      .catch(setMoreError)
-      .finally(() => setLoadingMore(false));
-  }, [cursor, loadingMore]);
+    if (!base || !cursor || loadingMore) return;
+    controllerRef.current?.abort();
+    const controller = new AbortController();
+    controllerRef.current = controller;
+    setMore({ base, loading: true, error: undefined });
+    fetchPage(cursor, controller.signal)
+      .then((page) => {
+        if (controller.signal.aborted) return;
+        setExtra((prev) => ({
+          base,
+          items: [...(prev && prev.base === base ? prev.items : []), ...page.items],
+          cursor: page.next_cursor,
+        }));
+        setMore({ base, loading: false, error: undefined });
+      })
+      .catch((err: unknown) => {
+        if (controller.signal.aborted || isAbortError(err)) return;
+        setMore({ base, loading: false, error: err });
+      })
+      .finally(() => {
+        if (controllerRef.current === controller) controllerRef.current = null;
+      });
+  }, [base, cursor, loadingMore, fetchPage]);
 
-  const items = useMemo(
-    () => (first.data ? [...first.data.items, ...(extra?.items ?? [])] : undefined),
-    [first.data, extra],
-  );
+  const items = useMemo(() => (base ? [...base.items, ...(current?.items ?? [])] : undefined), [base, current]);
 
   return {
     items,
-    error: first.error ?? moreError,
+    error: first.error,
+    moreError: moreState?.error,
     hasMore: Boolean(cursor),
     loadingMore,
     loadMore,
     reload: first.reload,
     refreshing: first.refreshing,
+    stale: first.stale,
+    updatedAt: first.updatedAt,
   };
 }
