@@ -11,7 +11,7 @@ import { type Cart, checkCartArithmetic } from "../cart";
 import { digest } from "../canonical";
 import type { SpendMandate } from "../mandates/types";
 
-export const POLICY_VERSION = "trustrail-policy/1.3.0";
+export const POLICY_VERSION = "trustrail-policy/1.4.0";
 
 /** Market references older than this many hours are stale unless the caller overrides it. */
 export const DEFAULT_MARKET_MAX_AGE_HOURS = 72;
