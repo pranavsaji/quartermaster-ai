@@ -70,7 +70,13 @@ export function auditHash(e: {
  * altering or deleting any historical row breaks verification of every later row. A per-org
  * transaction-scoped advisory lock serialises appends.
  */
-export async function appendAudit(tx: DbOrTx, input: AuditInput): Promise<{ id: string; sequence: number; hash: string }> {
+export async function appendAudit(db: DbOrTx, input: AuditInput): Promise<{ id: string; sequence: number; hash: string }> {
+  // Always run inside a transaction (a savepoint when nested) so the advisory lock is held until
+  // the event is committed; in autocommit mode it would be released before the insert.
+  return db.transaction((tx) => appendInTransaction(tx, input));
+}
+
+async function appendInTransaction(tx: DbOrTx, input: AuditInput): Promise<{ id: string; sequence: number; hash: string }> {
   await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`audit:${input.organizationId}`}))`);
   const [last] = await tx
     .select({ sequence: auditEvents.sequence, hash: auditEvents.hash })
