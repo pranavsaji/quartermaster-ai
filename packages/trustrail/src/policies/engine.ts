@@ -406,6 +406,45 @@ function evaluate(input: PolicyInput): PolicyResult {
       : `${unauthorizedCount} unauthorized line(s).`,
   );
 
+  // --- Required charges -----------------------------------------------------------------
+  // The inverse of the checks above: every charge the supplier's published terms make due must
+  // be on the cart. A cart without its tax line or without non-waived shipping understates what
+  // the supplier will actually charge, so the approved (and certified) amount would not be the
+  // amount paid. Blocked, like any other cart that does not follow the published terms; reported
+  // as CART_ARITHMETIC_INVALID (the totals are not what the terms yield) with the reason in the
+  // evidence, so it is never mistaken for an injected fee.
+  let missingCharges = 0;
+  const termsApply = !!supplier && supplier.active && supplier.id === cart.supplier_id && isValidBps(supplier.tax_rate_bps);
+  if (termsApply) {
+    const expectedTax = expectedTaxMinor(cart.subtotal_minor, supplier.tax_rate_bps);
+    if (taxLines === 0 && expectedTax !== null && expectedTax > 0) {
+      missingCharges++;
+      violate({
+        code: "CART_ARITHMETIC_INVALID",
+        severity: "BLOCK",
+        message: `The cart has no tax line, but the supplier's published ${(supplier.tax_rate_bps / 100).toFixed(2)}% rate makes ${expectedTax} due.`,
+        evidence: { reason: "missing_tax_line", tax_rate_bps: supplier.tax_rate_bps, expected_minor: expectedTax },
+      });
+    }
+    for (const term of Array.isArray(supplier.fee_terms) ? supplier.fee_terms : []) {
+      const waived = term.waived_over_minor !== null && cart.subtotal_minor >= term.waived_over_minor;
+      const due = waived ? 0 : term.amount_minor;
+      if (!(due > 0) || cart.lines.some((l) => l.kind === term.kind && l.sku === term.code)) continue;
+      missingCharges++;
+      violate({
+        code: "CART_ARITHMETIC_INVALID",
+        severity: "BLOCK",
+        message: `Published ${term.kind === "SHIPPING" ? "shipping" : "fee"} "${term.code}" (${due}) is due but missing from the cart.`,
+        evidence: { reason: "missing_required_charge", code: term.code, kind: term.kind, expected_minor: due },
+      });
+    }
+  }
+  check(
+    "REQUIRED_CHARGES_PRESENT",
+    missingCharges === 0,
+    missingCharges === 0 ? "Every charge due under the published terms is on the cart." : `${missingCharges} required charge(s) missing.`,
+  );
+
   // --- Quarantine (prompt injection) ---------------------------------------------------
   const quarantined = new Set(input.quarantined_source_ids);
   if (quarantined.has(cart.supplier_id)) {
@@ -483,7 +522,16 @@ function evaluate(input: PolicyInput): PolicyResult {
       });
       continue;
     }
-    if (need === undefined) continue;
+    if (need === undefined) {
+      // Fail closed: without a forecast nothing bounds the quantity, so a human must judge it.
+      violate({
+        code: "QUANTITY_EXCEEDS_NEED",
+        severity: "REVIEW",
+        message: `No forecast need is known for ${line.sku}; ordered units cannot be checked against need.`,
+        evidence: { sku: line.sku, reason: "no_forecast", units: line.quantity * pack },
+      });
+      continue;
+    }
     if (typeof need !== "number" || !Number.isFinite(need) || need < 0) {
       violate({
         code: "QUANTITY_EXCEEDS_NEED",
