@@ -37,6 +37,14 @@ export async function bootstrap(overrides: ContextOverrides & { env?: NodeJS.Pro
   process.env.QM_MIGRATIONS_DIR ??= path.join(REPO_ROOT, "packages", "database", "migrations");
   const config = loadConfig(env);
   const log = createLogger(config.logLevel);
+  if (config.env === "production" && typeof config.trustProxy === "number" && config.trustProxy > 0) {
+    // A hop count trusts whatever X-Forwarded-For entries arrive; if the API is reachable without
+    // passing through those proxies, callers can forge their address and dodge per-IP limits.
+    log.warn(
+      { trust_proxy: config.trustProxy },
+      "TRUST_PROXY is a hop count; prefer the proxies' private subnets so clients cannot forge X-Forwarded-For",
+    );
+  }
   const database = await createDatabase({
     url: config.database.url,
     ssl: config.database.ssl,
