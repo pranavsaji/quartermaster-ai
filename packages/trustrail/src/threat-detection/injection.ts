@@ -42,6 +42,7 @@ const RULES: Rule[] = [
   { id: "budget_manipulation", weight: 5, pattern: /\b(increase|raise|ignore|remove|disable|exceed|double|override)\b[\w\s'-]{0,25}\b(budget|spend(ing)? (limit|cap|mandate)|limit|cap|threshold|mandate)\b/i },
   { id: "approval_manipulation", weight: 5, pattern: /\b(auto[- ]?approve|pre[- ]?approved|already (been )?approved|approval (is )?(not )?(required|needed)|skip (the )?(approval|review|verification)|no (need for|human) (approval|review))\b/i },
   { id: "fee_injection", weight: 4, pattern: /\b(add|include|append|apply|charge)\b[\w\s'-]{0,30}\b(fee|surcharge|service charge|handling charge|processing charge|convenience charge|tip|gratuity|donation)\b/i },
+  { id: "fee_mandate", weight: 4, pattern: /\b(fee|surcharge|service charge|handling charge|processing charge|convenience charge|tip|gratuity)s?\b[\w\s$.,'-]{0,40}\b(must|shall|should|will|is to|needs to)\s+be\s+(added|included|applied|charged|appended)\b/i },
   { id: "payment_redirect", weight: 6, pattern: /\b(send|transfer|wire|pay|remit)\b[\w\s'-]{0,30}\b(to|via)\b[\w\s'-]{0,20}\b(account|wallet|paypal\.me|iban|routing|bitcoin|crypto|gift ?cards?|venmo|zelle)\b/i },
   { id: "credential_request", weight: 6, pattern: /\b(api[_ -]?key|secret|password|access[_ -]?token|private key|client[_ -]?secret|credentials?)\b[\w\s'-]{0,20}\b(send|share|reveal|print|output|provide|include)\b|\b(send|share|reveal|print|output|provide)\b[\w\s'-]{0,20}\b(api[_ -]?key|secret|password|access[_ -]?token|private key|client[_ -]?secret|credentials?)\b/i },
   { id: "tool_invocation", weight: 4, pattern: /\b(call|invoke|execute|run|use)\b[\w\s'-]{0,15}\b(function|tool|capture|refund|checkout|payment api|api)\b[\w\s'-]{0,25}\b(now|immediately|automatically|without)\b/i },
@@ -70,9 +71,11 @@ export function normalizeUntrustedText(text: string): string {
 }
 
 function deLeet(text: string): string {
-  // Only fold digits/symbols that sit inside words, so prices like "$4.99" are untouched.
-  return text.replace(/(?<=[A-Za-z])[013457@$]+(?=[A-Za-z])|(?<=\s|^)[@$](?=[A-Za-z])/g, (m) =>
-    [...m].map((c) => LEET[c] ?? c).join(""),
+  // Fold leetspeak only inside tokens that mix letters with digits/symbols ("1gn0re"), so pure
+  // numbers and prices like "$4.99" are untouched. This variant is matched in addition to the
+  // original text, never instead of it.
+  return text.replace(/[A-Za-z013457@$]+/g, (token) =>
+    /[A-Za-z]/.test(token) && /[013457@$]/.test(token) ? [...token].map((c) => LEET[c] ?? c).join("") : token,
   );
 }
 
