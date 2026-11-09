@@ -1,7 +1,8 @@
 import { and, eq, sql } from "drizzle-orm";
-import { budgetAccounts, budgetReservations, type DbOrTx } from "@qm/database";
+import { budgetAccounts, budgetReservations, organizations, type DbOrTx } from "@qm/database";
 import type { BudgetDto } from "@qm/contracts";
-import { conflict } from "../errors";
+import type { AppContext } from "../context";
+import { conflict, notFound } from "../errors";
 
 /** Local calendar date (YYYY-MM-DD) and ISO weekday (1 = Monday) in a time zone. */
 export function localDate(now: Date, timeZone: string): { date: string; weekday: number } {
@@ -74,7 +75,7 @@ export function toBudgetDto(a: BudgetAccountRow): BudgetDto {
 export async function reserve(
   tx: DbOrTx,
   account: BudgetAccountRow,
-  args: { organizationId: string; intentId: string; purchaseOrderId: string; amountMinor: number },
+  args: { organizationId: string; intentId: string; purchaseOrderId: string; amountMinor: number; now: Date },
 ): Promise<typeof budgetReservations.$inferSelect> {
   if (args.amountMinor <= 0) throw conflict("INVALID_RESERVATION", "Reservation amount must be positive");
   if (args.amountMinor > remaining(account)) {
@@ -85,7 +86,7 @@ export async function reserve(
   }
   const [updated] = await tx
     .update(budgetAccounts)
-    .set({ reservedMinor: sql`${budgetAccounts.reservedMinor} + ${args.amountMinor}`, updatedAt: new Date() })
+    .set({ reservedMinor: sql`${budgetAccounts.reservedMinor} + ${args.amountMinor}`, updatedAt: args.now })
     .where(and(eq(budgetAccounts.id, account.id), sql`${budgetAccounts.limitMinor} - ${budgetAccounts.reservedMinor} - ${budgetAccounts.spentMinor} >= ${args.amountMinor}`))
     .returning();
   // Defence in depth: the conditional update fails closed even if a caller forgot the lock.
@@ -158,4 +159,11 @@ export async function reduceSpend(tx: DbOrTx, intentId: string, refundedMinor: n
     .update(budgetAccounts)
     .set({ spentMinor: sql`greatest(0, ${budgetAccounts.spentMinor} - ${refundedMinor})`, updatedAt: now })
     .where(eq(budgetAccounts.id, r.budgetAccountId));
+}
+
+/** The current week's budget for an organisation, without locking. */
+export async function weeklyBudget(ctx: AppContext, organizationId: string, weeklyLimitMinor: number): Promise<BudgetDto> {
+  const [org] = await ctx.db.select().from(organizations).where(eq(organizations.id, organizationId));
+  if (!org) throw notFound("Organisation");
+  return toBudgetDto(await currentAccount(ctx.db, { organizationId, timeZone: org.timezone, currency: org.currency, weeklyLimitMinor, now: ctx.now(), lock: false }));
 }
