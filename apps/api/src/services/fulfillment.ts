@@ -1,11 +1,11 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import type { DelayDeliveryRequest, DeliveryDto, ReceiveDeliveryRequest } from "@qm/contracts";
-import { deliveries, goodsReceipts, inventoryItems, purchaseOrderItems, purchaseOrders, stockMovements, type DbOrTx } from "@qm/database";
+import { deliveries, goodsReceipts, inventoryItems, purchaseOrderItems, stockMovements, type DbOrTx } from "@qm/database";
 import type { AppContext } from "../context";
 import { conflict, notFound, unprocessable } from "../errors";
 import { appendAudit } from "./audit";
 import { toDeliveryDto } from "./orders";
-import { refreshRequestStatus } from "./procurement/status";
+import { setOrderStatus } from "./order-status";
 import { AfterCommit, type Actor } from "./common";
 
 export async function listDeliveries(db: DbOrTx, organizationId: string): Promise<DeliveryDto[]> {
@@ -88,15 +88,7 @@ export async function receiveDelivery(
       .set({ status: complete ? "DELIVERED" : "IN_TRANSIT", deliveredAt: complete ? now : null, updatedAt: now })
       .where(eq(deliveries.id, d.id));
     if (complete) {
-      await tx
-        .update(purchaseOrders)
-        .set({ status: "FULFILLED", updatedAt: now })
-        .where(and(eq(purchaseOrders.id, d.purchaseOrderId), eq(purchaseOrders.status, "PAID")));
-      const [po] = await tx
-        .select({ requestId: purchaseOrders.requestId })
-        .from(purchaseOrders)
-        .where(eq(purchaseOrders.id, d.purchaseOrderId));
-      if (po?.requestId) await refreshRequestStatus(tx, po.requestId, now);
+      await setOrderStatus(tx, d.purchaseOrderId, ["PAID"], "FULFILLED", now);
     }
     await appendAudit(tx, {
       organizationId: actor.organizationId,
