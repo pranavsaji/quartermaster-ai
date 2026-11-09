@@ -64,5 +64,10 @@ describe("capture", () => {
     expect(p.failure_code).toBe("TRANSACTION_REFUSED");
     const retry = await owner.post(`/payments/${o.paymentId}/capture`, { paypal_order_id: o.paypalOrderId });
     expect(retry.body.payment.status).toBe("COMPLETED");
+    // The retry used a new PayPal-Request-Id, so PayPal cannot replay the earlier rejection.
+    const captureIds = h.paypal.calls
+      .filter((c) => c.method === "POST" && c.path.endsWith("/capture") && c.requestId?.startsWith(`qm-capture-${o.paymentId}`))
+      .map((c) => c.requestId);
+    expect(captureIds).toEqual([`qm-capture-${o.paymentId}`, `qm-capture-${o.paymentId}-1`]);
   });
 });
