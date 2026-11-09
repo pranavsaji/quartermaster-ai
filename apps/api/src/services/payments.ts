@@ -298,6 +298,25 @@ export async function reconcilePayment(ctx: AppContext, paymentId: string): Prom
   return p.status as PaymentStatus;
 }
 
+/**
+ * Resolves a payment left in CAPTURE_PENDING whose capture never reached PayPal (timeout before
+ * PayPal processed it, or a crash). Only acts once the certificate has expired and the attempt
+ * is older than `staleMs`, and only when PayPal confirms no capture exists. A late capture is
+ * still accounted for: VOIDED → COMPLETED is allowed and spend is recorded without a reservation.
+ */
+export async function voidAbandonedCapture(ctx: AppContext, paymentId: string, staleMs = 10 * 60_000): Promise<PaymentStatus> {
+  const [p] = await ctx.db.select().from(paymentAttempts).where(eq(paymentAttempts.id, paymentId));
+  if (!p?.paypalOrderId || p.status !== "CAPTURE_PENDING") return (p?.status as PaymentStatus) ?? "FAILED";
+  const [cert] = await ctx.db.select().from(intentCertificates).where(eq(intentCertificates.id, p.intentId));
+  const now = ctx.now();
+  if (!cert || cert.expiresAt > now || now.getTime() - p.updatedAt.getTime() < staleMs) return "CAPTURE_PENDING";
+  const order = await ctx.paypal.getOrder(p.paypalOrderId);
+  await ctx.db.update(paymentAttempts).set({ lastReconciledAt: now }).where(eq(paymentAttempts.id, paymentId));
+  if (order.status === "COMPLETED") return finalizeFromOrder(ctx, paymentId, order, "SYSTEM", null);
+  if (extractCapture(order)) return "CAPTURE_PENDING"; // a capture exists (e.g. PENDING); wait for it
+  return applyTerminalFailure(ctx, paymentId, "VOIDED", "Capture never reached PayPal before the approval expired.");
+}
+
 async function applyTerminalFailure(ctx: AppContext, paymentId: string, status: "FAILED" | "VOIDED", message: string): Promise<PaymentStatus> {
   return ctx.db.transaction(async (tx) => {
     const [p] = await tx.select().from(paymentAttempts).where(eq(paymentAttempts.id, paymentId)).for("update");

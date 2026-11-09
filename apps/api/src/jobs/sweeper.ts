@@ -1,10 +1,10 @@
-import { and, eq, inArray, isNotNull, lt, or } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
 import { idempotencyKeys, intentCertificates, jobLeases, paymentAttempts, purchaseOrders, sessions, type Database } from "@qm/database";
 import type { AppContext } from "../context";
 import { appendAudit } from "../services/audit";
 import { releaseReservation } from "../services/budget";
-import { reconcilePayment } from "../services/payments";
+import { reconcilePayment, voidAbandonedCapture } from "../services/payments";
 import { refreshRequestStatus } from "../services/procurement/status";
 
 export interface SweepReport {
@@ -57,12 +57,15 @@ export async function sweep(ctx: AppContext): Promise<SweepReport> {
         .where(
           and(
             isNotNull(paymentAttempts.paypalOrderId),
+            // Skip rows reconciled very recently so a few unreachable orders cannot starve the rest.
+            or(isNull(paymentAttempts.lastReconciledAt), lt(paymentAttempts.lastReconciledAt, new Date(now.getTime() - 2 * 60_000))),
             or(
               and(eq(paymentAttempts.status, "CAPTURE_PENDING"), lt(paymentAttempts.updatedAt, new Date(now.getTime() - 2 * 60_000))),
               and(inArray(paymentAttempts.status, ["ORDER_CREATED", "PAYER_APPROVED"]), lt(paymentAttempts.updatedAt, new Date(now.getTime() - 10 * 60_000))),
             ),
           ),
         )
+        .orderBy(sql`${paymentAttempts.lastReconciledAt} asc nulls first`)
         .limit(50);
       for (const p of stuck) {
         try {
@@ -80,15 +83,19 @@ export async function sweep(ctx: AppContext): Promise<SweepReport> {
       .from(intentCertificates)
       .leftJoin(paymentAttempts, eq(paymentAttempts.intentId, intentCertificates.id))
       .where(and(eq(intentCertificates.status, "ACTIVE"), lt(intentCertificates.expiresAt, now)))
+      .orderBy(intentCertificates.expiresAt)
       .limit(100);
     for (const { cert, payment } of expired) {
       try {
         if (payment?.paypalOrderId) {
           if (!ctx.paypal.configured) continue; // cannot prove no capture happened; keep the hold
-          const status = await reconcilePayment(ctx, payment.id);
-          if (status === "COMPLETED" || status === "CAPTURE_PENDING") continue;
+          let status = await reconcilePayment(ctx, payment.id);
+          if (status === "CAPTURE_PENDING") {
+            status = await voidAbandonedCapture(ctx, payment.id);
+            if (status === "VOIDED") report.expired++;
+          }
+          if (status !== "CREATED" && status !== "ORDER_CREATED" && status !== "PAYER_APPROVED") continue;
         }
-        if (payment?.status === "CAPTURE_PENDING") continue;
         await ctx.db.transaction(async (tx) => {
           const [fresh] = await tx.select().from(intentCertificates).where(eq(intentCertificates.id, cert.id)).for("update");
           if (fresh?.status !== "ACTIVE") return;
