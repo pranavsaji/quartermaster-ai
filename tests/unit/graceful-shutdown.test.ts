@@ -60,15 +60,21 @@ async function setup(handler: http.RequestListener, opts: { graceMs: number; swe
 
 describe("graceful shutdown", () => {
   it("waits for in-flight requests and the running sweep before closing the database and exiting", async () => {
+    // Wait for the request to reach the handler instead of sleeping, so the test holds under load.
+    let arrived: () => void = () => undefined;
+    const received = new Promise<void>((r) => (arrived = r));
+    let finish: () => void = () => undefined;
     const { lifecycle, get, exit, events } = await setup(
       (_req, res) => {
-        setTimeout(() => res.end("done"), 150);
+        finish = () => res.end("done");
+        arrived();
       },
       { graceMs: 5_000, sweepMs: 50 },
     );
     const pending = get();
-    await sleep(30);
+    await received;
     expect(lifecycle.inFlight).toBe(1);
+    setTimeout(() => finish(), 50);
     const shutdown = lifecycle.shutdown("SIGTERM");
     expect(lifecycle.shutdown("SIGTERM")).toBe(shutdown);
     expect((await pending).body).toBe("done");
@@ -77,19 +83,31 @@ describe("graceful shutdown", () => {
   });
 
   it("stops accepting new connections once draining", async () => {
-    const { lifecycle, get, exit } = await setup((_req, res) => setTimeout(() => res.end("x"), 100), { graceMs: 5_000 });
+    let arrived: () => void = () => undefined;
+    const received = new Promise<void>((r) => (arrived = r));
+    let finish: () => void = () => undefined;
+    const { lifecycle, get, exit } = await setup(
+      (_req, res) => {
+        finish = () => res.end("x");
+        arrived();
+      },
+      { graceMs: 5_000 },
+    );
     const inflight = get();
-    await sleep(20);
+    await received;
     void lifecycle.shutdown("SIGTERM");
     await expect(get()).rejects.toThrow(/ECONNREFUSED/);
+    finish();
     await inflight;
     await exit;
   });
 
   it("gives up on stuck requests after the grace period and exits with the given code", async () => {
-    const { lifecycle, get, exit, logs } = await setup(() => undefined, { graceMs: 100 });
+    let arrived: () => void = () => undefined;
+    const received = new Promise<void>((r) => (arrived = r));
+    const { lifecycle, get, exit, logs } = await setup(() => arrived(), { graceMs: 100 });
     const stuck = get().catch((e: Error) => e);
-    await sleep(20);
+    await received;
     const started = Date.now();
     void lifecycle.shutdown("uncaughtException", 1);
     expect(await exit).toBe(1);
