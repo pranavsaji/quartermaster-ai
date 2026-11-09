@@ -314,6 +314,8 @@ export function usePagedResource<T>(
   fetchPage: (cursor: string | null, signal?: AbortSignal) => Promise<Page<T>>,
   deps: DependencyList,
 ): PagedState<T> {
+  // `deps` are the caller's, and the caller's call is what the exhaustive-deps rule checks.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const first = useResource((signal) => fetchPage(null, signal), deps);
   const base = first.data;
   const [extra, setExtra] = useState<{ base: Page<T>; items: T[]; cursor: string | null } | null>(null);

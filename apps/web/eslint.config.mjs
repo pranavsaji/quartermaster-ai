@@ -18,7 +18,8 @@ const config = [
       // The plugins are registered by eslint-config-next; enable their full recommended sets.
       ...jsxA11y.flatConfigs.recommended.rules,
       ...reactHooks.configs.recommended.rules,
-      "react-hooks/exhaustive-deps": "error",
+      // useResource/usePagedResource take (fetcher, deps) like useCallback: lint their deps too.
+      "react-hooks/exhaustive-deps": ["error", { additionalHooks: "^(useResource|usePagedResource)$" }],
       "react-hooks/refs": "error",
 
       "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
