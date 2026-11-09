@@ -7,6 +7,13 @@ const bool = (def: boolean) =>
     .optional()
     .transform((v) => (v === undefined ? def : ["true", "1", "yes"].includes(v)));
 
+/** A boolean whose default depends on other settings (undefined when unset). */
+const optionalBool = () =>
+  z
+    .enum(["true", "false", "1", "0", "yes", "no"])
+    .optional()
+    .transform((v) => (v === undefined ? undefined : ["true", "1", "yes"].includes(v)));
+
 const EnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().int().min(1).max(65535).default(4000),
@@ -30,7 +37,10 @@ const EnvSchema = z.object({
   WEBHOOK_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().min(1).max(100_000).default(120),
 
   DATABASE_URL: z.string().min(1).optional(),
-  DATABASE_SSL: z.enum(["require", "disable"]).default("disable"),
+  /** Defaults to `require` in production and `disable` elsewhere. */
+  DATABASE_SSL: z.enum(["require", "disable"]).optional(),
+  /** Production refuses DATABASE_SSL=disable unless this is set (e.g. a provider's private network). */
+  DATABASE_ALLOW_INSECURE_TRANSPORT: bool(false),
   DATABASE_CA_CERT: z.string().optional(),
   DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(100).default(10),
 
@@ -62,7 +72,8 @@ const EnvSchema = z.object({
   MARKET_REFERENCE_MAX_AGE_HOURS: z.coerce.number().int().min(1).max(24 * 30).default(72),
 
   SWEEPER_INTERVAL_SECONDS: z.coerce.number().int().min(0).max(3600).default(60),
-  ALLOW_SYNTHETIC_DELIVERY_ACTIONS: bool(true),
+  /** Demo-only delivery simulation. Defaults to false in production, true elsewhere. */
+  ALLOW_SYNTHETIC_DELIVERY_ACTIONS: optionalBool(),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
@@ -140,9 +151,22 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
     if (missing.length) throw new Error(`Missing required production configuration: ${missing.map(([k]) => k).join(", ")}`);
     if (e.DATABASE_URL!.startsWith("pglite://")) throw new Error("PGlite is for local development only; use PostgreSQL in production");
     if (e.PAYPAL_ENV === "live") throw new Error("Live PayPal is disabled in this release; unattended production payments are out of scope");
+    if (e.DATABASE_SSL === "disable" && !e.DATABASE_ALLOW_INSECURE_TRANSPORT) {
+      throw new Error("DATABASE_SSL=disable is refused in production; use TLS, or set DATABASE_ALLOW_INSECURE_TRANSPORT=true for a trusted private network");
+    }
   }
   if (!!e.PAYPAL_CLIENT_ID !== !!e.PAYPAL_CLIENT_SECRET) {
     throw new Error("PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET must be set together");
+  }
+  if (production && e.PAYPAL_CLIENT_ID) {
+    // Without these, webhooks cannot be verified and captures to an arbitrary payee are not refused.
+    const paypalMissing = [
+      ["PAYPAL_WEBHOOK_ID", e.PAYPAL_WEBHOOK_ID],
+      ["PAYPAL_MERCHANT_ID", e.PAYPAL_MERCHANT_ID],
+    ].filter(([, v]) => !v);
+    if (paypalMissing.length) {
+      throw new Error(`PayPal is configured but ${paypalMissing.map(([k]) => k).join(" and ")} ${paypalMissing.length > 1 ? "are" : "is"} missing; both are required in production`);
+    }
   }
 
   return {
@@ -159,7 +183,7 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
       loginPerIp: e.LOGIN_RATE_LIMIT_PER_IP ?? (e.NODE_ENV === "test" ? 1000 : 100),
       webhookPerMinute: e.WEBHOOK_RATE_LIMIT_PER_MINUTE,
     },
-    database: { url: e.DATABASE_URL ?? "pglite://./.data/pglite", ssl: e.DATABASE_SSL === "require", ca: e.DATABASE_CA_CERT, poolMax: e.DATABASE_POOL_MAX },
+    database: { url: e.DATABASE_URL ?? "pglite://./.data/pglite", ssl: (e.DATABASE_SSL ?? (production ? "require" : "disable")) === "require", ca: e.DATABASE_CA_CERT, poolMax: e.DATABASE_POOL_MAX },
     session: { ttlHours: e.SESSION_TTL_HOURS, cookieSecure: production || e.COOKIE_SECURE, cookieName: production ? "__Host-qm_session" : "qm_session" },
     signing: { privateKey: e.TRUSTRAIL_SIGNING_KEY ?? null, keyId: e.TRUSTRAIL_SIGNING_KEY_ID },
     paypal: {
@@ -180,6 +204,6 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
       marketReferenceMaxAgeHours: e.MARKET_REFERENCE_MAX_AGE_HOURS,
     },
     sweeperIntervalSeconds: e.SWEEPER_INTERVAL_SECONDS,
-    allowSyntheticDeliveryActions: e.ALLOW_SYNTHETIC_DELIVERY_ACTIONS,
+    allowSyntheticDeliveryActions: e.ALLOW_SYNTHETIC_DELIVERY_ACTIONS ?? !production,
   };
 }
