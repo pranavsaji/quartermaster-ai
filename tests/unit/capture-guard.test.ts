@@ -108,6 +108,8 @@ describe("payment state machine", () => {
     ["FAILED", "ORDER_CREATED", false],
     ["CAPTURE_PENDING", "PAYER_APPROVED", false],
     ["COMPLETED", "COMPLETED", false],
+    ["CAPTURE_PENDING", "REFUNDED", false],
+    ["ORDER_CREATED", "PARTIALLY_REFUNDED", false],
   ];
   it.each(cases)("%s → %s allowed: %s", (from, to, ok) => {
     expect(canTransition(from, to)).toBe(ok);

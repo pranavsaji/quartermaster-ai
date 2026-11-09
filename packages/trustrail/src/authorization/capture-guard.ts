@@ -92,6 +92,8 @@ const RANK: Record<PaymentStatus, number> = {
  */
 export function canTransition(from: PaymentStatus, to: PaymentStatus): boolean {
   if (from === to) return false;
+  // Refunds only exist for money that was captured and recorded as such.
+  if ((to === "REFUNDED" || to === "PARTIALLY_REFUNDED") && from !== "COMPLETED" && from !== "PARTIALLY_REFUNDED") return false;
   if (from === "COMPLETED") return to === "PARTIALLY_REFUNDED" || to === "REFUNDED";
   if (from === "PARTIALLY_REFUNDED") return to === "REFUNDED";
   if (from === "REFUNDED") return false;
