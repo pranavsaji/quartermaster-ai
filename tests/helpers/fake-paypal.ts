@@ -32,6 +32,8 @@ export class FakePayPal {
   /** Next refund: reject it with this PayPal error without refunding anything. */
   rejectNextRefund: { status: number; issue: string } | null = null;
   refundCount = 0;
+  /** Refunds by id, as PayPal would return them from GET /v2/payments/refunds/{id}. */
+  refunds = new Map<string, { id: string; status: string; amount?: { value: string; currency_code: string } }>();
   /** Status PayPal reports for new refunds. */
   refundStatus: "COMPLETED" | "PENDING" = "COMPLETED";
   /** Next create: report this amount instead of the requested one (provider-side mismatch). */
@@ -47,6 +49,8 @@ export class FakePayPal {
   captureStatus: "COMPLETED" | "PENDING" | "DECLINED" | "FAILED" = "COMPLETED";
   /** Applied to GET responses to simulate a provider-side amount discrepancy. */
   tamperAmount: string | null = null;
+  /** The test clock, so webhook transmission times agree with the server's injected clock. */
+  clock: { now: Date } | null = null;
   private seq = 0;
   /** Distinguishes ids across fake instances, so test files sharing one database never collide. */
   private readonly nonce = Math.random().toString(36).slice(2, 8).toUpperCase();
@@ -169,6 +173,12 @@ export class FakePayPal {
       return json(201, stored.order);
     }
 
+    const getRefund = /^\/v2\/payments\/refunds\/([^/]+)$/.exec(url.pathname);
+    if (getRefund && method === "GET") {
+      const found = this.refunds.get(decodeURIComponent(getRefund[1]!));
+      return found ? json(200, found) : json(404, { name: "RESOURCE_NOT_FOUND", details: [{ issue: "INVALID_RESOURCE_ID" }] });
+    }
+
     const refundMatch = /^\/v2\/payments\/captures\/([^/]+)\/refund$/.exec(url.pathname);
     if (refundMatch && method === "POST") {
       if (this.rejectNextRefund) {
@@ -178,6 +188,7 @@ export class FakePayPal {
       }
       const body = JSON.parse(String(init?.body ?? "{}")) as { amount?: { value: string; currency_code: string } };
       const refund = { id: `REF${this.nonce}${++this.seq}`, status: this.refundStatus, amount: body.amount };
+      this.refunds.set(refund.id, refund);
       this.refundCount++;
       if (requestId) this.requestIds.set(requestId, refund);
       if (this.dropNextRefundResponse) {
@@ -226,6 +237,13 @@ export class FakePayPal {
     return id;
   }
 
+  /** Simulates PayPal completing a refund it previously reported as PENDING. */
+  completeRefund(refundId: string): void {
+    const r = this.refunds.get(refundId);
+    if (!r) throw new Error(`unknown refund ${refundId}`);
+    r.status = "COMPLETED";
+  }
+
   /** Clears fault flags so one test's setup cannot leak into the next. */
   reset(): void {
     this.webhookVerification = "SUCCESS";
@@ -248,7 +266,7 @@ export class FakePayPal {
       "paypal-cert-url": "https://api-m.sandbox.paypal.com/v1/notifications/certs/CERT-360caa42-fca2a594-1d93a270",
       "paypal-transmission-id": `tx-${++this.seq}`,
       "paypal-transmission-sig": "c2lnbmF0dXJl",
-      "paypal-transmission-time": new Date().toISOString(),
+      "paypal-transmission-time": (this.clock?.now ?? new Date()).toISOString(),
     };
   }
 }

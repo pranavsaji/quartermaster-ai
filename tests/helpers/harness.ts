@@ -30,6 +30,7 @@ export async function createHarness(
 ): Promise<Harness> {
   const paypal = new FakePayPal();
   const clock = { now: new Date() };
+  paypal.clock = clock;
   // A unique key id per harness: on a shared PostgreSQL database every test file registers its own
   // key, and TrustRail refuses to rebind an existing id to a different key.
   const keyId = `itest_${randomUUID().slice(0, 8)}`;
