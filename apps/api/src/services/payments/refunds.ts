@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, lt } from "drizzle-orm";
 import { SETTLED_PAYMENT_STATUSES, minorToDecimalString, type PaymentDto, type PaymentStatus, type RefundStatus } from "@qm/contracts";
 import { refunds, type DbOrTx } from "@qm/database";
 import type { PayPalRefund } from "@qm/payments";
@@ -57,11 +57,76 @@ export async function settleRefund(
   return true;
 }
 
+/** PayPal-Request-Id for a logical refund: stable across API retries and sweeper re-issues. */
+export const refundRequestId = (requestKey: string) => `qm-refund-${createHash("sha256").update(requestKey).digest("hex").slice(0, 40)}`;
+
+export type RefundIssueOutcome = { kind: "SETTLED"; status: RefundStatus } | { kind: "DECLINED"; code: string } | { kind: "UNKNOWN" };
+
+/**
+ * Sends (or re-sends, with the same PayPal-Request-Id) one refund to PayPal and records the
+ * answer. PayPal's request-id idempotency means a re-send after a timeout returns the original
+ * refund rather than paying out twice. Used by the owner's request and by the sweeper.
+ */
+export async function issueRefund(
+  ctx: AppContext,
+  refundId: string,
+  actor: { type: "USER"; id: string } | { type: "SYSTEM" },
+): Promise<RefundIssueOutcome> {
+  const [row] = await ctx.db.select().from(refunds).where(eq(refunds.id, refundId));
+  if (!row?.requestKey) return { kind: "UNKNOWN" };
+  const payment = await loadPaymentForSystem(ctx.db, row.paymentAttemptId);
+  if (!payment?.paypalCaptureId) return { kind: "UNKNOWN" };
+
+  let refund: PayPalRefund;
+  try {
+    refund = await ctx.paypal.refundCapture(
+      payment.paypalCaptureId,
+      refundRequestId(row.requestKey),
+      { currency_code: payment.currency, value: minorToDecimalString(row.amountMinor, payment.currency) },
+      row.reason,
+    );
+  } catch (err) {
+    const code = paypalFailureCode(err, "REFUND_ERROR");
+    const status: RefundStatus = isAmbiguousPayPalFailure(err) ? "UNKNOWN" : "FAILED";
+    ctx.log.warn({ err, payment_id: payment.id, refund_id: row.id, code, status }, "PayPal refund failed");
+    await ctx.db
+      .update(refunds)
+      .set({ status })
+      .where(and(eq(refunds.id, row.id), inArray(refunds.status, ["REQUESTED", "UNKNOWN"])));
+    return status === "FAILED" ? { kind: "DECLINED", code } : { kind: "UNKNOWN" };
+  }
+
+  return ctx.db.transaction(async (tx) => {
+    const now = ctx.now();
+    const p = await loadPaymentForSystem(tx, payment.id, true);
+    // The webhook may already have recorded this refund (and counted it) under PayPal's id.
+    const [recorded] = refund.id ? await tx.select().from(refunds).where(eq(refunds.paypalRefundId, refund.id)) : [];
+    if (recorded && recorded.id !== row.id) {
+      await tx.delete(refunds).where(eq(refunds.id, row.id));
+      return { kind: "SETTLED" as const, status: recorded.status };
+    }
+    const [fresh] = await tx.select().from(refunds).where(eq(refunds.id, row.id));
+    const status = toRefundStatus(refund.status);
+    await settleRefund(tx, p!, fresh!, status, refund.id, now);
+    await appendAudit(tx, {
+      organizationId: p!.organizationId,
+      action: "payment.refunded",
+      actorType: actor.type,
+      actorId: actor.type === "USER" ? actor.id : null,
+      entityType: "payment_attempt",
+      entityId: p!.id,
+      data: { amount_minor: row.amountMinor, paypal_refund_id: refund.id, status, reason: row.reason },
+    });
+    return { kind: "SETTLED" as const, status };
+  });
+}
+
 /**
  * Owner-authorised refund. Each logical refund has a stable request key derived from the
  * client's Idempotency-Key, so a retry after a timeout reuses the same PayPal-Request-Id and
  * PayPal returns the original refund instead of paying out twice. While a refund's outcome is
- * unknown or pending, no other refund can start for that payment.
+ * unknown or pending, no other refund can start for that payment; the sweeper resolves such
+ * refunds even if the client never retries.
  */
 export async function refundPayment(
   ctx: AppContext,
@@ -78,16 +143,25 @@ export async function refundPayment(
     if (!["COMPLETED", "PARTIALLY_REFUNDED"].includes(p.status) || !p.paypalCaptureId || p.capturedAmountMinor === null) {
       throw conflict("NOT_REFUNDABLE", `Payment is ${p.status}.`);
     }
+    const refundable = p.capturedAmountMinor - p.refundedAmountMinor;
     const [existing] = await tx.select().from(refunds).where(eq(refunds.requestKey, requestKey));
-    if (existing && (existing.status === "COMPLETED" || existing.status === "PENDING")) return { done: true as const, payment: p };
-    if (existing) return { done: false as const, refund: existing, payment: p };
+    if (existing && (existing.status === "COMPLETED" || existing.status === "PENDING")) return { done: true as const };
+    if (existing && (existing.status === "FAILED" || existing.status === "CANCELLED")) {
+      throw conflict("REFUND_CLOSED", "PayPal declined this refund. Start a new refund to try again.");
+    }
 
+    // Only one unresolved refund per payment (a retry of that same refund is allowed).
     const inFlight = await tx
       .select({ id: refunds.id })
       .from(refunds)
       .where(and(eq(refunds.paymentAttemptId, p.id), inArray(refunds.status, IN_FLIGHT_REFUND)));
-    if (inFlight.length > 0) throw conflict("REFUND_IN_PROGRESS", "Another refund for this payment has not completed yet. Retry it first.");
-    const refundable = p.capturedAmountMinor - p.refundedAmountMinor;
+    if (inFlight.some((r) => r.id !== existing?.id)) {
+      throw conflict("REFUND_IN_PROGRESS", "Another refund for this payment has not completed yet. Retry it first.");
+    }
+    if (existing) {
+      if (existing.amountMinor > refundable) throw unprocessable("REFUND_AMOUNT_INVALID", `Refund must be between 1 and ${refundable}.`);
+      return { done: false as const, refundId: existing.id };
+    }
     const amount = amountMinor ?? refundable;
     if (amount <= 0 || amount > refundable) throw unprocessable("REFUND_AMOUNT_INVALID", `Refund must be between 1 and ${refundable}.`);
     const [r] = await tx
@@ -102,56 +176,69 @@ export async function refundPayment(
         createdBy: actor.id,
       })
       .returning();
-    return { done: false as const, refund: r!, payment: p };
+    return { done: false as const, refundId: r!.id };
   });
-  if (prepared.done) return toPaymentDto(prepared.payment);
 
-  let refund: PayPalRefund;
-  try {
-    refund = await ctx.paypal.refundCapture(
-      prepared.payment.paypalCaptureId!,
-      `qm-refund-${createHash("sha256").update(requestKey).digest("hex").slice(0, 40)}`,
-      { currency_code: prepared.payment.currency, value: minorToDecimalString(prepared.refund.amountMinor, prepared.payment.currency) },
-      reason,
-    );
-  } catch (err) {
-    const code = paypalFailureCode(err, "REFUND_ERROR");
-    const status: RefundStatus = isAmbiguousPayPalFailure(err) ? "UNKNOWN" : "FAILED";
-    ctx.log.warn({ err, payment_id: paymentId, refund_id: prepared.refund.id, code, status }, "PayPal refund failed");
-    await ctx.db.update(refunds).set({ status }).where(eq(refunds.id, prepared.refund.id));
-    if (status === "FAILED") {
+  if (!prepared.done) {
+    const outcome = await issueRefund(ctx, prepared.refundId, { type: "USER", id: actor.id });
+    if (outcome.kind === "DECLINED") {
       // PayPal definitively refused: nothing was refunded and a new refund may be requested.
-      throw unprocessable("REFUND_DECLINED", "PayPal declined the refund. Nothing was refunded.", { paypal_issue: code });
+      throw unprocessable("REFUND_DECLINED", "PayPal declined the refund. Nothing was refunded.", { paypal_issue: outcome.code });
     }
-    // Outcome unknown: the client must retry with the same Idempotency-Key to resolve it.
-    throw badGateway("PAYPAL_REFUND_UNCONFIRMED", "PayPal did not confirm the refund. Retry with the same request to resolve it.", {
-      retryable: true,
-    });
+    if (outcome.kind === "UNKNOWN") {
+      // Retry with the same Idempotency-Key, or let the sweeper resolve it.
+      throw badGateway("PAYPAL_REFUND_UNCONFIRMED", "PayPal did not confirm the refund. Retry with the same request to resolve it.", {
+        retryable: true,
+      });
+    }
   }
+  return toPaymentDto(await loadPayment(ctx.db, actor.organizationId, paymentId));
+}
 
-  return ctx.db.transaction(async (tx) => {
-    const now = ctx.now();
-    const p = await loadPayment(tx, actor.organizationId, paymentId, true);
-    // The webhook may already have recorded this refund (and counted it) under PayPal's id.
-    const [recorded] = refund.id ? await tx.select().from(refunds).where(eq(refunds.paypalRefundId, refund.id)) : [];
-    if (recorded && recorded.id !== prepared.refund.id) {
-      await tx.delete(refunds).where(eq(refunds.id, prepared.refund.id));
-      return toPaymentDto(p);
+/**
+ * Resolves refunds whose outcome is not final: re-sends REQUESTED/UNKNOWN refunds with their
+ * original PayPal-Request-Id (PayPal answers with the original refund if it already happened),
+ * and re-reads PENDING refunds. Returns how many were examined.
+ */
+export async function reconcileRefunds(ctx: AppContext, now: Date, staleMs = 2 * 60_000): Promise<{ examined: number; errors: number }> {
+  const cutoff = new Date(now.getTime() - staleMs);
+  const open = await ctx.db
+    .select()
+    .from(refunds)
+    .where(and(inArray(refunds.status, ["REQUESTED", "UNKNOWN", "PENDING"]), lt(refunds.createdAt, cutoff)))
+    .orderBy(asc(refunds.createdAt))
+    .limit(25);
+  let errors = 0;
+  for (const r of open) {
+    try {
+      if (r.status === "PENDING") {
+        if (!r.paypalRefundId) continue;
+        const remote = await ctx.paypal.getRefund(r.paypalRefundId);
+        const status = toRefundStatus(remote.status);
+        if (status === "PENDING" || status === "UNKNOWN") continue;
+        await ctx.db.transaction(async (tx) => {
+          const [fresh] = await tx.select().from(refunds).where(eq(refunds.id, r.id));
+          const p = await loadPaymentForSystem(tx, r.paymentAttemptId, true);
+          if (!fresh || !p || fresh.status !== "PENDING") return;
+          await settleRefund(tx, p, fresh, status, r.paypalRefundId, ctx.now());
+          await appendAudit(tx, {
+            organizationId: p.organizationId,
+            action: "payment.refund_reconciled",
+            actorType: "SYSTEM",
+            entityType: "payment_attempt",
+            entityId: p.id,
+            data: { paypal_refund_id: r.paypalRefundId, status },
+          });
+        });
+      } else if (r.requestKey) {
+        await issueRefund(ctx, r.id, { type: "SYSTEM" });
+      }
+    } catch (err) {
+      errors++;
+      ctx.log.warn({ err, refund_id: r.id }, "refund reconciliation failed");
     }
-    const [row] = await tx.select().from(refunds).where(eq(refunds.id, prepared.refund.id));
-    const status = toRefundStatus(refund.status);
-    await settleRefund(tx, p, row!, status, refund.id, now);
-    await appendAudit(tx, {
-      organizationId: actor.organizationId,
-      action: "payment.refunded",
-      actorType: "USER",
-      actorId: actor.id,
-      entityType: "payment_attempt",
-      entityId: p.id,
-      data: { amount_minor: row!.amountMinor, paypal_refund_id: refund.id, status, reason },
-    });
-    return toPaymentDto(await loadPayment(tx, actor.organizationId, paymentId));
-  });
+  }
+  return { examined: open.length, errors };
 }
 
 /**
@@ -176,6 +263,23 @@ export async function recordReportedRefund(
       // PayPal refund ids are unique; one recorded against another payment means the event does
       // not describe this capture. Refuse rather than move money between payments.
       throw conflict("REFUND_PAYMENT_MISMATCH", "This refund is already recorded against a different payment.");
+    }
+    if (!row) {
+      // Adopt an unresolved refund this payment is waiting on (same amount), so a refund whose
+      // API response was lost is settled once instead of being counted twice.
+      [row] = await tx
+        .select()
+        .from(refunds)
+        .where(
+          and(
+            eq(refunds.paymentAttemptId, payment.id),
+            inArray(refunds.status, ["REQUESTED", "UNKNOWN"]),
+            eq(refunds.amountMinor, report.amountMinor),
+            isNull(refunds.paypalRefundId),
+          ),
+        )
+        .orderBy(asc(refunds.createdAt))
+        .limit(1);
     }
     if (!row) {
       [row] = await tx
