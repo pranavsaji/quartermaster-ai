@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { redactSecrets } from "../redact";
 
 /**
  * Minimal OpenAI Chat Completions client for strict structured outputs. The model never
@@ -46,6 +47,10 @@ export type OpenAIFailure =
   | "aborted"
   | "network";
 
+/**
+ * `message` is for logs only: it may carry a short, redacted provider reason. Client-facing text
+ * must be derived from `kind` and `status`, never from `message`.
+ */
 export class OpenAIError extends Error {
   constructor(
     message: string,
@@ -112,7 +117,7 @@ export class OpenAIClient {
           ? err
           : params.signal?.aborted
             ? new OpenAIError("OpenAI request aborted", null, "aborted")
-            : new OpenAIError(`OpenAI request failed: ${err instanceof Error ? err.message : String(err)}`, null, "network");
+            : new OpenAIError(`OpenAI request failed: ${redactSecrets(err instanceof Error ? err.message : String(err))}`, null, "network");
       this.config.log?.("openai.request_failed", { name: params.name, kind: e.kind, status: e.status });
       throw e;
     }
@@ -140,13 +145,14 @@ export class OpenAIClient {
     const raw: unknown = await res.json().catch(() => null);
     if (!res.ok) {
       const message = ErrorBody.safeParse(raw).data?.error?.message ?? "unknown error";
-      throw new OpenAIError(`OpenAI request failed (${res.status}): ${message.slice(0, 300)}`, res.status, "http");
+      // Provider error text can quote the credential it rejected ("Incorrect API key provided: sk-…").
+      throw new OpenAIError(`OpenAI request failed (HTTP ${res.status}): ${redactSecrets(message)}`, res.status, "http");
     }
     const envelope = Envelope.safeParse(raw);
     if (!envelope.success) throw new OpenAIError("OpenAI returned an unexpected response", res.status, "invalid_response");
     const body = envelope.data;
     const choice = body.choices?.[0];
-    if (choice?.message?.refusal) throw new OpenAIError(`Model refused: ${choice.message.refusal.slice(0, 300)}`, res.status, "refused");
+    if (choice?.message?.refusal) throw new OpenAIError(`Model refused: ${redactSecrets(choice.message.refusal)}`, res.status, "refused");
     if (choice?.finish_reason === "length") throw new OpenAIError("Model output truncated", res.status, "truncated");
     const content = choice?.message?.content;
     if (!content) throw new OpenAIError("Model returned no content", res.status, "empty");
