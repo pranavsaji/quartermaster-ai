@@ -121,6 +121,11 @@ export class PayPalClient {
     return this.request("captures.get", PayPalCaptureSchema, "GET", `/v2/payments/captures/${encodeURIComponent(captureId)}`);
   }
 
+  /** Reads a refund's current state (used to settle refunds PayPal reported as PENDING). */
+  getRefund(refundId: string): Promise<PayPalRefund> {
+    return this.request("refunds.get", PayPalRefundSchema, "GET", `/v2/payments/refunds/${encodeURIComponent(refundId)}`);
+  }
+
   refundCapture(
     captureId: string,
     requestId: string,
