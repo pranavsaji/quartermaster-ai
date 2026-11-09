@@ -173,7 +173,7 @@ describe("sessions", () => {
   });
 
   it("rejects bad sign-ins without saying which part was wrong", async () => {
-    const login = (body: unknown) => api().post("/api/v1/auth/login").set("X-Requested-With", "quartermaster").send(body);
+    const login = (body: object) => api().post("/api/v1/auth/login").set("X-Requested-With", "quartermaster").send(body);
     const wrong = await login({ email: "viewer@demo.quartermaster.dev", password: "not-the-password" });
     const unknown = await login({ email: "nobody@demo.quartermaster.dev", password: "not-the-password" });
     expect(wrong.status).toBe(401);
