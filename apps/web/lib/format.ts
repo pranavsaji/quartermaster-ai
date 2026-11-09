@@ -175,11 +175,19 @@ export function humanize(code: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-export function todayIso(offsetDays = 0): string {
-  const d = new Date();
-  d.setDate(d.getDate() + offsetDays);
-  const y = d.getFullYear();
-  const m = (d.getMonth() + 1).toString().padStart(2, "0");
-  const day = d.getDate().toString().padStart(2, "0");
-  return `${y}-${m}-${day}`;
+/**
+ * Today's calendar date (YYYY-MM-DD) in `timeZone` — the organisation's, so a
+ * manager in another zone (or a laptop on UTC) sees the restaurant's "today" for
+ * date pickers and "not in the past" checks. Falls back to the browser's zone
+ * when none (or an unknown one) is given.
+ */
+export function todayIso(timeZone?: string, now: Date | number = Date.now()): string {
+  let parts: Intl.DateTimeFormatPart[];
+  try {
+    parts = new Intl.DateTimeFormat("en-US", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(now);
+  } catch {
+    parts = new Intl.DateTimeFormat("en-US", { year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(now);
+  }
+  const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
 }

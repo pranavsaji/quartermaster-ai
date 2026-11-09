@@ -50,7 +50,11 @@ function ProcurementContent() {
 
       {composing ? (
         <div className="mt-4 mb-6">
-          <RequestComposer currency={user.organization.currency} onCancel={() => router.push("/procurement")} />
+          <RequestComposer
+            currency={user.organization.currency}
+            timeZone={user.organization.timezone}
+            onCancel={() => router.push("/procurement")}
+          />
         </div>
       ) : null}
 

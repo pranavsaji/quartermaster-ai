@@ -15,7 +15,17 @@ import { useAction } from "@/lib/hooks";
 /** An example, shown as a placeholder: the owner's request starts empty rather than pre-written. */
 const EXAMPLE_INSTRUCTION = "e.g. We're expecting a busy weekend. Restock takeaway containers and cooking oil without exceeding $300.";
 
-export function RequestComposer({ currency, onCancel }: { currency: string; onCancel?: () => void }) {
+export function RequestComposer({
+  currency,
+  timeZone,
+  onCancel,
+}: {
+  currency: string;
+  /** The organisation's IANA zone: "today" is the restaurant's today. */
+  timeZone?: string;
+  onCancel?: () => void;
+}) {
+  const today = todayIso(timeZone);
   const router = useRouter();
   const [instruction, setInstruction] = useState("");
   const [budget, setBudget] = useState("");
@@ -35,7 +45,7 @@ export function RequestComposer({ currency, onCancel }: { currency: string; onCa
     const next: typeof errors = {};
     const budgetMinor = budget.trim() === "" ? undefined : inputToMinor(budget, currency);
     if (budgetMinor === null) next.budget = "Enter an amount like 300 or 299.99.";
-    if (requiredBy && requiredBy < todayIso()) next.requiredBy = "Pick today or a future date.";
+    if (requiredBy && requiredBy < today) next.requiredBy = "Pick today or a future date.";
 
     const parsed = CreateProcurementRequest.safeParse({
       instruction: instruction.trim(),
@@ -98,7 +108,7 @@ export function RequestComposer({ currency, onCancel }: { currency: string; onCa
                 <Input
                   {...control}
                   type="date"
-                  min={todayIso()}
+                  min={today}
                   value={requiredBy}
                   onChange={(e) => setRequiredBy(e.target.value)}
                   className="tnum"

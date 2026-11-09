@@ -150,6 +150,7 @@ export function OrdersPage() {
                 suppliers={suppliers.data.items}
                 orders={placedOrders}
                 currency={user.organization.currency}
+                timeZone={user.organization.timezone}
                 prefill={invoicePrefill}
                 onAnalyzed={onAnalyzed}
               />
@@ -183,7 +184,9 @@ export function OrdersPage() {
       </div>
 
       {receiving ? <ReceiveDialog target={receiving} onClose={() => setReceiving(null)} onDone={onDeliveryUpdated} /> : null}
-      {delaying ? <DelayDialog target={delaying} onClose={() => setDelaying(null)} onDone={onDeliveryUpdated} /> : null}
+      {delaying ? (
+        <DelayDialog target={delaying} timeZone={user.organization.timezone} onClose={() => setDelaying(null)} onDone={onDeliveryUpdated} />
+      ) : null}
     </>
   );
 }

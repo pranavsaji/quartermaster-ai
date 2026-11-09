@@ -45,12 +45,15 @@ export function InvoiceForm({
   suppliers,
   orders,
   currency,
+  timeZone,
   prefill,
   onAnalyzed,
 }: {
   suppliers: SupplierDto[];
   orders: PurchaseOrderDto[];
   currency: string;
+  /** The organisation's IANA zone, for the default invoice date. */
+  timeZone?: string;
   /** Set by the orders grid's "Invoice" action. */
   prefill: InvoicePrefill | null;
   onAnalyzed: (invoice: InvoiceDto) => void;
@@ -58,7 +61,7 @@ export function InvoiceForm({
   const [supplierId, setSupplierId] = useState("");
   const [poId, setPoId] = useState("");
   const [number, setNumber] = useState("");
-  const [invoiceDate, setInvoiceDate] = useState(todayIso());
+  const [invoiceDate, setInvoiceDate] = useState(() => todayIso(timeZone));
   const [lines, setLines] = useState<LineDraft[]>([blankLine()]);
   const [notes, setNotes] = useState("");
   const [totalOverride, setTotalOverride] = useState("");
@@ -79,7 +82,7 @@ export function InvoiceForm({
     setSupplierId(po.supplier_id);
     setPoId(po.id);
     setNumber(`INV-${po.number.replace(/^PO-?/i, "")}`);
-    setInvoiceDate(todayIso());
+    setInvoiceDate(todayIso(timeZone));
     setLines(
       po.items.map((item) => ({
         key: `l${(lineSeq += 1)}`,

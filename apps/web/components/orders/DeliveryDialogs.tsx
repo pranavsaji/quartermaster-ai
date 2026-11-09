@@ -141,13 +141,17 @@ export function ReceiveDialog({
 /** Report a new expected date. Mount it only while open so each opening starts blank. */
 export function DelayDialog({
   target,
+  timeZone,
   onClose,
   onDone,
 }: {
   target: DeliveryTarget;
+  /** The organisation's IANA zone: "today" is the restaurant's today. */
+  timeZone?: string;
   onClose: () => void;
   onDone: (delivery: DeliveryDto) => void;
 }) {
+  const today = todayIso(timeZone);
   const [newDate, setNewDate] = useState("");
   const [reason, setReason] = useState("");
   const [errors, setErrors] = useState<{ date?: string; reason?: string }>({});
@@ -161,7 +165,7 @@ export function DelayDialog({
   function submit() {
     const next: typeof errors = {};
     if (!newDate) next.date = "Pick the new expected date.";
-    else if (newDate < todayIso()) next.date = "Pick today or a later date.";
+    else if (newDate < today) next.date = "Pick today or a later date.";
     if (!reason.trim()) next.reason = "Say why the delivery is late.";
     const parsed = DelayDeliveryRequest.safeParse({ new_expected_date: newDate, reason: reason.trim() });
     if (!parsed.success && !next.date && !next.reason) next.date = "Use a valid date.";
@@ -192,14 +196,7 @@ export function DelayDialog({
         <SourceLabel source="SYNTHETIC">Synthetic fulfillment data</SourceLabel>
         <Field label="New expected date" required error={errors.date}>
           {(control) => (
-            <Input
-              {...control}
-              type="date"
-              min={todayIso()}
-              value={newDate}
-              onChange={(e) => setNewDate(e.target.value)}
-              className="tnum"
-            />
+            <Input {...control} type="date" min={today} value={newDate} onChange={(e) => setNewDate(e.target.value)} className="tnum" />
           )}
         </Field>
         <Field label="Reason" required error={errors.reason}>

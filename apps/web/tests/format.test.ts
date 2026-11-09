@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { inputToMinor, minorToInput } from "@/lib/format";
+import { inputToMinor, minorToInput, todayIso } from "@/lib/format";
 
 describe("inputToMinor", () => {
   it("converts typed amounts to integer minor units", () => {
@@ -41,5 +41,20 @@ describe("inputToMinor", () => {
   it("round-trips with minorToInput", () => {
     expect(minorToInput(12345)).toBe("123.45");
     expect(inputToMinor(minorToInput(98765))).toBe(98765);
+  });
+});
+
+describe("todayIso", () => {
+  // 2026-11-09 23:30 in New York is already 2026-11-10 in UTC and Tokyo.
+  const instant = Date.parse("2026-11-10T04:30:00Z");
+
+  it("uses the organisation's time zone, not the browser's", () => {
+    expect(todayIso("America/New_York", instant)).toBe("2026-11-09");
+    expect(todayIso("UTC", instant)).toBe("2026-11-10");
+    expect(todayIso("Asia/Tokyo", instant)).toBe("2026-11-10");
+  });
+
+  it("falls back to the browser zone for an unknown zone", () => {
+    expect(todayIso("Not/AZone", instant)).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 });
