@@ -32,7 +32,8 @@ export async function createHarness(opts: { channel3Fetch?: typeof fetch; openai
   const env: NodeJS.ProcessEnv = {
     NODE_ENV: "test",
     LOG_LEVEL: "silent",
-    DATABASE_URL: "pglite://memory",
+    // HARNESS_DATABASE_URL runs the same suite against a real PostgreSQL server.
+    DATABASE_URL: process.env.HARNESS_DATABASE_URL ?? "pglite://memory",
     TRUSTRAIL_SIGNING_KEY: Buffer.from(key.private_key_pem).toString("base64"),
     TRUSTRAIL_SIGNING_KEY_ID: "trk_integration",
     PAYPAL_CLIENT_ID: "fake-client",
@@ -45,7 +46,7 @@ export async function createHarness(opts: { channel3Fetch?: typeof fetch; openai
     ...opts.extraEnv,
   };
   const ctx = await bootstrap({ env, paypalFetch: paypal.fetch, channel3Fetch: opts.channel3Fetch, openaiFetch: opts.openaiFetch, now: () => clock.now });
-  await seedDemo(ctx.db, { password: PASSWORD, now: clock.now });
+  await seedDemo(ctx.db, { password: PASSWORD, now: clock.now, reset: true });
   const app = createApp(ctx);
 
   async function agent(role: keyof typeof DEMO_CREDENTIALS = "owner"): Promise<Client> {
