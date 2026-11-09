@@ -59,15 +59,16 @@ export function RequestDetail({ id }: { id: string }) {
 
   const data = request.data;
 
-  // Auto-run research once for a fresh DRAFT (the composer navigates here with ?research=1).
+  // Auto-run research once, only when the composer sent us here with ?research=1 for the
+  // DRAFT it just created. Opening any other DRAFT never starts the (rate-limited) research call.
   const runResearch = research.run;
-  const hasResearchParam = params.get("research") !== null;
+  const autoResearch = params.get("research") === "1";
   useEffect(() => {
-    if (!data || autoStarted.current) return;
+    if (!autoResearch || !data || autoStarted.current) return;
     autoStarted.current = true;
     if (data.status === "DRAFT" && can("runResearch")) void runResearch();
-    if (hasResearchParam) router.replace(`/procurement/${id}`, { scroll: false });
-  }, [data, can, runResearch, hasResearchParam, router, id]);
+    router.replace(`/procurement/${id}`, { scroll: false });
+  }, [data, can, runResearch, autoResearch, router, id]);
 
   // If research is running server-side (started elsewhere), poll until it settles.
   const serverResearching = data?.status === "RESEARCHING" && !research.pending;
