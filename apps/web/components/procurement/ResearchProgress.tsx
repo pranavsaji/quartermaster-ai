@@ -53,7 +53,8 @@ export function ResearchProgress({ startedAt }: { startedAt: number }) {
                   "rounded-lg border px-3 py-2.5 transition-colors",
                   state === "active" && "border-accent-line bg-accent-soft/60",
                   state === "done" && "border-line bg-surface",
-                  state === "todo" && "border-dashed border-line bg-surface opacity-60",
+                  // A muted background, not reduced opacity, which would drop the 12px detail below AA contrast.
+                  state === "todo" && "border-dashed border-line bg-canvas",
                 )}
               >
                 <p className="flex items-center gap-2 text-[13px] font-medium text-ink">
