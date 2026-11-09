@@ -1,5 +1,5 @@
 import { and, eq, inArray } from "drizzle-orm";
-import { COMMITTED_PO_STATUSES, type MarketReferenceDto } from "@qm/contracts";
+import { COMMITTED_PO_STATUSES, currencyExponent, type MarketReferenceDto } from "@qm/contracts";
 import { purchaseCandidates, purchaseOrders, purchaseRequests, supplierCatalogItems } from "@qm/database";
 import {
   buildSupplierQuote,
@@ -689,7 +689,7 @@ async function finishResearch(rc: ResearchContext, demand: Demand, market: Marke
     unfilled_items: unfilled.map((id) => demand.itemRows.get(id)?.name ?? id),
     market_status: market.map(
       (m) =>
-        `${demand.itemRows.get(m.inventory_item_id)?.name}: market reference ${m.status.toLowerCase()}${m.reference_unit_price_minor !== null ? ` at ${m.reference_unit_price_minor.toFixed(2)}¢/unit` : ""}.`,
+        `${demand.itemRows.get(m.inventory_item_id)?.name}: market reference ${m.status.toLowerCase()}${m.reference_unit_price_minor !== null ? ` at ${formatUnitPrice(m.reference_unit_price_minor, rc.request.currency)}/unit` : ""}.`,
     ),
   };
   const explanation = await explain(rc, facts);
@@ -723,6 +723,21 @@ async function finishResearch(rc: ResearchContext, demand: Demand, market: Marke
       }));
 
   return getRequestDto(ctx.db, rc.orgId, rc.requestId);
+}
+
+/**
+ * Formats a per-unit reference price (fractional minor units, see market.ts) in the request's
+ * currency, with two more decimals than the currency's minor unit: 4.375 USD minor units is
+ * "$0.0438". Unlike formatMoney it never rounds a per-unit price to whole minor units.
+ */
+export function formatUnitPrice(minorPerUnit: number, currency: string, locale = "en-US"): string {
+  const exp = currencyExponent(currency);
+  return new Intl.NumberFormat(locale, {
+    style: "currency",
+    currency,
+    minimumFractionDigits: exp,
+    maximumFractionDigits: exp + 2,
+  }).format(minorPerUnit / 10 ** exp);
 }
 
 /**
