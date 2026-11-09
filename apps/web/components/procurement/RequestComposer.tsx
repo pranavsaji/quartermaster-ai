@@ -12,12 +12,13 @@ import { api } from "@/lib/api";
 import { inputToMinor, todayIso } from "@/lib/format";
 import { useAction } from "@/lib/hooks";
 
-export const DEFAULT_INSTRUCTION =
-  "We're expecting a busy weekend. Restock takeaway containers and cooking oil without exceeding $300.";
+/** An example, shown as a placeholder: the owner's request starts empty rather than pre-written. */
+const EXAMPLE_INSTRUCTION =
+  "e.g. We're expecting a busy weekend. Restock takeaway containers and cooking oil without exceeding $300.";
 
 export function RequestComposer({ currency, onCancel }: { currency: string; onCancel?: () => void }) {
   const router = useRouter();
-  const [instruction, setInstruction] = useState(DEFAULT_INSTRUCTION);
+  const [instruction, setInstruction] = useState("");
   const [budget, setBudget] = useState("");
   const [requiredBy, setRequiredBy] = useState("");
   const [overrideDemand, setOverrideDemand] = useState(false);
@@ -73,6 +74,7 @@ export function RequestComposer({ currency, onCancel }: { currency: string; onCa
                 {...control}
                 value={instruction}
                 onChange={(e) => setInstruction(e.target.value)}
+                placeholder={EXAMPLE_INSTRUCTION}
                 maxLength={2000}
                 rows={3}
                 className="text-[14px]"
