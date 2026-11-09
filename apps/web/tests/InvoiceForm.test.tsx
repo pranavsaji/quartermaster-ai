@@ -1,7 +1,8 @@
 import type { InvoiceDto, SupplierDto } from "@qm/contracts";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { InvoiceForm, validateInvoiceForm, type InvoiceDraft } from "@/components/orders/InvoiceForm";
+import { nextLineKey } from "@/components/orders/InvoiceLines";
 import { jsonResponse, mockFetch, purchaseOrder } from "./helpers";
 
 const SUPPLIER_ID = "5b0c3f4e-2a6d-4d8e-9b1a-3c2f1e0d9a87";
@@ -131,5 +132,45 @@ describe("InvoiceForm", () => {
       lines: [{ quantity: 4, unit_price_minor: 2500, line_total_minor: 10000 }],
       total_minor: 10000,
     });
+  });
+
+  it("adds and removes lines with keys that stay unique", () => {
+    mockFetch({});
+    renderForm();
+    fireEvent.click(screen.getByRole("button", { name: "+ Add line" }));
+    fireEvent.click(screen.getByRole("button", { name: "+ Add line" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Line 3 description" }), { target: { value: "Gloves" } });
+    fireEvent.click(screen.getByRole("button", { name: "Remove line 2" }));
+    fireEvent.click(screen.getByRole("button", { name: "+ Add line" }));
+    expect(screen.getAllByRole("textbox", { name: /^Line \d description$/ }).map((i) => (i as HTMLInputElement).value)).toEqual([
+      "",
+      "Gloves",
+      "",
+    ]);
+  });
+
+  it("offers the duplicate-invoice demo only in demo mode", async () => {
+    mockFetch({});
+    renderForm();
+    expect(screen.getByRole("button", { name: "Simulate duplicate invoice" })).toBeDisabled();
+
+    vi.resetModules();
+    vi.stubEnv("NEXT_PUBLIC_DEMO_ACCOUNTS", "false");
+    const { InvoiceForm: ProductionForm } = await import("@/components/orders/InvoiceForm");
+    cleanup();
+    render(<ProductionForm suppliers={suppliers} orders={[po]} currency="USD" prefill={null} onAnalyzed={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Analyze invoice" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Simulate duplicate invoice" })).not.toBeInTheDocument();
+    vi.unstubAllEnvs();
+  });
+});
+
+describe("nextLineKey", () => {
+  it("picks the first unused key", () => {
+    const l = (key: string) => ({ key, sku: "", description: "", quantity: "1", unitPrice: "" });
+    expect(nextLineKey([])).toBe("l0");
+    expect(nextLineKey([l("l0"), l("l1")])).toBe("l2");
+    expect(nextLineKey([l("l0"), l("l2")])).toBe("l3");
+    expect(nextLineKey([l("l1")])).toBe("l2");
   });
 });
