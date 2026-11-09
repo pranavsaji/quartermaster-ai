@@ -9,6 +9,7 @@ import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { BudgetMeter } from "@/components/ui/Meter";
 import { Notice } from "@/components/ui/Notice";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { RefreshErrorNotice } from "@/components/ui/RefreshErrorNotice";
 import { SkeletonCard } from "@/components/ui/Skeleton";
 import { api, type MandateUpdateResponse } from "@/lib/api";
 import { date, dateTime } from "@/lib/format";
@@ -48,6 +49,8 @@ export default function MandatePage() {
       ) : null}
 
       {current.error && !data ? <ErrorNotice error={current.error} onRetry={current.reload} /> : null}
+      <RefreshErrorNotice error={current.error} hasData={Boolean(current.data)} updatedAt={current.updatedAt} onRetry={current.reload} className="mb-4" />
+      <RefreshErrorNotice error={suppliers.error} hasData={Boolean(suppliers.data)} updatedAt={suppliers.updatedAt} onRetry={suppliers.reload} className="mb-4" />
       {suppliers.error && !suppliers.data ? <ErrorNotice error={suppliers.error} onRetry={suppliers.reload} title="Couldn't load suppliers" className="mb-4" /> : null}
 
       {!data && !current.error ? (

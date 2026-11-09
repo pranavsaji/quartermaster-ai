@@ -12,6 +12,7 @@ import { Card, CardHeader } from "@/components/ui/Card";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Notice } from "@/components/ui/Notice";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { RefreshErrorNotice } from "@/components/ui/RefreshErrorNotice";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import { api } from "@/lib/api";
 import { useResource } from "@/lib/hooks";
@@ -87,6 +88,7 @@ export default function InventoryPage() {
             }
           />
           <div className="p-3">
+            <RefreshErrorNotice error={inventory.error} hasData={Boolean(items)} updatedAt={inventory.updatedAt} onRetry={inventory.reload} className="mb-3" />
             {inventory.error && !items ? (
               <ErrorNotice error={inventory.error} onRetry={inventory.reload} />
             ) : (

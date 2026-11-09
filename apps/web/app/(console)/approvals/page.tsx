@@ -12,6 +12,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Notice } from "@/components/ui/Notice";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { RefreshErrorNotice } from "@/components/ui/RefreshErrorNotice";
 import { SkeletonRows } from "@/components/ui/Skeleton";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import { api, fetchAllPages } from "@/lib/api";
@@ -121,6 +122,7 @@ export default function ApprovalsPage() {
       ) : null}
 
       {orders.error && !orders.data ? <ErrorNotice error={orders.error} onRetry={orders.reload} /> : null}
+      <RefreshErrorNotice error={orders.error} hasData={Boolean(orders.data)} updatedAt={orders.updatedAt} onRetry={orders.reload} className="mb-6" />
 
       <div className="space-y-6">
         {(

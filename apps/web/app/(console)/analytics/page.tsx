@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { RefreshErrorNotice } from "@/components/ui/RefreshErrorNotice";
 import { SkeletonCard } from "@/components/ui/Skeleton";
 import { StatTile } from "@/components/ui/StatTile";
 import { api } from "@/lib/api";
@@ -144,6 +145,7 @@ export default function AnalyticsPage() {
       />
 
       {summary.error && !s ? <ErrorNotice error={summary.error} onRetry={summary.reload} /> : null}
+      <RefreshErrorNotice error={summary.error} hasData={Boolean(s)} updatedAt={summary.updatedAt} onRetry={summary.reload} className="mb-6" />
 
       {!s && !summary.error ? (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">

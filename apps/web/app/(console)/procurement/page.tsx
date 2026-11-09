@@ -10,6 +10,7 @@ import { Card, CardHeader } from "@/components/ui/Card";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Notice } from "@/components/ui/Notice";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { RefreshErrorNotice } from "@/components/ui/RefreshErrorNotice";
 import { api } from "@/lib/api";
 import { useResource } from "@/lib/hooks";
 
@@ -64,6 +65,7 @@ function ProcurementContent() {
           }
         />
         <div className="p-3">
+          <RefreshErrorNotice error={requests.error} hasData={Boolean(requests.data)} updatedAt={requests.updatedAt} onRetry={requests.reload} className="mb-3" />
           {requests.error && !requests.data ? (
             <ErrorNotice error={requests.error} onRetry={requests.reload} />
           ) : (
