@@ -19,6 +19,20 @@ describe("inputToMinor", () => {
     expect(inputToMinor("1e3")).toBeNull();
   });
 
+  it("accepts commas only as thousands separators", () => {
+    expect(inputToMinor("1,234")).toBe(123400);
+    expect(inputToMinor("1,234,567.89")).toBe(123456789);
+    expect(inputToMinor("$ 12,000")).toBe(1200000);
+    // A decimal comma or misplaced separator is not silently read as a bigger number.
+    expect(inputToMinor("12,50")).toBeNull();
+    expect(inputToMinor("1,23")).toBeNull();
+    expect(inputToMinor("1234,567")).toBeNull();
+    expect(inputToMinor(",123")).toBeNull();
+    expect(inputToMinor("1,234,")).toBeNull();
+    expect(inputToMinor("1.234,5")).toBeNull();
+    expect(inputToMinor("1 234")).toBeNull();
+  });
+
   it("respects the currency exponent", () => {
     expect(inputToMinor("500", "JPY")).toBe(500);
     expect(inputToMinor("500.5", "JPY")).toBeNull();

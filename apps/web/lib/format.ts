@@ -16,17 +16,22 @@ export function minorToInput(minor: number, currency = "USD"): string {
   return (minor / 10 ** exp).toFixed(exp);
 }
 
+/** Digits with optional thousands separators in the right places ("1,234,567"), then optional decimals. */
+const GROUPED_AMOUNT = /^(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d*))?$/;
+
 /**
  * Dollars typed by a user -> integer minor units. Returns null for invalid input
- * (negative, non-numeric, or more decimals than the currency allows).
+ * (negative, non-numeric, or more decimals than the currency allows). Commas are
+ * accepted only as thousands separators: "1,234.50" is fine, but "12,50" (a
+ * decimal comma) is rejected rather than read as 1,250.
  */
 export function inputToMinor(value: string, currency = "USD"): number | null {
   const exp = safeExponent(currency);
-  const trimmed = value.trim().replace(/[$,\s]/g, "");
+  const trimmed = value.trim().replace(/^\$\s*/, "");
   if (trimmed === "") return null;
-  const match = /^(\d+)(?:\.(\d*))?$/.exec(trimmed);
+  const match = GROUPED_AMOUNT.exec(trimmed);
   if (!match) return null;
-  const whole = match[1] ?? "0";
+  const whole = (match[1] ?? "0").replace(/,/g, "");
   const frac = match[2] ?? "";
   if (frac.length > exp) return null;
   const minor = Number(`${whole}${frac.padEnd(exp, "0")}`);
