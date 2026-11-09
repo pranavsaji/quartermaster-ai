@@ -98,7 +98,7 @@ export default function InventoryPage() {
         <ForecastPanel canRun={can("runForecast")} />
       </div>
 
-      <AdjustmentDialog item={adjusting} onClose={() => setAdjusting(null)} onSaved={onSaved} />
+      {adjusting ? <AdjustmentDialog item={adjusting} onClose={() => setAdjusting(null)} onSaved={onSaved} /> : null}
     </>
   );
 }
