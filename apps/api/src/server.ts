@@ -5,7 +5,7 @@ import { startSweeper } from "./jobs/sweeper";
 loadDotEnv();
 const ctx = await bootstrap();
 const app = createApp(ctx);
-const stopSweeper = startSweeper(ctx);
+const sweeper = startSweeper(ctx);
 
 const server = app.listen(ctx.config.port, () => {
   ctx.log.info(
@@ -28,7 +28,7 @@ async function shutdown(signal: string) {
   if (shuttingDown) return;
   shuttingDown = true;
   ctx.log.info({ signal }, "shutting down");
-  stopSweeper();
+  void sweeper.stop();
   server.close(async () => {
     await ctx.database.close().catch(() => {});
     process.exit(0);

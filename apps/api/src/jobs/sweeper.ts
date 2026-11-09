@@ -1,16 +1,17 @@
 import { PAYABLE_PO_STATUSES, PRE_CAPTURE_PAYMENT_STATUSES } from "@qm/contracts";
-import { and, eq, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, isNotNull, isNull, lt, or, sql } from "drizzle-orm";
 import { randomUUID } from "node:crypto";
-import { idempotencyKeys, intentCertificates, jobLeases, paymentAttempts, purchaseOrders, sessions, type Database } from "@qm/database";
+import { agentRuns, idempotencyKeys, intentCertificates, jobLeases, paymentAttempts, purchaseOrders, purchaseRequests, sessions, type Database } from "@qm/database";
 import type { AppContext } from "../context";
 import { appendAudit } from "../services/audit";
 import { releaseReservation } from "../services/budget";
-import { reconcilePayment, voidAbandonedCapture } from "../services/payments";
+import { reconcilePayment, transitionPayment, voidAbandonedCapture } from "../services/payments";
 import { refreshRequestStatus } from "../services/procurement/status";
 
 export interface SweepReport {
   reconciled: number;
   expired: number;
+  researchRecovered: number;
   sessionsPurged: number;
   idempotencyPurged: number;
   errors: number;
@@ -18,6 +19,8 @@ export interface SweepReport {
 
 const INSTANCE_ID = randomUUID();
 const LEASE_SECONDS = 120;
+/** How long after voiding an attempt the sweeper keeps checking PayPal for a late capture. */
+const LATE_CAPTURE_WINDOW_MS = 6 * 3_600_000;
 
 /** Acquires (or renews) a time-bound lease. Works across pooled connections and instances. */
 export async function acquireLease(db: Database, name: string, now: Date, holder = INSTANCE_ID): Promise<boolean> {
@@ -43,10 +46,11 @@ export async function releaseLease(db: Database, name: string, holder = INSTANCE
  *  1. Reconcile payments stuck in an ambiguous state with PayPal.
  *  2. Expire unused certificates and release their budget reservations — but only after
  *     confirming with PayPal that no capture happened, so money that moved is always counted.
- *  3. Purge expired sessions and idempotency records.
+ *  3. Fail research runs abandoned by a crash or deploy, so the request can be researched again.
+ *  4. Purge expired sessions and idempotency records.
  */
 export async function sweep(ctx: AppContext): Promise<SweepReport> {
-  const report: SweepReport = { reconciled: 0, expired: 0, sessionsPurged: 0, idempotencyPurged: 0, errors: 0 };
+  const report: SweepReport = { reconciled: 0, expired: 0, researchRecovered: 0, sessionsPurged: 0, idempotencyPurged: 0, errors: 0 };
   if (!(await acquireLease(ctx.db, "sweeper", ctx.now()))) return report;
   try {
     const now = ctx.now();
@@ -63,6 +67,9 @@ export async function sweep(ctx: AppContext): Promise<SweepReport> {
             or(
               and(eq(paymentAttempts.status, "CAPTURE_PENDING"), lt(paymentAttempts.updatedAt, new Date(now.getTime() - 2 * 60_000))),
               and(inArray(paymentAttempts.status, ["ORDER_CREATED", "PAYER_APPROVED"]), lt(paymentAttempts.updatedAt, new Date(now.getTime() - 10 * 60_000))),
+              // A voided or failed attempt can still be captured late (PayPal approvals live for
+              // hours): keep checking recent ones so money that moved is always recorded.
+              and(inArray(paymentAttempts.status, ["VOIDED", "FAILED"]), gt(paymentAttempts.updatedAt, new Date(now.getTime() - LATE_CAPTURE_WINDOW_MS))),
             ),
           ),
         )
@@ -102,7 +109,12 @@ export async function sweep(ctx: AppContext): Promise<SweepReport> {
           if (fresh?.status !== "ACTIVE") return;
           await tx.update(intentCertificates).set({ status: "EXPIRED" }).where(eq(intentCertificates.id, cert.id));
           await releaseReservation(tx, cert.id, "CERTIFICATE_EXPIRED", now);
-          if (payment) await tx.update(paymentAttempts).set({ status: "VOIDED", failureCode: "CERTIFICATE_EXPIRED", updatedAt: now }).where(and(eq(paymentAttempts.id, payment.id), inArray(paymentAttempts.status, [...PRE_CAPTURE_PAYMENT_STATUSES])));
+          if (payment) {
+            const [locked] = await tx.select().from(paymentAttempts).where(eq(paymentAttempts.id, payment.id)).for("update");
+            if (locked && (PRE_CAPTURE_PAYMENT_STATUSES as readonly string[]).includes(locked.status)) {
+              await transitionPayment(tx, locked, "VOIDED", { failureCode: "CERTIFICATE_EXPIRED", failureMessage: "The approval expired before payment." }, now);
+            }
+          }
           await tx.update(purchaseOrders).set({ status: "EXPIRED", updatedAt: now }).where(and(eq(purchaseOrders.id, cert.purchaseOrderId), inArray(purchaseOrders.status, [...PAYABLE_PO_STATUSES])));
           const [po] = await tx.select({ requestId: purchaseOrders.requestId }).from(purchaseOrders).where(eq(purchaseOrders.id, cert.purchaseOrderId));
           if (po?.requestId) await refreshRequestStatus(tx, po.requestId, now);
@@ -115,6 +127,8 @@ export async function sweep(ctx: AppContext): Promise<SweepReport> {
       }
     }
 
+    report.researchRecovered = await recoverAbandonedResearch(ctx, now);
+
     const purgedSessions = await ctx.db.delete(sessions).where(or(lt(sessions.expiresAt, now), lt(sessions.revokedAt, new Date(now.getTime() - 86_400_000)))).returning({ id: sessions.id });
     report.sessionsPurged = purgedSessions.length;
     const purgedKeys = await ctx.db.delete(idempotencyKeys).where(lt(idempotencyKeys.createdAt, new Date(now.getTime() - 48 * 3_600_000))).returning({ id: idempotencyKeys.id });
@@ -125,21 +139,52 @@ export async function sweep(ctx: AppContext): Promise<SweepReport> {
   return report;
 }
 
-export function startSweeper(ctx: AppContext): () => void {
-  if (ctx.config.sweeperIntervalSeconds <= 0) return () => {};
-  let running = false;
-  const timer = setInterval(async () => {
-    if (running) return;
-    running = true;
-    try {
-      const r = await sweep(ctx);
-      if (r.reconciled || r.expired || r.errors) ctx.log.info({ sweep: r }, "sweeper run");
-    } catch (err) {
-      ctx.log.error({ err }, "sweeper failed");
-    } finally {
-      running = false;
-    }
+/**
+ * Marks research runs as FAILED when they have been RESEARCHING far longer than the agent
+ * deadline allows: the process running them died (crash or deploy). The owner can retry.
+ */
+export async function recoverAbandonedResearch(ctx: AppContext, now: Date): Promise<number> {
+  const cutoff = new Date(now.getTime() - Math.max(2 * ctx.config.agent.deadlineMs, 5 * 60_000));
+  const stale = await ctx.db
+    .update(purchaseRequests)
+    .set({ status: "FAILED", error: "Research was interrupted. Run it again.", updatedAt: now })
+    .where(and(eq(purchaseRequests.status, "RESEARCHING"), or(isNull(purchaseRequests.researchStartedAt), lt(purchaseRequests.researchStartedAt, cutoff))))
+    .returning({ id: purchaseRequests.id, organizationId: purchaseRequests.organizationId });
+  for (const r of stale) {
+    await ctx.db
+      .update(agentRuns)
+      .set({ status: "FAILED", error: "Interrupted", completedAt: now })
+      .where(and(eq(agentRuns.requestId, r.id), eq(agentRuns.status, "RUNNING")));
+    await appendAudit(ctx.db, { organizationId: r.organizationId, action: "procurement.research_recovered", actorType: "SYSTEM", entityType: "purchase_request", entityId: r.id, data: { reason: "STALE_RESEARCH" } });
+  }
+  if (stale.length > 0) ctx.log.warn({ count: stale.length }, "failed research runs abandoned by a previous process");
+  return stale.length;
+}
+
+export interface SweeperHandle {
+  /** Stops scheduling runs and resolves once any in-flight run has finished. */
+  stop(): Promise<void>;
+}
+
+export function startSweeper(ctx: AppContext): SweeperHandle {
+  if (ctx.config.sweeperIntervalSeconds <= 0) return { stop: async () => {} };
+  let current: Promise<void> | null = null;
+  const timer = setInterval(() => {
+    if (current) return;
+    current = sweep(ctx)
+      .then((r) => {
+        if (r.reconciled || r.expired || r.researchRecovered || r.errors) ctx.log.info({ sweep: r }, "sweeper run");
+      })
+      .catch((err: unknown) => ctx.log.error({ err }, "sweeper failed"))
+      .finally(() => {
+        current = null;
+      });
   }, ctx.config.sweeperIntervalSeconds * 1000);
   timer.unref();
-  return () => clearInterval(timer);
+  return {
+    stop: async () => {
+      clearInterval(timer);
+      await current;
+    },
+  };
 }
