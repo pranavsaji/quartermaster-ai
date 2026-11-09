@@ -16,8 +16,8 @@ import type { Severity } from "@qm/contracts";
  *    role-play, approval bypass, money movement, output steering …), not individual strings,
  *    and require an instruction-shaped phrase rather than a single keyword, so ordinary product
  *    copy ("remove the cap", "lid can act as a tray") is not quarantined. Instructions about the
- *    physical product ("ignore any prior delivery instructions printed on the box") are excluded:
- *    an override needs an AI-instruction context.
+ *    physical product ("ignore any prior delivery instructions printed on the box") are deferred:
+ *    scored only when the text carries other evidence (see directlyAboutTheProduct).
  *  - Recall is measured on a held-out corpus written before the rules were tuned
  *    (tests/adversarial/fixtures/heldout-attacks.ts); precision on a benign catalog corpus.
  *  - Every pattern uses bounded quantifiers only; detection is linear in the input length.
