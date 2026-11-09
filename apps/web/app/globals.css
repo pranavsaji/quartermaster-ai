@@ -57,6 +57,18 @@
   }
 }
 
+/*
+ * Chart series (CVD-validated order) and chart status fills. No utility uses
+ * them, so `static` keeps the variables in the build; lib/theme.ts reads them
+ * (with the ink/line tokens above) for AG Charts, and AG Grid uses var() refs.
+ */
+@theme static {
+  --color-chart-1: #2a78d6;
+  --color-chart-2: #eb6834;
+  --color-chart-review: #dc8a06;
+  --color-chart-block: #c4320a;
+}
+
 @layer base {
   html {
     color-scheme: light;

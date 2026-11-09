@@ -10,40 +10,33 @@ import {
   type AgChartTheme,
 } from "ag-charts-community";
 import { AgCharts } from "ag-charts-react";
-import type { ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Disclosure } from "@/components/ui/Disclosure";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Skeleton } from "@/components/ui/Skeleton";
+import { useChartColors, type ChartColors } from "@/lib/theme";
 
 // Only what the analytics bar charts use (AllCommunityModule was a 1.2 MB chunk).
 ModuleRegistry.registerModules([BarSeriesModule, CategoryAxisModule, NumberAxisModule, LegendModule]);
 
 /**
- * Chart palette. Categorical slots follow a fixed, CVD-validated order
- * (never cycled); status colours are reserved for TrustRail decisions.
+ * Chart theme from the design tokens (`--color-chart-*` etc. in globals.css).
+ * Categorical slots follow a fixed, CVD-validated order (never cycled); status
+ * colours are reserved for TrustRail decisions.
  */
-export const CHART_COLORS = {
-  series1: "#2a78d6",
-  series2: "#eb6834",
-  allow: "#067647",
-  review: "#dc8a06",
-  block: "#c4320a",
-  grid: "#eef0f3",
-  axis: "#d0d5dd",
-  text: "#344054",
-  muted: "#667085",
-} as const;
-
-export const chartTheme: AgChartTheme = {
-  baseTheme: "ag-default",
-  palette: { fills: [CHART_COLORS.series1, CHART_COLORS.series2], strokes: [CHART_COLORS.series1, CHART_COLORS.series2] },
-  params: {
-    fontFamily: "inherit",
-    fontSize: 12,
-    foregroundColor: CHART_COLORS.text,
-    backgroundColor: "transparent",
-  },
-};
+export function chartTheme(colors: ChartColors): AgChartTheme {
+  return {
+    baseTheme: "ag-default",
+    palette: { fills: [colors.series1, colors.series2], strokes: [colors.series1, colors.series2] },
+    params: {
+      fontFamily: "inherit",
+      fontSize: 12,
+      foregroundColor: colors.text,
+      backgroundColor: "transparent",
+    },
+  };
+}
 
 export interface TableColumn<T> {
   label: string;
@@ -66,12 +59,15 @@ export function ChartCard<T>({
 }: {
   title: string;
   description?: string;
-  options: AgChartOptions;
+  /** Built from the resolved token colours, which are only known in the browser. */
+  options: (colors: ChartColors) => AgChartOptions;
   rows: T[];
   table: TableColumn<T>[];
   height?: number;
   emptyTitle?: string;
 }) {
+  const colors = useChartColors();
+  const resolved = useMemo(() => (colors ? { theme: chartTheme(colors), ...options(colors) } : null), [colors, options]);
   return (
     <Card aria-label={title}>
       <CardHeader title={title} description={description} />
@@ -81,7 +77,7 @@ export function ChartCard<T>({
         ) : (
           <>
             <div style={{ height }}>
-              <AgCharts options={{ theme: chartTheme, ...options }} style={{ height: "100%" }} />
+              {resolved ? <AgCharts options={resolved} style={{ height: "100%" }} /> : <Skeleton className="h-full w-full" />}
             </div>
             <Disclosure className="mt-3" summary="View as table">
               <div className="overflow-x-auto">
