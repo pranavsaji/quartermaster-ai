@@ -7,7 +7,7 @@ import type { AppContext } from "../../context";
 import { conflict, notFound } from "../../errors";
 import { appendAudit, type ActorType } from "../audit";
 import { consumeReservation, localDate, recordUnreservedSpend, releaseReservation } from "../budget";
-import { AfterCommit } from "../common";
+import { AfterCommit, retryOnConflict } from "../common";
 import { recordFinding } from "../findings";
 import { loadOrder } from "../orders";
 import { refreshRequestStatus } from "../procurement/status";
@@ -68,35 +68,38 @@ export async function applyTerminalFailure(
   message: string,
   actorType: ActorType,
 ): Promise<PaymentStatus> {
-  return ctx.db.transaction(async (tx) => {
-    const now = ctx.now();
-    const p = await loadPaymentForSystem(tx, paymentId, true);
-    if (!p) return status;
-    if (!(await transitionPayment(tx, p, status, { failureCode: code, failureMessage: message }, now))) return statusOf(p);
-    await releaseReservation(tx, p.intentId, `PAYMENT_${status}`, now);
-    await tx
-      .update(intentCertificates)
-      .set({ status: "REVOKED", revokedReason: `PAYMENT_${status}` })
-      .where(and(eq(intentCertificates.id, p.intentId), eq(intentCertificates.status, "ACTIVE")));
-    await tx
-      .update(purchaseOrders)
-      .set({ status: "CANCELLED", updatedAt: now })
-      .where(and(eq(purchaseOrders.id, p.purchaseOrderId), inArray(purchaseOrders.status, [...PAYABLE_PO_STATUSES])));
-    const [po] = await tx
-      .select({ requestId: purchaseOrders.requestId })
-      .from(purchaseOrders)
-      .where(eq(purchaseOrders.id, p.purchaseOrderId));
-    if (po?.requestId) await refreshRequestStatus(tx, po.requestId, now);
-    await appendAudit(tx, {
-      organizationId: p.organizationId,
-      action: `payment.${status.toLowerCase()}`,
-      actorType,
-      entityType: "payment_attempt",
-      entityId: p.id,
-      data: { code, message },
-    });
-    return status;
-  });
+  // Idempotent and self-contained, so safe to retry when PostgreSQL aborts it in a lock conflict.
+  return retryOnConflict(ctx, "payment.terminal_failure", () =>
+    ctx.db.transaction(async (tx) => {
+      const now = ctx.now();
+      const p = await loadPaymentForSystem(tx, paymentId, true);
+      if (!p) return status;
+      if (!(await transitionPayment(tx, p, status, { failureCode: code, failureMessage: message }, now))) return statusOf(p);
+      await releaseReservation(tx, p.intentId, `PAYMENT_${status}`, now);
+      await tx
+        .update(intentCertificates)
+        .set({ status: "REVOKED", revokedReason: `PAYMENT_${status}` })
+        .where(and(eq(intentCertificates.id, p.intentId), eq(intentCertificates.status, "ACTIVE")));
+      await tx
+        .update(purchaseOrders)
+        .set({ status: "CANCELLED", updatedAt: now })
+        .where(and(eq(purchaseOrders.id, p.purchaseOrderId), inArray(purchaseOrders.status, [...PAYABLE_PO_STATUSES])));
+      const [po] = await tx
+        .select({ requestId: purchaseOrders.requestId })
+        .from(purchaseOrders)
+        .where(eq(purchaseOrders.id, p.purchaseOrderId));
+      if (po?.requestId) await refreshRequestStatus(tx, po.requestId, now);
+      await appendAudit(tx, {
+        organizationId: p.organizationId,
+        action: `payment.${status.toLowerCase()}`,
+        actorType,
+        entityType: "payment_attempt",
+        entityId: p.id,
+        data: { code, message },
+      });
+      return status;
+    }),
+  );
 }
 
 /**
@@ -127,109 +130,115 @@ export async function finalizeFromOrder(
     );
   }
 
-  const after = new AfterCommit();
-  const status = await ctx.db.transaction(async (tx): Promise<PaymentStatus> => {
-    const now = ctx.now();
-    const p = await loadPaymentForSystem(tx, paymentId, true);
-    if (!p) throw notFound("Payment");
-    if (p.paypalOrderId !== order.id) throw conflict("ORDER_ID_MISMATCH", "PayPal order does not belong to this payment.");
+  // Recording a capture is idempotent and has no side effects inside the transaction (the
+  // notification waits for commit), so a deadlock or serialization failure is simply retried.
+  // A fresh collector per attempt, so a retried transaction never queues a notification twice.
+  let after = new AfterCommit();
+  const status = await retryOnConflict(ctx, "payment.finalize", () => {
+    after = new AfterCommit();
+    return ctx.db.transaction(async (tx): Promise<PaymentStatus> => {
+      const now = ctx.now();
+      const p = await loadPaymentForSystem(tx, paymentId, true);
+      if (!p) throw notFound("Payment");
+      if (p.paypalOrderId !== order.id) throw conflict("ORDER_ID_MISMATCH", "PayPal order does not belong to this payment.");
 
-    if (capture.status === "PENDING") {
-      if (!(await transitionPayment(tx, p, "CAPTURE_PENDING", { paypalCaptureId: capture.id }, now)) && !p.paypalCaptureId) {
-        await patchPayment(tx, p.id, { paypalCaptureId: capture.id }, now);
+      if (capture.status === "PENDING") {
+        if (!(await transitionPayment(tx, p, "CAPTURE_PENDING", { paypalCaptureId: capture.id }, now)) && !p.paypalCaptureId) {
+          await patchPayment(tx, p.id, { paypalCaptureId: capture.id }, now);
+        }
+        return "CAPTURE_PENDING";
       }
-      return "CAPTURE_PENDING";
-    }
-    if (!canTransition(statusOf(p), "COMPLETED")) return statusOf(p);
+      if (!canTransition(statusOf(p), "COMPLETED")) return statusOf(p);
 
-    const captured = captureAmountMinor(capture);
-    const mismatch = captured !== p.amountMinor || capture.amount.currency_code !== p.currency;
-    await transitionPayment(
-      tx,
-      p,
-      "COMPLETED",
-      {
-        paypalCaptureId: capture.id,
-        capturedAmountMinor: captured,
-        payerId: order.payer?.payer_id ?? p.payerId,
-        failureCode: mismatch ? "CAPTURED_AMOUNT_MISMATCH" : null,
-        failureMessage: mismatch ? `Captured ${captured} ${capture.amount.currency_code}, approved ${p.amountMinor} ${p.currency}` : null,
-        completedAt: now,
-      },
-      now,
-    );
-    if (!(await consumeReservation(tx, p.intentId, captured, now))) await recordUnreservedSpend(tx, p.intentId, captured, now);
-    await tx.update(intentCertificates).set({ status: "CONSUMED", consumedAt: now }).where(eq(intentCertificates.id, p.intentId));
+      const captured = captureAmountMinor(capture);
+      const mismatch = captured !== p.amountMinor || capture.amount.currency_code !== p.currency;
+      await transitionPayment(
+        tx,
+        p,
+        "COMPLETED",
+        {
+          paypalCaptureId: capture.id,
+          capturedAmountMinor: captured,
+          payerId: order.payer?.payer_id ?? p.payerId,
+          failureCode: mismatch ? "CAPTURED_AMOUNT_MISMATCH" : null,
+          failureMessage: mismatch ? `Captured ${captured} ${capture.amount.currency_code}, approved ${p.amountMinor} ${p.currency}` : null,
+          completedAt: now,
+        },
+        now,
+      );
+      if (!(await consumeReservation(tx, p.intentId, captured, now))) await recordUnreservedSpend(tx, p.intentId, captured, now);
+      await tx.update(intentCertificates).set({ status: "CONSUMED", consumedAt: now }).where(eq(intentCertificates.id, p.intentId));
 
-    const { po } = await loadOrder(tx, p.organizationId, p.purchaseOrderId, true);
-    await tx.update(purchaseOrders).set({ status: "PAID", updatedAt: now }).where(eq(purchaseOrders.id, po.id));
-    const [supplier] = await tx.select().from(suppliers).where(eq(suppliers.id, po.supplierId));
-    const [org] = await tx.select().from(organizations).where(eq(organizations.id, p.organizationId));
-    const today = localDate(now, org!.timezone).date;
-    const expected = new Date(`${today}T00:00:00Z`);
-    expected.setUTCDate(expected.getUTCDate() + (supplier?.leadTimeDays ?? 2));
-    const expectedDate = expected.toISOString().slice(0, 10);
-    await tx
-      .insert(deliveries)
-      .values({
+      const { po } = await loadOrder(tx, p.organizationId, p.purchaseOrderId, true);
+      await tx.update(purchaseOrders).set({ status: "PAID", updatedAt: now }).where(eq(purchaseOrders.id, po.id));
+      const [supplier] = await tx.select().from(suppliers).where(eq(suppliers.id, po.supplierId));
+      const [org] = await tx.select().from(organizations).where(eq(organizations.id, p.organizationId));
+      const today = localDate(now, org!.timezone).date;
+      const expected = new Date(`${today}T00:00:00Z`);
+      expected.setUTCDate(expected.getUTCDate() + (supplier?.leadTimeDays ?? 2));
+      const expectedDate = expected.toISOString().slice(0, 10);
+      await tx
+        .insert(deliveries)
+        .values({
+          organizationId: p.organizationId,
+          purchaseOrderId: po.id,
+          supplierId: po.supplierId,
+          status: "SCHEDULED",
+          expectedDate,
+          originalExpectedDate: expectedDate,
+        })
+        .onConflictDoNothing({ target: deliveries.purchaseOrderId });
+      if (po.requestId) await refreshRequestStatus(tx, po.requestId, now);
+
+      await appendAudit(tx, {
         organizationId: p.organizationId,
-        purchaseOrderId: po.id,
-        supplierId: po.supplierId,
-        status: "SCHEDULED",
-        expectedDate,
-        originalExpectedDate: expectedDate,
-      })
-      .onConflictDoNothing({ target: deliveries.purchaseOrderId });
-    if (po.requestId) await refreshRequestStatus(tx, po.requestId, now);
-
-    await appendAudit(tx, {
-      organizationId: p.organizationId,
-      action: "payment.captured",
-      actorType,
-      actorId,
-      entityType: "payment_attempt",
-      entityId: p.id,
-      data: {
-        paypal_order_id: order.id,
-        paypal_capture_id: capture.id,
-        captured_minor: captured,
-        approved_minor: p.amountMinor,
-        intent_id: p.intentId,
-      },
-    });
-    await appendAudit(tx, {
-      organizationId: p.organizationId,
-      action: "fulfillment.delivery_scheduled",
-      actorType: "SYSTEM",
-      entityType: "purchase_order",
-      entityId: po.id,
-      data: { expected_date: expectedDate, synthetic: true },
-    });
-    if (mismatch) {
-      await recordFinding(tx, {
-        organizationId: p.organizationId,
-        type: "PAYMENT_AMOUNT_MISMATCH",
-        severity: "CRITICAL",
-        title: "Captured amount differs from the approved amount",
-        description: `PayPal captured ${minorToDecimalString(captured, capture.amount.currency_code)} ${capture.amount.currency_code}; the owner approved ${minorToDecimalString(p.amountMinor, p.currency)} ${p.currency}.`,
-        sourceKind: "payment_attempt",
-        sourceId: p.id,
-        evidence: { captured_minor: captured, approved_minor: p.amountMinor },
-        relatedPurchaseOrderId: po.id,
+        action: "payment.captured",
+        actorType,
+        actorId,
+        entityType: "payment_attempt",
+        entityId: p.id,
+        data: {
+          paypal_order_id: order.id,
+          paypal_capture_id: capture.id,
+          captured_minor: captured,
+          approved_minor: p.amountMinor,
+          intent_id: p.intentId,
+        },
       });
-    }
-    after.add(() =>
-      ctx.notifier.send({
-        kind: "PAYMENT_COMPLETED",
-        organization_id: p.organizationId,
-        title: `Payment completed for ${po.number}`,
-        summary: `${supplier?.name ?? "Supplier"} · delivery expected ${expectedDate}`,
-        amount_minor: captured,
-        currency: p.currency,
-        link_path: `/orders`,
-      }),
-    );
-    return "COMPLETED";
+      await appendAudit(tx, {
+        organizationId: p.organizationId,
+        action: "fulfillment.delivery_scheduled",
+        actorType: "SYSTEM",
+        entityType: "purchase_order",
+        entityId: po.id,
+        data: { expected_date: expectedDate, synthetic: true },
+      });
+      if (mismatch) {
+        await recordFinding(tx, {
+          organizationId: p.organizationId,
+          type: "PAYMENT_AMOUNT_MISMATCH",
+          severity: "CRITICAL",
+          title: "Captured amount differs from the approved amount",
+          description: `PayPal captured ${minorToDecimalString(captured, capture.amount.currency_code)} ${capture.amount.currency_code}; the owner approved ${minorToDecimalString(p.amountMinor, p.currency)} ${p.currency}.`,
+          sourceKind: "payment_attempt",
+          sourceId: p.id,
+          evidence: { captured_minor: captured, approved_minor: p.amountMinor },
+          relatedPurchaseOrderId: po.id,
+        });
+      }
+      after.add(() =>
+        ctx.notifier.send({
+          kind: "PAYMENT_COMPLETED",
+          organization_id: p.organizationId,
+          title: `Payment completed for ${po.number}`,
+          summary: `${supplier?.name ?? "Supplier"} · delivery expected ${expectedDate}`,
+          amount_minor: captured,
+          currency: p.currency,
+          link_path: `/orders`,
+        }),
+      );
+      return "COMPLETED";
+    });
   });
   after.flush(ctx);
   return status;
