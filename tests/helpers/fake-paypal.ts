@@ -21,6 +21,13 @@ export class FakePayPal {
   /** Next capture: perform it but drop the response (simulated network loss). */
   dropNextCaptureResponse = false;
   declineNextCapture = false;
+  /** Next capture: fail with a network error before PayPal processes anything. */
+  failNextCaptureBeforeProcessing = false;
+  /** Next capture: perform it, then answer 500 (PayPal processed it but reported an error). */
+  serverErrorAfterNextCapture = false;
+  /** Next refund: perform it but drop the response. */
+  dropNextRefundResponse = false;
+  refundCount = 0;
   captureStatus: "COMPLETED" | "PENDING" = "COMPLETED";
   /** Applied to GET responses to simulate a provider-side amount discrepancy. */
   tamperAmount: string | null = null;
@@ -76,6 +83,10 @@ export class FakePayPal {
       // capture
       if (stored.order.status === "COMPLETED") return json(422, { name: "UNPROCESSABLE_ENTITY", details: [{ issue: "ORDER_ALREADY_CAPTURED" }] });
       if (stored.order.status !== "APPROVED") return json(422, { name: "UNPROCESSABLE_ENTITY", details: [{ issue: "ORDER_NOT_APPROVED" }] });
+      if (this.failNextCaptureBeforeProcessing) {
+        this.failNextCaptureBeforeProcessing = false;
+        throw new TypeError("fetch failed: ETIMEDOUT");
+      }
       if (this.declineNextCapture) {
         this.declineNextCapture = false;
         return json(422, { name: "UNPROCESSABLE_ENTITY", details: [{ issue: "INSTRUMENT_DECLINED" }] });
@@ -92,6 +103,10 @@ export class FakePayPal {
         this.dropNextCaptureResponse = false;
         throw new TypeError("fetch failed: socket hang up");
       }
+      if (this.serverErrorAfterNextCapture) {
+        this.serverErrorAfterNextCapture = false;
+        return json(500, { name: "INTERNAL_SERVER_ERROR", details: [{ issue: "INTERNAL_SERVER_ERROR" }] });
+      }
       return json(201, stored.order);
     }
 
@@ -99,7 +114,12 @@ export class FakePayPal {
     if (refundMatch && method === "POST") {
       const body = JSON.parse(String(init?.body ?? "{}")) as { amount?: { value: string; currency_code: string } };
       const refund = { id: `REF${++this.seq}`, status: "COMPLETED", amount: body.amount };
+      this.refundCount++;
       if (requestId) this.requestIds.set(requestId, refund);
+      if (this.dropNextRefundResponse) {
+        this.dropNextRefundResponse = false;
+        throw new TypeError("fetch failed: socket hang up");
+      }
       return json(201, refund);
     }
 
