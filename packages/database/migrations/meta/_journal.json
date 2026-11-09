@@ -50,6 +50,13 @@
       "when": 1794249727423,
       "tag": "0006_policy_decision_sequence",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1794251856431,
+      "tag": "0007_rate_limit_hits",
+      "breakpoints": true
     }
   ]
 }

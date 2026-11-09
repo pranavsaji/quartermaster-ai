@@ -836,6 +836,17 @@ export const auditEvents = pgTable(
   (t) => [uniqueIndex("audit_org_sequence_uq").on(t.organizationId, t.sequence), index("audit_entity_idx").on(t.entityType, t.entityId)],
 );
 
+/** Shared rate-limit counters, so limits hold across API instances and restarts. */
+export const rateLimitHits = pgTable(
+  "rate_limit_hits",
+  {
+    key: text("key").primaryKey(),
+    hits: integer("hits").notNull(),
+    resetAt: ts("reset_at").notNull(),
+  },
+  (t) => [index("rate_limit_hits_reset_idx").on(t.resetAt)],
+);
+
 export const idempotencyKeys = pgTable(
   "idempotency_keys",
   {
