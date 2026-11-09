@@ -139,8 +139,15 @@ export function verifyCertificate(cert: SignedCertificate, ctx: VerificationCont
   } else if (ctx.stored_status === "CONSUMED") {
     checks.push({ code: "NOT_CONSUMED", passed: !!ctx.allow_consumed, detail: "Certificate has already authorised a payment." });
     if (!ctx.allow_consumed) fail("CONSUMED");
-  } else {
+  } else if (ctx.stored_status === "EXPIRED") {
+    checks.push({ code: "NOT_EXPIRED_STORED", passed: false, detail: "Certificate was marked expired." });
+    fail("EXPIRED");
+  } else if (ctx.stored_status === "ACTIVE") {
     checks.push({ code: "NOT_REVOKED", passed: true, detail: "Certificate is active." });
+  } else {
+    // Fail closed on any status this code does not understand.
+    checks.push({ code: "STATUS_KNOWN", passed: false, detail: `Unrecognised certificate status ${String(ctx.stored_status)}.` });
+    fail("REVOKED");
   }
   if (expired && ctx.stored_status !== "CONSUMED") fail("EXPIRED");
 
