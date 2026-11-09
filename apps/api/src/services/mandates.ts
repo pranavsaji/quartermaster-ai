@@ -135,30 +135,54 @@ export async function updateMandate(
 
   let revoked = 0;
   const tightened = mandateTightened(rowToMandate(current), rowToMandate(next!));
+  const revokedIds: string[] = [];
   if (tightened) {
-    const active = await tx
-      .select({ cert: intentCertificates, paymentStatus: paymentAttempts.status })
+    const candidates = await tx
+      .select({ id: intentCertificates.id, purchaseOrderId: intentCertificates.purchaseOrderId })
       .from(intentCertificates)
-      .leftJoin(paymentAttempts, eq(paymentAttempts.intentId, intentCertificates.id))
-      .where(and(eq(intentCertificates.organizationId, args.organizationId), eq(intentCertificates.status, "ACTIVE")));
-    for (const { cert, paymentStatus } of active) {
-      if (paymentStatus && !PRE_CAPTURE.includes(paymentStatus)) continue;
-      await tx.update(intentCertificates).set({ status: "REVOKED", revokedReason: `MANDATE_CHANGED: superseded by v${next!.version}` }).where(eq(intentCertificates.id, cert.id));
-      await releaseReservation(tx, cert.id, "MANDATE_CHANGED", args.now);
-      await tx.update(purchaseOrders).set({ status: "PROPOSED", updatedAt: args.now }).where(eq(purchaseOrders.id, cert.purchaseOrderId));
-      const [po] = await tx.select({ requestId: purchaseOrders.requestId }).from(purchaseOrders).where(eq(purchaseOrders.id, cert.purchaseOrderId));
+      .where(and(eq(intentCertificates.organizationId, args.organizationId), eq(intentCertificates.status, "ACTIVE")))
+      .orderBy(intentCertificates.id);
+    for (const c of candidates) {
+      // Lock order matches capture and finalisation: payment, then certificate. Status is
+      // re-read under the lock so a capture authorised in the meantime is never voided.
+      const [payment] = await tx.select().from(paymentAttempts).where(eq(paymentAttempts.intentId, c.id)).for("update");
+      if (payment && !PRE_CAPTURE.includes(payment.status)) continue;
+      const [cert] = await tx.select().from(intentCertificates).where(eq(intentCertificates.id, c.id)).for("update");
+      if (cert?.status !== "ACTIVE") continue;
+      const changed = await tx
+        .update(intentCertificates)
+        .set({ status: "REVOKED", revokedReason: `MANDATE_CHANGED: superseded by v${next!.version}` })
+        .where(and(eq(intentCertificates.id, c.id), eq(intentCertificates.status, "ACTIVE")))
+        .returning({ id: intentCertificates.id });
+      if (changed.length === 0) continue;
+      await releaseReservation(tx, c.id, "MANDATE_CHANGED", args.now);
+      if (payment) {
+        await tx
+          .update(paymentAttempts)
+          .set({ status: "VOIDED", failureCode: "MANDATE_CHANGED", updatedAt: args.now })
+          .where(and(eq(paymentAttempts.id, payment.id), inArray(paymentAttempts.status, PRE_CAPTURE)));
+      }
+      await tx
+        .update(purchaseOrders)
+        .set({ status: "PROPOSED", updatedAt: args.now })
+        .where(and(eq(purchaseOrders.id, c.purchaseOrderId), inArray(purchaseOrders.status, ["APPROVED", "PAYMENT_PENDING"])));
+      const [po] = await tx.select({ requestId: purchaseOrders.requestId }).from(purchaseOrders).where(eq(purchaseOrders.id, c.purchaseOrderId));
       if (po?.requestId) await tx.update(purchaseRequests).set({ status: "READY_FOR_REVIEW", updatedAt: args.now }).where(eq(purchaseRequests.id, po.requestId));
-      if (paymentStatus) await tx.update(paymentAttempts).set({ status: "VOIDED", failureCode: "MANDATE_CHANGED", updatedAt: args.now }).where(eq(paymentAttempts.intentId, cert.id));
-      await appendAudit(tx, {
-        organizationId: args.organizationId,
-        action: "certificate.revoked",
-        actorType: "SYSTEM",
-        entityType: "intent_certificate",
-        entityId: cert.id,
-        data: { reason: "MANDATE_CHANGED", mandate_version: next!.version },
-      });
+      revokedIds.push(c.id);
       revoked++;
     }
+  }
+
+  // Audit last: the per-organization audit lock is taken only after every row lock is held.
+  for (const id of revokedIds) {
+    await appendAudit(tx, {
+      organizationId: args.organizationId,
+      action: "certificate.revoked",
+      actorType: "SYSTEM",
+      entityType: "intent_certificate",
+      entityId: id,
+      data: { reason: "MANDATE_CHANGED", mandate_version: next!.version },
+    });
   }
 
   await appendAudit(tx, {
