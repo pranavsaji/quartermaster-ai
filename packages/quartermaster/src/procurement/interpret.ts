@@ -80,20 +80,59 @@ export function sanitizeIntent(raw: unknown, inventory: InventoryRef[]): Interpr
   };
 }
 
-const BUSY_PATTERNS: [RegExp, number][] = [
-  [/\b(\d{1,3})\s*%\s*(more|busier|higher|increase|extra)\b/i, NaN],
-  [/\b(double|twice)\b/i, 2],
-  [/\b(very|extremely|really)\s+busy\b|\bslammed\b|\bholiday rush\b/i, 1.5],
-  [/\bbusy\b|\brush\b|\bpacked\b|\bbig event\b|\bcatering\b/i, 1.25],
-  [/\bquiet\b|\bslow\b/i, 0.8],
+/**
+ * Demand words count only when they describe a period of trade, never a product: "busy weekend",
+ * "a quiet week", "we're slammed tonight", "business is slow" — not "slow cooker liners",
+ * "double-wall cups", "catering trays" or a "rush order". A negated statement ("we are not busy
+ * this week") is no signal at all rather than its opposite.
+ */
+const PERIOD = String.raw`(?:week(?:end)?s?|service|services|business|period|tonight|today|tomorrow|night|nights|shift|shifts|days?|season|month|lunch|dinner|brunch|holidays?|monday|tuesday|wednesday|thursday|friday|saturday|sunday|trade|stretch|spell)`;
+const SUBJECT = String.raw`(?:we're|we\s+are|we'll\s+be|we\s+will\s+be|we've\s+been|we\s+expect\s+to\s+be|it's|it\s+is|it'll\s+be|it\s+will\s+be|things\s+are|business\s+is|business\s+will\s+be|trade\s+is)`;
+const INTENSIFIER = String.raw`(?:very|extremely|really|super|incredibly|unusually)`;
+/** A demand word next to a period ("busy weekend", "this week is quiet") or after a subject ("we're busy"). */
+const inContext = (words: string) =>
+  new RegExp(
+    String.raw`\b(?:${INTENSIFIER}\s+)?(?:${words})\b(?=(?:[\s,]+(?:this|next|the|a|an|coming|upcoming|whole|entire|all|for|over|on|of|weekend|week)){0,3}[\s,]+${PERIOD}\b)|\b${PERIOD}\b(?:\s+\w+){0,3}?\s+(?:is|are|will\s+be|looks|looking|should\s+be|was|seems)\s+(?:${INTENSIFIER}\s+)?(?:${words})\b|\b${SUBJECT}\s+(?:\w+\s+)?(?:${words})\b`,
+    "i",
+  );
+
+const DEMAND_PATTERNS: { re: RegExp; value: (m: RegExpExecArray) => number }[] = [
+  { re: /\b(\d{1,3})\s*%\s*(?:more|busier|higher|increase|extra|up)\b/i, value: (m) => 1 + Number(m[1]) / 100 },
+  { re: /\b(\d{1,3})\s*%\s*(?:fewer|less|quieter|slower|lower|decrease|down)\b/i, value: (m) => 1 - Number(m[1]) / 100 },
+  {
+    re: /\b(?:double|twice)\s+(?:the\s+)?(?:usual|normal|demand|covers|traffic|volume|business|amount|orders)\b|\btwice\s+as\s+(?:busy|many)\b|\bdoubl(?:e|ing)\s+(?:our|the)\s+(?:covers|orders|demand|volume)\b/i,
+    value: () => 2,
+  },
+  {
+    re: new RegExp(
+      String.raw`${inContext(String.raw`${INTENSIFIER}\s+busy|slammed|swamped`).source}|\b${SUBJECT}\s+(?:\w+\s+)?packed\b|\bholiday\s+rush\b`,
+      "i",
+    ),
+    value: () => 1.5,
+  },
+  {
+    re: new RegExp(
+      String.raw`${inContext("busy|busier|hectic").source}|\b(?:lunch|dinner|brunch|weekend|morning|evening|breakfast)\s+rush\b|\b(?:big|large|private)\s+(?:event|party|booking)s?\b|\bcatering\s+(?:job|event|gig|order|booking)s?\b`,
+      "i",
+    ),
+    value: () => 1.25,
+  },
+  { re: inContext("quiet|quieter|slow|slower|dead"), value: () => 0.8 },
 ];
 
+/** "not", "n't", "never", "hardly" just before the phrase negates it. */
+const NEGATION = /\b(?:not|never|hardly|barely|no\s+longer|isn't|aren't|won't|wasn't|weren't|don't|doesn't)\s+(?:\w+\s+)?$/i;
+
 function parseMultiplier(text: string): number {
-  for (const [re, value] of BUSY_PATTERNS) {
-    const m = re.exec(text);
-    if (!m) continue;
-    if (Number.isNaN(value)) return 1 + Number(m[1]) / 100;
-    return value;
+  for (const { re, value } of DEMAND_PATTERNS) {
+    const g = new RegExp(re.source, "gi");
+    for (const m of text.matchAll(g)) {
+      const before = text.slice(Math.max(0, m.index - 30), m.index);
+      // "We are not busy" negates the subject form too: look inside the match up to the demand word.
+      const lead = m[0].replace(/\s*\b(?:busy|busier|hectic|slammed|swamped|packed|quiet|quieter|slow|slower|dead)\b[\s\S]*$/i, " ");
+      if (NEGATION.test(before) || NEGATION.test(`${before}${lead}`)) continue;
+      return value(m);
+    }
   }
   return 1;
 }

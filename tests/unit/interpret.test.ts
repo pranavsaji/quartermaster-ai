@@ -84,6 +84,43 @@ describe("budget extraction", () => {
   });
 });
 
+describe("demand multiplier", () => {
+  const demand = (text: string) => interpretDeterministically(text, inventory, now).demand_multiplier;
+
+  it.each([
+    ["Busy weekend! Restock takeout boxes", 1.25],
+    ["We're busy this week, restock oil", 1.25],
+    ["Expecting a very busy Saturday", 1.5],
+    ["We'll be slammed tonight", 1.5],
+    ["We're packed every night", 1.5],
+    ["Holiday rush is coming", 1.5],
+    ["Lunch rush every day now", 1.25],
+    ["Big event on Friday", 1.25],
+    ["We have a catering job tomorrow", 1.25],
+    ["Quiet week ahead, just the basics", 0.8],
+    ["Business is slow this month", 0.8],
+    ["We expect 40% more covers", 1.4],
+    ["About 20% fewer covers this week", 0.8],
+    ["Twice the usual covers for the festival", 2],
+  ])("reads %s as %d", (text, multiplier) => {
+    expect(demand(text)).toBe(multiplier);
+  });
+
+  it.each([
+    "Restock slow cooker liners",
+    "Order double-wall cups and catering trays",
+    "Rush order of nitrile gloves",
+    "Packed lunch boxes, 200 count",
+    "Quiet-close hinged containers",
+    "We are not busy this week",
+    "It isn't slow at all this week",
+    "We're not very busy tonight",
+    "Never busy on Mondays, but restock oil",
+  ])("reads %s as normal demand", (text) => {
+    expect(demand(text)).toBe(1);
+  });
+});
+
 describe("required-by dates", () => {
   it("rejects impossible calendar dates instead of rolling them over", () => {
     expect(isCalendarDate("2026-02-30")).toBe(false);
