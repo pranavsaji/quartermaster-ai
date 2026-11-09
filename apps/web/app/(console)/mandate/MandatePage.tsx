@@ -6,11 +6,11 @@ import { MandateForm } from "@/components/mandate/MandateForm";
 import { useSession } from "@/components/session/SessionProvider";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
-import { ErrorNotice } from "@/components/ui/ErrorNotice";
+
 import { BudgetMeter } from "@/components/ui/Meter";
 import { Notice } from "@/components/ui/Notice";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { RefreshErrorNotice } from "@/components/ui/RefreshErrorNotice";
+import { ResourceView } from "@/components/ui/ResourceView";
 import { SkeletonCard } from "@/components/ui/Skeleton";
 import { api } from "@/lib/api";
 import { date, dateTime } from "@/lib/format";
@@ -57,31 +57,18 @@ export function MandatePage() {
         </Notice>
       ) : null}
 
-      {current.error && !data ? <ErrorNotice error={current.error} onRetry={current.reload} /> : null}
-      <RefreshErrorNotice
-        error={current.error}
-        hasData={Boolean(current.data)}
-        updatedAt={current.updatedAt}
-        onRetry={current.reload}
+      <ResourceView
+        resource={current}
+        hasData={Boolean(data)}
+        errorTitle="Couldn't load the mandate"
         className="mb-4"
+        loading={
+          <div className="space-y-4">
+            <SkeletonCard lines={2} />
+            <SkeletonCard lines={8} />
+          </div>
+        }
       />
-      <RefreshErrorNotice
-        error={suppliers.error}
-        hasData={Boolean(suppliers.data)}
-        updatedAt={suppliers.updatedAt}
-        onRetry={suppliers.reload}
-        className="mb-4"
-      />
-      {suppliers.error && !suppliers.data ? (
-        <ErrorNotice error={suppliers.error} onRetry={suppliers.reload} title="Couldn't load suppliers" className="mb-4" />
-      ) : null}
-
-      {!data && !current.error ? (
-        <div className="space-y-4">
-          <SkeletonCard lines={2} />
-          <SkeletonCard lines={8} />
-        </div>
-      ) : null}
 
       {data ? (
         <div className="space-y-6">
@@ -96,17 +83,23 @@ export function MandatePage() {
             </CardBody>
           </Card>
 
-          {suppliers.data ? (
-            <MandateForm
-              key={`${data.mandate.id}-${data.mandate.version}`}
-              mandate={data.mandate}
-              suppliers={suppliers.data.items}
-              editable={can("editMandate")}
-              onSaved={onSaved}
-            />
-          ) : !suppliers.error ? (
-            <SkeletonCard lines={8} />
-          ) : null}
+          <ResourceView
+            resource={suppliers}
+            hasData={Boolean(suppliers.data)}
+            errorTitle="Couldn't load suppliers"
+            className="mb-4"
+            loading={<SkeletonCard lines={8} />}
+          >
+            {suppliers.data ? (
+              <MandateForm
+                key={`${data.mandate.id}-${data.mandate.version}`}
+                mandate={data.mandate}
+                suppliers={suppliers.data.items}
+                editable={can("editMandate")}
+                onSaved={onSaved}
+              />
+            ) : null}
+          </ResourceView>
 
           <Card aria-labelledby="history-title">
             <CardHeader id="history-title" title="Version history" />

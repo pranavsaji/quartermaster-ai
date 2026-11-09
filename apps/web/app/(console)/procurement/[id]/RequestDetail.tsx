@@ -21,6 +21,7 @@ import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Notice } from "@/components/ui/Notice";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { ResourceView } from "@/components/ui/ResourceView";
 import { SkeletonCard } from "@/components/ui/Skeleton";
 import { api } from "@/lib/api";
 import { dateTime, describeDemandMultiplier, num } from "@/lib/format";
@@ -116,23 +117,26 @@ export function RequestDetail({ id }: { id: string }) {
     [setRequest],
   );
 
-  if (request.error && !data) {
-    return (
-      <div className="space-y-4">
-        <Link href="/procurement" className="text-[13px] text-accent hover:underline">
-          ← All requests
-        </Link>
-        <ErrorNotice error={request.error} onRetry={request.reload} title="Couldn't load this request" />
-      </div>
-    );
-  }
-
   if (!data) {
     return (
       <div className="space-y-4">
-        <SkeletonCard lines={2} />
-        <SkeletonCard lines={5} />
-        <SkeletonCard lines={4} />
+        {request.error ? (
+          <Link href="/procurement" className="text-[13px] text-accent hover:underline">
+            ← All requests
+          </Link>
+        ) : null}
+        <ResourceView
+          resource={request}
+          hasData={false}
+          errorTitle="Couldn't load this request"
+          loading={
+            <>
+              <SkeletonCard lines={2} />
+              <SkeletonCard lines={5} />
+              <SkeletonCard lines={4} />
+            </>
+          }
+        />
       </div>
     );
   }
@@ -188,6 +192,8 @@ export function RequestDetail({ id }: { id: string }) {
       />
 
       <div className="space-y-6">
+        {/* A reload that failed (e.g. after a 409) says so instead of silently leaving stale data. */}
+        <ResourceView resource={request} hasData className="" />
         {!config.ai.enabled ? (
           <Notice tone="review" title="Running in deterministic mode — no LLM configured">
             The instruction was interpreted with deterministic rules.
