@@ -1,7 +1,7 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { applyBps, decimalStringToMinor, floatToMinor, minorToDecimalString, POLICY_DECISIONS } from "@qm/contracts";
-import { normalizeInvoiceNumber, parsePackQuantity } from "@qm/quartermaster";
+import { legacyNormalizeInvoiceNumber, normalizeInvoiceNumber, parsePackQuantity } from "@qm/quartermaster";
 import {
   buildCart,
   canonicalize,
@@ -370,20 +370,54 @@ describe("property: listings and invoices", () => {
     );
   });
 
-  it("normalizeInvoiceNumber is idempotent and alphanumeric", () => {
+  it("normalizeInvoiceNumber is idempotent, alphanumeric, with hyphens only between digit groups", () => {
     const invoiceish = fc.oneof(
       fc.string({ unit: "binary", maxLength: 24 }),
       fc
-        .array(fc.constantFrom("INV", "INVOICE", "inv", "#", "-", "0", "00", "42", "A", " ", "Ｉｎｖ", "４２"), { maxLength: 8 })
+        .array(
+          fc.constantFrom(
+            "INV",
+            "INVOICE",
+            "inv",
+            "#",
+            "-",
+            "/",
+            "0",
+            "00",
+            "42",
+            "A",
+            " ",
+            "Ｉｎｖ",
+            "４２",
+            "№",
+            "٤٢", // Arabic-Indic 42
+            "४०", // Devanagari 40
+            "Б", // Cyrillic letter
+          ),
+          { maxLength: 8 },
+        )
         .map((t) => t.join("")),
     );
     fc.assert(
       fc.property(invoiceish, (n) => {
         const once = normalizeInvoiceNumber(n);
-        expect(once).toMatch(/^[A-Z0-9]*$/);
+        expect(once).toMatch(/^(?:[A-Z0-9]|(?<=\d)-(?=\d))*$/);
         expect(normalizeInvoiceNumber(once)).toBe(once);
+        expect(legacyNormalizeInvoiceNumber(legacyNormalizeInvoiceNumber(n))).toBe(legacyNormalizeInvoiceNumber(n));
       }),
       { numRuns: 1_000 },
+    );
+  });
+
+  it("normalizeInvoiceNumber keeps numbers with distinct digit sequences apart", () => {
+    // Removing separators can only merge groups; the digit sequence, read group by group, is kept.
+    const groups = fc.array(fc.stringMatching(/^[1-9]\d{0,3}$/), { minLength: 1, maxLength: 3 });
+    fc.assert(
+      fc.property(groups, groups, fc.constantFrom("-", "/", " ", "."), (a, b, sep) => {
+        fc.pre(a.join(",") !== b.join(","));
+        expect(normalizeInvoiceNumber(`INV ${a.join(sep)}`)).not.toBe(normalizeInvoiceNumber(`INV ${b.join(sep)}`));
+      }),
+      { numRuns: 500 },
     );
   });
 });
