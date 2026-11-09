@@ -1,4 +1,5 @@
 import { Router } from "express";
+import rateLimit from "express-rate-limit";
 import { ApproveRequest, CreateProcurementRequest, PaginationQuery, RejectRequest } from "@qm/contracts";
 import type { AppContext } from "../../context";
 import { getRequestDto, listRequests } from "../../services/procurement/dto";
@@ -10,6 +11,16 @@ import { idempotent } from "../middleware/idempotency";
 
 export function procurementRoutes(ctx: AppContext): Router {
   const r = Router();
+
+  // Research runs paid model and market-data calls; cap it per user to bound cost and abuse.
+  const researchLimiter = rateLimit({
+    windowMs: 10 * 60_000,
+    limit: ctx.config.env === "test" ? 1000 : 20,
+    keyGenerator: (req) => req.user?.id ?? req.ip ?? "anonymous",
+    standardHeaders: "draft-8",
+    legacyHeaders: false,
+    message: { error: { code: "RATE_LIMITED", message: "Too many research runs. Try again in a few minutes." } },
+  });
 
   r.get(
     "/procurement/requests",
@@ -38,6 +49,7 @@ export function procurementRoutes(ctx: AppContext): Router {
   r.post(
     "/procurement/requests/:id/research",
     requireRole("MANAGER"),
+    researchLimiter,
     asyncHandler(async (req, res) => {
       res.json(await researchRequest(ctx, { id: req.user!.id, organizationId: req.user!.organizationId }, param(req, "id")));
     }),
