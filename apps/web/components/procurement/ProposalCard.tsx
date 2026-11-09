@@ -1,6 +1,6 @@
 "use client";
 
-import type { ApprovalResponse, CaptureResponse, PaymentDto, PurchaseOrderDto } from "@qm/contracts";
+import { SETTLED_PAYMENT_STATUSES, type ApprovalResponse, type CaptureResponse, type PaymentDto, type PurchaseOrderDto } from "@qm/contracts";
 import { PayPalCheckout } from "@/components/payments/PayPalCheckout";
 import { PaymentStatusPanel } from "@/components/payments/PaymentStatusPanel";
 import { useSession } from "@/components/session/SessionProvider";
@@ -19,7 +19,7 @@ import { PO_STATUS_TONES } from "@/lib/labels";
 import { ApprovalForm } from "./ApprovalForm";
 import { ProposalLines } from "./ProposalLines";
 
-const SETTLED_OR_SETTLING = new Set<PaymentDto["status"]>(["COMPLETED", "REFUNDED", "PARTIALLY_REFUNDED", "CAPTURE_PENDING"]);
+const SETTLED_OR_SETTLING = new Set<PaymentDto["status"]>([...SETTLED_PAYMENT_STATUSES, "CAPTURE_PENDING"]);
 
 export function isEvidenceOnly(po: PurchaseOrderDto): boolean {
   return po.status === "BLOCKED" || po.status === "SUPERSEDED";
