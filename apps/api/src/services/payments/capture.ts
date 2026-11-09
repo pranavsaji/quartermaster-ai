@@ -1,16 +1,16 @@
 import { and, eq } from "drizzle-orm";
-import { SETTLED_PAYMENT_STATUSES, type PaymentDto, type PurchaseOrderDto } from "@qm/contracts";
+import { isSettledPayment, type PaymentDto, type PurchaseOrderDto } from "@qm/contracts";
 import { budgetReservations, spendMandates } from "@qm/database";
 import { PayPalApiError, toProviderOrderView, type PayPalOrder } from "@qm/payments";
 import { guardCapture } from "@qm/trustrail";
 import type { AppContext } from "../../context";
 import { AppError, badGateway, conflict, forbidden, unprocessable } from "../../errors";
 import { appendAudit } from "../audit";
-import { loadCertificate, toSigned, verifyStoredCertificate } from "../certificates";
+import { loadCertificate, verifyStoredCertificate } from "../certificates";
 import { DeferredFailure, withDeferredFailures, type Actor } from "../common";
 import { recordFinding } from "../findings";
-import { loadOrder } from "../orders";
-import { evaluateOrder } from "../policy";
+import { loadOrder, parseCertificatePayload } from "../orders";
+import { evaluateOrder, recordDecision } from "../policy";
 import { finalizeFromOrder, reconcilePayment } from "./settle";
 import {
   failureMessageFor,
@@ -46,7 +46,7 @@ export async function capturePayment(ctx: AppContext, actor: Actor, paymentId: s
   requirePayPal(ctx);
   const initial = await loadPayment(ctx.db, actor.organizationId, paymentId);
   if (initial.createdBy !== actor.id) throw forbidden("Only the owner who approved this purchase can complete the payment.");
-  if ((SETTLED_PAYMENT_STATUSES as readonly string[]).includes(initial.status)) {
+  if (isSettledPayment(initial.status)) {
     if (initial.paypalOrderId !== paypalOrderId) throw conflict("ORDER_ID_MISMATCH", "PayPal order does not belong to this payment.");
     return paymentResult(ctx, actor.organizationId, initial.id);
   }
@@ -112,6 +112,26 @@ async function authorizeCapture(
       }
       const cert = await loadCertificate(tx, actor.organizationId, payment.intentId, true);
       const verification = await verifyStoredCertificate(tx, actor.organizationId, cert, now);
+      const certificatePayload = parseCertificatePayload(cert.payload);
+      if (!certificatePayload) {
+        // A stored certificate that cannot be read never authorises money: refuse with evidence.
+        throw new DeferredFailure(
+          unprocessable("CAPTURE_REFUSED", "TrustRail refused to capture this payment.", { failures: [{ code: "CERTIFICATE_MALFORMED" }] }),
+          async (db) => {
+            await recordFinding(db, {
+              organizationId: actor.organizationId,
+              type: "CERTIFICATE_VERIFICATION_FAILED",
+              severity: "CRITICAL",
+              title: "Capture refused: stored certificate is malformed",
+              description: "The Intent Certificate stored for this payment could not be read, so the capture was refused.",
+              sourceKind: "payment_attempt",
+              sourceId: payment.id,
+              evidence: { intent_id: cert.id },
+              relatedPurchaseOrderId: payment.purchaseOrderId,
+            });
+          },
+        );
+      }
       const { po, items } = await loadOrder(tx, actor.organizationId, payment.purchaseOrderId, true);
       const ev = await evaluateOrder(tx, actor.organizationId, po, items, {
         stage: "CAPTURE",
@@ -121,7 +141,7 @@ async function authorizeCapture(
       });
       const [reservation] = await tx.select().from(budgetReservations).where(eq(budgetReservations.intentId, cert.id));
       const guard = guardCapture({
-        certificate: toSigned(cert).payload,
+        certificate: certificatePayload,
         verification,
         authenticated_user_id: actor.id,
         authenticated_org_id: actor.organizationId,
@@ -145,6 +165,8 @@ async function authorizeCapture(
         throw new DeferredFailure(
           unprocessable("CAPTURE_REFUSED", "TrustRail refused to capture this payment.", { failures: guard.failures }),
           async (db) => {
+            // The decision recorded inside the refused transaction was rolled back; keep it as evidence.
+            const decisionId = await recordDecision(db, actor.organizationId, ev);
             await recordFinding(db, {
               organizationId: actor.organizationId,
               type: amountProblem ? "PAYMENT_AMOUNT_MISMATCH" : "CERTIFICATE_VERIFICATION_FAILED",
@@ -163,7 +185,7 @@ async function authorizeCapture(
               actorId: actor.id,
               entityType: "payment_attempt",
               entityId: payment.id,
-              data: { failures: guard.failures.map((f) => f.code) },
+              data: { failures: guard.failures.map((f) => f.code), policy_decision_id: decisionId, input_digest: ev.result.input_digest },
             });
           },
         );
