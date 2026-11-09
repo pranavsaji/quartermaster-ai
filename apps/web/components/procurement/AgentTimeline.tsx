@@ -5,8 +5,11 @@ import { cn } from "@/components/ui/cn";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Icons } from "@/components/shell/icons";
 import { dateTime, duration, humanize } from "@/lib/format";
+import { lookup } from "@/lib/labels";
 
-const STATUS: Record<AgentStepDto["status"], { tone: "allow" | "block" | "neutral"; ring: string; icon: keyof typeof Icons }> = {
+type StepStyle = { tone: "allow" | "block" | "neutral"; ring: string; icon: keyof typeof Icons };
+
+const STATUS: Record<AgentStepDto["status"], StepStyle> = {
   SUCCEEDED: { tone: "allow", ring: "bg-allow-soft text-allow ring-allow-line", icon: "check" },
   FAILED: { tone: "block", ring: "bg-block-soft text-block ring-block-line", icon: "x" },
   SKIPPED: { tone: "neutral", ring: "bg-canvas text-ink-3 ring-line-strong", icon: "minus" },
@@ -29,7 +32,7 @@ export function AgentTimeline({ steps }: { steps: AgentStepDto[] }) {
         ) : (
           <ol className="relative">
             {ordered.map((step, i) => {
-              const s = STATUS[step.status];
+              const s = lookup<AgentStepDto["status"], StepStyle>(STATUS, step.status, STATUS.SKIPPED);
               const Icon = Icons[s.icon];
               return (
                 <li key={step.id} className="relative flex gap-3 pb-4 last:pb-0">

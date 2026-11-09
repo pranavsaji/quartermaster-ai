@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { Tone } from "@/lib/labels";
+import { lookup, type Tone } from "@/lib/labels";
 import { humanize } from "@/lib/format";
 import { cn } from "./cn";
 
@@ -25,7 +25,7 @@ export interface BadgeProps {
 }
 
 export function Badge({ tone = "neutral", children, dot = false, size = "sm", className, label, title }: BadgeProps) {
-  const t = TONES[tone];
+  const t = lookup(TONES, tone, TONES.neutral);
   return (
     <span
       role={label ? "status" : undefined}
@@ -60,7 +60,7 @@ export function StatusBadge<S extends string>({
 }) {
   const text = labels?.[status] ?? humanize(status);
   return (
-    <Badge tone={tones[status] ?? "neutral"} dot size={size} label={`${kind}: ${text}`}>
+    <Badge tone={lookup<S, Tone>(tones, status, "neutral")} dot size={size} label={`${kind}: ${text}`}>
       {text}
     </Badge>
   );

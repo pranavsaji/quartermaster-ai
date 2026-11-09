@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import type { Tone } from "@/lib/labels";
+import { lookup, type Tone } from "@/lib/labels";
 import { cn } from "./cn";
 import { Skeleton } from "./Skeleton";
 
@@ -37,7 +37,7 @@ export function StatTile({
       {loading ? (
         <Skeleton className="mt-2 h-7 w-24" />
       ) : (
-        <p className={cn("tnum mt-1.5 text-[26px] leading-8 font-semibold tracking-[-0.02em]", ACCENTS[tone])}>{value}</p>
+        <p className={cn("tnum mt-1.5 text-[26px] leading-8 font-semibold tracking-[-0.02em]", lookup(ACCENTS, tone, ACCENTS.neutral))}>{value}</p>
       )}
       {sub && !loading ? <p className="mt-1 text-[12.5px] text-ink-3">{sub}</p> : null}
       {children}

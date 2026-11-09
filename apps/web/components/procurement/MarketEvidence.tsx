@@ -4,10 +4,12 @@ import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Notice } from "@/components/ui/Notice";
 import { SourceLabel } from "@/components/ui/SourceLabel";
-import type { Tone } from "@/lib/labels";
-import { money, num, relativeTime } from "@/lib/format";
+import { lookup, type Tone } from "@/lib/labels";
+import { humanize, money, num, relativeTime } from "@/lib/format";
 
-const STATUS: Record<MarketReferenceDto["status"], { tone: Tone; label: string; explain: string }> = {
+type StatusInfo = { tone: Tone; label: string; explain: string };
+
+const STATUS: Record<MarketReferenceDto["status"], StatusInfo> = {
   AVAILABLE: { tone: "allow", label: "Available", explain: "Reference price computed from comparable listings." },
   UNAVAILABLE: { tone: "review", label: "Unavailable", explain: "No comparable listings were found for this item." },
   STALE: { tone: "review", label: "Stale", explain: "Listings are older than the freshness window." },
@@ -47,7 +49,11 @@ export function MarketEvidence({
           <EmptyState compact title="No market references" description="Market research hasn't run for this request." />
         ) : null}
         {market.map((ref) => {
-          const s = STATUS[ref.status];
+          const s = lookup<MarketReferenceDto["status"], StatusInfo>(STATUS, ref.status, {
+            tone: "neutral",
+            label: humanize(ref.status),
+            explain: "The market data provider reported a status this console doesn't recognise.",
+          });
           const name = itemNames.get(ref.inventory_item_id) ?? "Item";
           return (
             <section key={ref.inventory_item_id} aria-label={`Market evidence for ${name}`}>

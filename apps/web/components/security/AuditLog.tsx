@@ -13,6 +13,7 @@ import { Notice } from "@/components/ui/Notice";
 import { api } from "@/lib/api";
 import { dateTime, num, truncateMiddle } from "@/lib/format";
 import { useAction } from "@/lib/hooks";
+import { lookup, type Tone } from "@/lib/labels";
 
 const ACTOR_TONES = { USER: "accent", SYSTEM: "neutral", AGENT: "info", PAYPAL: "allow" } as const;
 
@@ -45,7 +46,7 @@ export function AuditLog({ events }: { events: AuditEventDto[] | undefined }) {
         headerName: "Actor",
         minWidth: 120,
         cellRenderer: (p: CustomCellRendererProps<AuditEventDto>) =>
-          p.data ? <Badge tone={ACTOR_TONES[p.data.actor_type]}>{p.data.actor_type}</Badge> : null,
+          p.data ? <Badge tone={lookup<keyof typeof ACTOR_TONES, Tone>(ACTOR_TONES, p.data.actor_type, "neutral")}>{p.data.actor_type}</Badge> : null,
       },
       {
         colId: "entity",

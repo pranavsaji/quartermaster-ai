@@ -14,7 +14,7 @@ import { StatTile } from "@/components/ui/StatTile";
 import { api } from "@/lib/api";
 import { duration, minorToMajor, money, moneyTick, num, shortDate } from "@/lib/format";
 import { useResource } from "@/lib/hooks";
-import { categoryLabel, DECISION_LABELS, findingLabel } from "@/lib/labels";
+import { categoryLabel, DECISION_LABELS, findingLabel, lookup } from "@/lib/labels";
 
 const DECISION_COLORS: Record<PolicyDecisionKind, string> = {
   ALLOW: CHART_COLORS.allow,
@@ -62,7 +62,7 @@ function useChartOptions(s: AnalyticsSummaryDto | undefined) {
         captured_minor: c.captured_minor,
       }));
     const decisions = s.decisions_by_kind.map((d) => ({
-      decision: DECISION_LABELS[d.decision],
+      decision: lookup(DECISION_LABELS, d.decision, d.decision),
       count: d.count,
       kind: d.decision,
     }));
@@ -105,7 +105,7 @@ function useChartOptions(s: AnalyticsSummaryDto | undefined) {
           yKey: "count",
           yName: "Decisions",
           cornerRadius: 4,
-          itemStyler: ({ datum }: { datum: { kind: PolicyDecisionKind } }) => ({ fill: DECISION_COLORS[datum.kind] }),
+          itemStyler: ({ datum }: { datum: { kind: PolicyDecisionKind } }) => ({ fill: lookup(DECISION_COLORS, datum.kind, CHART_COLORS.muted) }),
           label: { enabled: true, placement: "outside-end", color: CHART_COLORS.text },
         },
       ],
