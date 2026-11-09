@@ -81,9 +81,15 @@ describe("PayPalCheckout", () => {
     const { container } = render(
       <PayPalCheckout intentId="intent-1" amountMinor={12345} currency="USD" onPayment={vi.fn()} onCaptured={vi.fn()} />,
     );
-    fireEvent.click(container.querySelector("paypal-button")!);
+    const button = container.querySelector("paypal-button")!;
+    fireEvent.click(button);
+    // While the order is being created the button is inert (unfocusable, out of the a11y tree),
+    // not merely aria-disabled on a host element whose shadow-DOM button never sees it.
+    expect(button.parentElement).toHaveAttribute("inert");
+    expect(button).not.toHaveAttribute("aria-disabled");
 
     expect(await screen.findByText("Payment didn't go through")).toBeInTheDocument();
+    expect(button.parentElement).not.toHaveAttribute("inert");
     expect(screen.getByText("PayPal declined the funding source.")).toBeInTheDocument();
     expect(screen.getByText(/Use the PayPal button again/)).toBeInTheDocument();
     expect(screen.queryByText("Payment outcome unknown")).not.toBeInTheDocument();
