@@ -54,6 +54,16 @@ describe("invoice reconciliation", () => {
     expect(r.settlement_allowed).toBe(true);
   });
 
+  it("never matches an invoice against a different order than the one it references", () => {
+    const r = analyzeInvoice(invoice({ purchase_order_id: "po_other" }), po, []);
+    expect(r.status).toBe("DISCREPANCY");
+    expect(r.settlement_allowed).toBe(false);
+    expect(r.checks.find((c) => c.check === "PO_REFERENCE_MATCH")).toMatchObject({ passed: false, severity: "HIGH" });
+    // An invoice without a reference matched by the caller is not second-guessed here.
+    expect(analyzeInvoice(invoice({ purchase_order_id: null }), po, []).checks.some((c) => c.check === "PO_REFERENCE_MATCH")).toBe(false);
+    expect(analyzeInvoice(invoice(), po, []).checks.find((c) => c.check === "PO_REFERENCE_MATCH")?.passed).toBe(true);
+  });
+
   it("flags the same invoice number as a duplicate", () => {
     const r = analyzeInvoice(invoice(), po, [existingFrom(invoice())]);
     expect(r.status).toBe("DUPLICATE");

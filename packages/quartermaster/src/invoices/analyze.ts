@@ -342,6 +342,17 @@ export function analyzeInvoice(inv: InvoiceInput, po: PurchaseOrderView | null, 
   } else {
     const priorNote = priorPartials.length ? ` (with ${priorPartials.length} earlier partial invoice(s))` : "";
     add("PO_EXISTS", true, "MEDIUM", `Matched to purchase order ${po.id}.`);
+    // The caller looks the order up by the invoice's reference; a different order passed in is a
+    // caller bug, and must never let this invoice settle someone else's order.
+    if (inv.purchase_order_id !== null) {
+      const sameOrder = inv.purchase_order_id === po.id;
+      add(
+        "PO_REFERENCE_MATCH",
+        sameOrder,
+        "HIGH",
+        sameOrder ? "Invoice references this purchase order." : `Invoice references ${inv.purchase_order_id}, not ${po.id}.`,
+      );
+    }
     add(
       "SUPPLIER_MATCH",
       po.supplier_id === inv.supplier_id,
