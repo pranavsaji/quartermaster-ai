@@ -5,7 +5,7 @@ import type { DeliveryDto, PurchaseOrderDto } from "@qm/contracts";
 import { StatusBadge } from "@/components/ui/Badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { ResourceView, type ResourceLike } from "@/components/ui/ResourceView";
 import { SkeletonRows } from "@/components/ui/Skeleton";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import { date, relativeTime } from "@/lib/format";
@@ -14,14 +14,13 @@ import { DELIVERY_STATUS_TONES, OPEN_DELIVERY_STATUSES } from "@/lib/labels";
 export function UpcomingDeliveries({
   deliveries,
   orders,
-  error,
-  onRetry,
+  resource,
 }: {
   deliveries: DeliveryDto[] | undefined;
   /** Optional, used to show PO numbers / supplier names. */
   orders?: PurchaseOrderDto[];
-  error: unknown;
-  onRetry: () => void;
+  /** The deliveries' load state, for the loading, error and stale-refresh states. */
+  resource: ResourceLike;
 }) {
   const poById = new Map((orders ?? []).map((o) => [o.id, o]));
   const upcoming = deliveries
@@ -44,8 +43,7 @@ export function UpcomingDeliveries({
         }
       />
       <CardBody>
-        {error && !deliveries ? <ErrorNotice error={error} onRetry={onRetry} /> : null}
-        {!upcoming && !error ? <SkeletonRows rows={3} /> : null}
+        <ResourceView resource={resource} hasData={Boolean(deliveries)} loading={<SkeletonRows rows={3} />} />
         {upcoming && upcoming.length === 0 ? (
           <EmptyState compact title="No deliveries on the way" description="Paid orders will appear here." />
         ) : null}
