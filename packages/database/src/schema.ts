@@ -1,7 +1,16 @@
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
+import {
+  DELIVERY_STATUSES,
+  INVOICE_STATUSES,
+  PAYMENT_STATUSES,
+  PO_STATUSES,
+  REFUND_STATUSES,
+  REQUEST_STATUSES,
+} from "@qm/contracts";
 import {
   bigint,
   boolean,
+  check,
   date,
   doublePrecision,
   index,
@@ -12,6 +21,7 @@ import {
   timestamp,
   uniqueIndex,
   uuid,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 
 /** All money columns are BIGINT minor units, read as JS numbers (safe up to 2^53). */
@@ -20,6 +30,8 @@ const ts = (name: string) => timestamp(name, { withTimezone: true, mode: "date" 
 const createdAt = () => ts("created_at").notNull().defaultNow();
 const updatedAt = () => ts("updated_at").notNull().defaultNow();
 const orgId = () => uuid("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" });
+/** A CHECK constraint restricting a text column to the given values (kept in sync with contracts). */
+const oneOf = (column: SQL.Aliased | SQL | AnyPgColumn, values: readonly string[]): SQL => sql`${column} in (${sql.raw(values.map((v) => `'${v}'`).join(", "))})`;
 
 /* ================================================================ Identity */
 
@@ -228,7 +240,11 @@ export const marketQuotes = pgTable(
     suspicious: boolean("suspicious").notNull().default(false),
     observedAt: ts("observed_at").notNull().defaultNow(),
   },
-  (t) => [index("market_quotes_item_idx").on(t.inventoryItemId, t.observedAt), index("market_quotes_request_idx").on(t.requestId)],
+  (t) => [
+    index("market_quotes_item_idx").on(t.inventoryItemId, t.observedAt),
+    index("market_quotes_request_idx").on(t.requestId),
+    check("market_quotes_amounts_ck", sql`${t.priceMinor} >= 0 and (${t.packQuantity} is null or ${t.packQuantity} > 0)`),
+  ],
 );
 
 /* ============================================================= Procurement */
@@ -239,7 +255,7 @@ export const purchaseRequests = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     organizationId: orgId(),
     createdBy: uuid("created_by").notNull().references(() => users.id),
-    status: text("status").notNull().default("DRAFT"),
+    status: text("status", { enum: REQUEST_STATUSES }).notNull().default("DRAFT"),
     instruction: text("instruction").notNull(),
     currency: text("currency").notNull(),
     budgetLimitMinor: money("budget_limit_minor"),
@@ -259,7 +275,13 @@ export const purchaseRequests = pgTable(
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
-  (t) => [index("purchase_requests_org_idx").on(t.organizationId, t.createdAt)],
+  (t) => [
+    index("purchase_requests_org_idx").on(t.organizationId, t.createdAt),
+    // The sweeper looks for research abandoned by a crashed process.
+    index("purchase_requests_researching_idx").on(t.researchStartedAt).where(sql`${t.status} = 'RESEARCHING'`),
+    check("purchase_requests_status_ck", oneOf(t.status, REQUEST_STATUSES)),
+    check("purchase_requests_budget_ck", sql`${t.budgetLimitMinor} is null or ${t.budgetLimitMinor} > 0`),
+  ],
 );
 
 export const purchaseCandidates = pgTable(
@@ -292,7 +314,7 @@ export const purchaseOrders = pgTable(
     requestId: uuid("request_id").references(() => purchaseRequests.id, { onDelete: "set null" }),
     supplierId: uuid("supplier_id").notNull().references(() => suppliers.id),
     number: text("number").notNull(),
-    status: text("status").notNull().default("PROPOSED"),
+    status: text("status", { enum: PO_STATUSES }).notNull().default("PROPOSED"),
     currency: text("currency").notNull(),
     subtotalMinor: money("subtotal_minor").notNull(),
     shippingMinor: money("shipping_minor").notNull(),
@@ -310,6 +332,11 @@ export const purchaseOrders = pgTable(
     uniqueIndex("purchase_orders_org_number_uq").on(t.organizationId, t.number),
     index("purchase_orders_request_idx").on(t.requestId),
     index("purchase_orders_org_status_idx").on(t.organizationId, t.status, t.createdAt),
+    check("purchase_orders_status_ck", oneOf(t.status, PO_STATUSES)),
+    check(
+      "purchase_orders_amounts_ck",
+      sql`${t.subtotalMinor} >= 0 and ${t.shippingMinor} >= 0 and ${t.taxMinor} >= 0 and ${t.feesMinor} >= 0 and ${t.totalMinor} = ${t.subtotalMinor} + ${t.shippingMinor} + ${t.taxMinor} + ${t.feesMinor}`,
+    ),
   ],
 );
 
@@ -431,6 +458,8 @@ export const intentCertificates = pgTable(
   (t) => [
     uniqueIndex("certificates_po_active_uq").on(t.purchaseOrderId).where(sql`${t.status} in ('ACTIVE','CONSUMED')`),
     index("certificates_org_status_idx").on(t.organizationId, t.status, t.expiresAt),
+    // The sweeper expires certificates across organisations.
+    index("certificates_status_expiry_idx").on(t.status, t.expiresAt),
   ],
 );
 
@@ -449,7 +478,10 @@ export const budgetAccounts = pgTable(
     spentMinor: money("spent_minor").notNull().default(0),
     updatedAt: updatedAt(),
   },
-  (t) => [uniqueIndex("budget_accounts_org_period_uq").on(t.organizationId, t.periodStart)],
+  (t) => [
+    uniqueIndex("budget_accounts_org_period_uq").on(t.organizationId, t.periodStart),
+    check("budget_accounts_amounts_ck", sql`${t.limitMinor} >= 0 and ${t.reservedMinor} >= 0 and ${t.spentMinor} >= 0`),
+  ],
 );
 
 export const budgetReservations = pgTable(
@@ -479,7 +511,7 @@ export const paymentAttempts = pgTable(
     organizationId: orgId(),
     intentId: uuid("intent_id").notNull().references(() => intentCertificates.id),
     purchaseOrderId: uuid("purchase_order_id").notNull().references(() => purchaseOrders.id),
-    status: text("status").notNull().default("CREATED"),
+    status: text("status", { enum: PAYMENT_STATUSES }).notNull().default("CREATED"),
     amountMinor: money("amount_minor").notNull(),
     currency: text("currency").notNull(),
     paypalOrderId: text("paypal_order_id"),
@@ -501,6 +533,14 @@ export const paymentAttempts = pgTable(
     uniqueIndex("payments_paypal_order_uq").on(t.paypalOrderId),
     uniqueIndex("payments_paypal_capture_uq").on(t.paypalCaptureId),
     index("payments_org_status_idx").on(t.organizationId, t.status),
+    index("payments_po_idx").on(t.purchaseOrderId),
+    // The sweeper scans by status and age across organisations.
+    index("payments_status_updated_idx").on(t.status, t.updatedAt),
+    check("payments_status_ck", oneOf(t.status, PAYMENT_STATUSES)),
+    check(
+      "payments_amounts_ck",
+      sql`${t.amountMinor} > 0 and ${t.refundedAmountMinor} >= 0 and (${t.capturedAmountMinor} is null or (${t.capturedAmountMinor} >= 0 and ${t.refundedAmountMinor} <= ${t.capturedAmountMinor}))`,
+    ),
   ],
 );
 
@@ -532,12 +572,18 @@ export const refunds = pgTable(
     /** Stable per logical refund (derived from the client's Idempotency-Key); reused on retry. */
     requestKey: text("request_key"),
     amountMinor: money("amount_minor").notNull(),
-    status: text("status").notNull(),
+    status: text("status", { enum: REFUND_STATUSES }).notNull(),
     reason: text("reason").notNull(),
     createdBy: uuid("created_by"),
     createdAt: createdAt(),
   },
-  (t) => [uniqueIndex("refunds_paypal_id_uq").on(t.paypalRefundId), uniqueIndex("refunds_request_key_uq").on(t.requestKey)],
+  (t) => [
+    uniqueIndex("refunds_paypal_id_uq").on(t.paypalRefundId),
+    uniqueIndex("refunds_request_key_uq").on(t.requestKey),
+    index("refunds_payment_idx").on(t.paymentAttemptId),
+    check("refunds_status_ck", oneOf(t.status, REFUND_STATUSES)),
+    check("refunds_amount_ck", sql`${t.amountMinor} > 0`),
+  ],
 );
 
 /* ============================================================= Fulfillment */
@@ -549,7 +595,7 @@ export const deliveries = pgTable(
     organizationId: orgId(),
     purchaseOrderId: uuid("purchase_order_id").notNull().references(() => purchaseOrders.id),
     supplierId: uuid("supplier_id").notNull().references(() => suppliers.id),
-    status: text("status").notNull().default("SCHEDULED"),
+    status: text("status", { enum: DELIVERY_STATUSES }).notNull().default("SCHEDULED"),
     expectedDate: date("expected_date", { mode: "string" }).notNull(),
     originalExpectedDate: date("original_expected_date", { mode: "string" }).notNull(),
     deliveredAt: ts("delivered_at"),
@@ -558,19 +604,31 @@ export const deliveries = pgTable(
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
-  (t) => [uniqueIndex("deliveries_po_uq").on(t.purchaseOrderId)],
+  (t) => [
+    uniqueIndex("deliveries_po_uq").on(t.purchaseOrderId),
+    index("deliveries_org_created_idx").on(t.organizationId, t.createdAt),
+    check("deliveries_status_ck", oneOf(t.status, DELIVERY_STATUSES)),
+  ],
 );
 
-export const goodsReceipts = pgTable("goods_receipts", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  organizationId: orgId(),
-  deliveryId: uuid("delivery_id").notNull().references(() => deliveries.id),
-  purchaseOrderItemId: uuid("purchase_order_item_id").notNull().references(() => purchaseOrderItems.id),
-  unitsReceived: integer("units_received").notNull(),
-  receivedBy: uuid("received_by").notNull(),
-  note: text("note"),
-  createdAt: createdAt(),
-});
+export const goodsReceipts = pgTable(
+  "goods_receipts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: orgId(),
+    deliveryId: uuid("delivery_id").notNull().references(() => deliveries.id),
+    purchaseOrderItemId: uuid("purchase_order_item_id").notNull().references(() => purchaseOrderItems.id),
+    unitsReceived: integer("units_received").notNull(),
+    receivedBy: uuid("received_by").notNull(),
+    note: text("note"),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index("goods_receipts_delivery_idx").on(t.deliveryId),
+    index("goods_receipts_item_idx").on(t.purchaseOrderItemId),
+    check("goods_receipts_units_ck", sql`${t.unitsReceived} >= 0`),
+  ],
+);
 
 export const invoices = pgTable(
   "invoices",
@@ -587,7 +645,7 @@ export const invoices = pgTable(
     totalMinor: money("total_minor").notNull(),
     notes: text("notes"),
     contentHash: text("content_hash").notNull(),
-    status: text("status").notNull(),
+    status: text("status", { enum: INVOICE_STATUSES }).notNull(),
     settlementAllowed: boolean("settlement_allowed").notNull(),
     createdBy: uuid("created_by").notNull(),
     createdAt: createdAt(),
@@ -597,17 +655,22 @@ export const invoices = pgTable(
     index("invoices_content_idx").on(t.organizationId, t.contentHash),
     // At most one settled invoice per purchase order.
     uniqueIndex("invoices_po_settled_uq").on(t.purchaseOrderId).where(sql`${t.settlementAllowed} = true`),
+    check("invoices_status_ck", oneOf(t.status, INVOICE_STATUSES)),
   ],
 );
 
-export const invoiceMatches = pgTable("invoice_matches", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  invoiceId: uuid("invoice_id").notNull().references(() => invoices.id, { onDelete: "cascade" }),
-  check: text("check").notNull(),
-  passed: boolean("passed").notNull(),
-  severity: text("severity"),
-  detail: text("detail").notNull(),
-});
+export const invoiceMatches = pgTable(
+  "invoice_matches",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    invoiceId: uuid("invoice_id").notNull().references(() => invoices.id, { onDelete: "cascade" }),
+    check: text("check").notNull(),
+    passed: boolean("passed").notNull(),
+    severity: text("severity"),
+    detail: text("detail").notNull(),
+  },
+  (t) => [index("invoice_matches_invoice_idx").on(t.invoiceId)],
+);
 
 /* ======================================================== AI and auditing */
 

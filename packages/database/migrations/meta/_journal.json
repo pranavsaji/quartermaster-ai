@@ -22,6 +22,20 @@
       "when": 1794210716715,
       "tag": "0002_refund_request_keys",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1794244368793,
+      "tag": "0003_integrity_constraints",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794244376596,
+      "tag": "0004_audit_append_only",
+      "breakpoints": true
     }
   ]
 }

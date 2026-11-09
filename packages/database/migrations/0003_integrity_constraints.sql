@@ -1,0 +1,22 @@
+CREATE INDEX "deliveries_org_created_idx" ON "deliveries" USING btree ("organization_id","created_at");--> statement-breakpoint
+CREATE INDEX "goods_receipts_delivery_idx" ON "goods_receipts" USING btree ("delivery_id");--> statement-breakpoint
+CREATE INDEX "goods_receipts_item_idx" ON "goods_receipts" USING btree ("purchase_order_item_id");--> statement-breakpoint
+CREATE INDEX "certificates_status_expiry_idx" ON "intent_certificates" USING btree ("status","expires_at");--> statement-breakpoint
+CREATE INDEX "invoice_matches_invoice_idx" ON "invoice_matches" USING btree ("invoice_id");--> statement-breakpoint
+CREATE INDEX "payments_po_idx" ON "payment_attempts" USING btree ("purchase_order_id");--> statement-breakpoint
+CREATE INDEX "payments_status_updated_idx" ON "payment_attempts" USING btree ("status","updated_at");--> statement-breakpoint
+CREATE INDEX "purchase_requests_researching_idx" ON "purchase_requests" USING btree ("research_started_at") WHERE "purchase_requests"."status" = 'RESEARCHING';--> statement-breakpoint
+CREATE INDEX "refunds_payment_idx" ON "refunds" USING btree ("payment_attempt_id");--> statement-breakpoint
+ALTER TABLE "budget_accounts" ADD CONSTRAINT "budget_accounts_amounts_ck" CHECK ("budget_accounts"."limit_minor" >= 0 and "budget_accounts"."reserved_minor" >= 0 and "budget_accounts"."spent_minor" >= 0);--> statement-breakpoint
+ALTER TABLE "deliveries" ADD CONSTRAINT "deliveries_status_ck" CHECK ("deliveries"."status" in ('SCHEDULED', 'IN_TRANSIT', 'DELAYED', 'DELIVERED', 'CANCELLED'));--> statement-breakpoint
+ALTER TABLE "goods_receipts" ADD CONSTRAINT "goods_receipts_units_ck" CHECK ("goods_receipts"."units_received" >= 0);--> statement-breakpoint
+ALTER TABLE "invoices" ADD CONSTRAINT "invoices_status_ck" CHECK ("invoices"."status" in ('MATCHED', 'DISCREPANCY', 'DUPLICATE', 'UNMATCHED'));--> statement-breakpoint
+ALTER TABLE "market_quotes" ADD CONSTRAINT "market_quotes_amounts_ck" CHECK ("market_quotes"."price_minor" >= 0 and ("market_quotes"."pack_quantity" is null or "market_quotes"."pack_quantity" > 0));--> statement-breakpoint
+ALTER TABLE "payment_attempts" ADD CONSTRAINT "payments_status_ck" CHECK ("payment_attempts"."status" in ('CREATED', 'ORDER_CREATED', 'PAYER_APPROVED', 'CAPTURE_PENDING', 'COMPLETED', 'FAILED', 'VOIDED', 'REFUNDED', 'PARTIALLY_REFUNDED'));--> statement-breakpoint
+ALTER TABLE "payment_attempts" ADD CONSTRAINT "payments_amounts_ck" CHECK ("payment_attempts"."amount_minor" > 0 and "payment_attempts"."refunded_amount_minor" >= 0 and ("payment_attempts"."captured_amount_minor" is null or ("payment_attempts"."captured_amount_minor" >= 0 and "payment_attempts"."refunded_amount_minor" <= "payment_attempts"."captured_amount_minor")));--> statement-breakpoint
+ALTER TABLE "purchase_orders" ADD CONSTRAINT "purchase_orders_status_ck" CHECK ("purchase_orders"."status" in ('PROPOSED', 'BLOCKED', 'SUPERSEDED', 'APPROVED', 'PAYMENT_PENDING', 'PAID', 'FULFILLED', 'REJECTED', 'CANCELLED', 'EXPIRED'));--> statement-breakpoint
+ALTER TABLE "purchase_orders" ADD CONSTRAINT "purchase_orders_amounts_ck" CHECK ("purchase_orders"."subtotal_minor" >= 0 and "purchase_orders"."shipping_minor" >= 0 and "purchase_orders"."tax_minor" >= 0 and "purchase_orders"."fees_minor" >= 0 and "purchase_orders"."total_minor" = "purchase_orders"."subtotal_minor" + "purchase_orders"."shipping_minor" + "purchase_orders"."tax_minor" + "purchase_orders"."fees_minor");--> statement-breakpoint
+ALTER TABLE "purchase_requests" ADD CONSTRAINT "purchase_requests_status_ck" CHECK ("purchase_requests"."status" in ('DRAFT', 'RESEARCHING', 'READY_FOR_REVIEW', 'BLOCKED', 'APPROVED', 'PAYMENT_PENDING', 'PAID', 'FULFILLED', 'REJECTED', 'CANCELLED', 'FAILED'));--> statement-breakpoint
+ALTER TABLE "purchase_requests" ADD CONSTRAINT "purchase_requests_budget_ck" CHECK ("purchase_requests"."budget_limit_minor" is null or "purchase_requests"."budget_limit_minor" > 0);--> statement-breakpoint
+ALTER TABLE "refunds" ADD CONSTRAINT "refunds_status_ck" CHECK ("refunds"."status" in ('REQUESTED', 'UNKNOWN', 'PENDING', 'COMPLETED', 'FAILED', 'CANCELLED'));--> statement-breakpoint
+ALTER TABLE "refunds" ADD CONSTRAINT "refunds_amount_ck" CHECK ("refunds"."amount_minor" > 0);
