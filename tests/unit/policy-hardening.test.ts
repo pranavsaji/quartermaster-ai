@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { applyBps } from "@qm/contracts";
-import { buildCart, evaluatePolicy, type PolicyInput } from "@qm/trustrail";
+import { PO_STATUSES, applyBps } from "@qm/contracts";
+import { COMMITTED_ORDER_STATUSES, buildCart, evaluatePolicy, isCommittedOrderStatus, type PolicyInput } from "@qm/trustrail";
 import { buildSupplierQuote } from "@qm/quartermaster";
 import { SUPPLIER, baseInput, product, shipping, tax } from "../helpers/fixtures";
 
@@ -77,6 +77,25 @@ describe("policy engine — timestamps", () => {
   it("counts a prior order with an unparseable created_at as inside the duplicate window", () => {
     const r = evaluatePolicy(baseInput({ prior_orders: [{ id: "po_x", supplier_id: SUPPLIER, skus: ["TK-250"], status: "PAID", created_at: "garbage" }] }));
     expect(r.violations.find((v) => v.code === "DUPLICATE_ORDER")?.evidence).toEqual({ purchase_order_ids: ["po_x"] });
+  });
+});
+
+describe("committed order statuses", () => {
+  it("exports one list of committed purchase-order statuses", () => {
+    expect([...COMMITTED_ORDER_STATUSES]).toEqual(["APPROVED", "PAYMENT_PENDING", "PAID", "FULFILLED"]);
+    for (const s of COMMITTED_ORDER_STATUSES) expect(PO_STATUSES).toContain(s);
+  });
+
+  it.each(PO_STATUSES.map((s) => [s] as const))("treats a prior %s order as a duplicate only when committed", (status) => {
+    const r = evaluatePolicy(baseInput({ prior_orders: [{ id: "p", supplier_id: SUPPLIER, skus: ["TK-250"], status, created_at: "2026-11-10T10:00:00Z" }] }));
+    expect(codes(r).includes("DUPLICATE_ORDER")).toBe(isCommittedOrderStatus(status));
+    expect(isCommittedOrderStatus(status)).toBe((COMMITTED_ORDER_STATUSES as readonly string[]).includes(status));
+  });
+
+  it("never counts an unknown status as committed", () => {
+    expect(isCommittedOrderStatus("paid")).toBe(false);
+    const r = evaluatePolicy(baseInput({ prior_orders: [{ id: "p", supplier_id: SUPPLIER, skus: ["TK-250"], status: "SOMETHING", created_at: "2026-11-10T10:00:00Z" }] }));
+    expect(codes(r)).not.toContain("DUPLICATE_ORDER");
   });
 });
 

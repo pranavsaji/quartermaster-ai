@@ -1,4 +1,4 @@
-import { applyBps, isValidBps, type PolicyDecisionKind, type ProductCategory, type ViolationCode } from "@qm/contracts";
+import { applyBps, isValidBps, type PolicyDecisionKind, type ProductCategory, type PurchaseOrderStatus, type ViolationCode } from "@qm/contracts";
 import { type Cart, checkCartArithmetic } from "../cart";
 import { digest } from "../canonical";
 import type { SpendMandate } from "../mandates/types";
@@ -36,8 +36,23 @@ export interface PriorOrder {
   id: string;
   supplier_id: string;
   skus: string[];
-  status: string;
+  /**
+   * Purchase-order status. Typed as the contracts union; plain strings are still accepted for
+   * callers that read an untyped text column, and any unknown status never counts as committed.
+   */
+  status: PurchaseOrderStatus | (string & {});
   created_at: string;
+}
+
+/**
+ * Purchase-order statuses that commit spend: they count against request budgets and as
+ * potential duplicates. Single source of truth for TrustRail and its callers.
+ */
+export const COMMITTED_ORDER_STATUSES = ["APPROVED", "PAYMENT_PENDING", "PAID", "FULFILLED"] as const satisfies readonly PurchaseOrderStatus[];
+export type CommittedOrderStatus = (typeof COMMITTED_ORDER_STATUSES)[number];
+
+export function isCommittedOrderStatus(status: string): status is CommittedOrderStatus {
+  return (COMMITTED_ORDER_STATUSES as readonly string[]).includes(status);
 }
 
 export interface BudgetSnapshot {
@@ -91,8 +106,6 @@ export interface PolicyResult {
 
 /** Tolerated clock skew for market observations timestamped slightly after `now`. */
 export const MARKET_CLOCK_SKEW_MS = 5 * 60_000;
-
-const DUPLICATE_STATUSES =new Set(["APPROVED", "PAYMENT_PENDING", "PAID", "FULFILLED"]);
 
 /**
  * Deterministic TrustRail policy evaluation. Pure function: identical input produces an
@@ -461,7 +474,7 @@ export function evaluatePolicy(input: PolicyInput): PolicyResult {
     const skus = new Set(productLines.map((l) => l.sku).filter((s): s is string => !!s));
     const duplicates = input.prior_orders.filter(
       (o) =>
-        DUPLICATE_STATUSES.has(o.status) &&
+        isCommittedOrderStatus(o.status) &&
         o.supplier_id === cart.supplier_id &&
         // An unparseable timestamp fails closed: it counts as inside the window.
         !(Date.parse(o.created_at) < windowStart) &&
