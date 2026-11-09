@@ -61,8 +61,9 @@ export function CandidateTable({
       {
         field: "supplier_name",
         headerName: "Supplier",
-        minWidth: 230,
+        minWidth: 300,
         autoHeight: true,
+        wrapText: true,
         cellRenderer: (p: CustomCellRendererProps<Row>) =>
           p.data ? (
             <div className="flex flex-col gap-1 py-2 leading-tight">
