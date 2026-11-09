@@ -53,7 +53,8 @@ export default tseslint.config(
       "@typescript-eslint/restrict-template-expressions": ["error", { allowNumber: true, allowBoolean: true, allowNullish: true }],
       eqeqeq: ["error", "always"],
       "no-console": "error",
-      "no-implicit-coercion": "error",
+      // `!!x` narrows types; other implicit coercions (`+x`, `"" + x`) hide bugs.
+      "no-implicit-coercion": ["error", { allow: ["!!"] }],
       "prefer-const": "error",
     },
   },
