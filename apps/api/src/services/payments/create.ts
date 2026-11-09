@@ -6,7 +6,7 @@ import type { AppContext } from "../../context";
 import { badGateway, conflict, forbidden, unavailable, unprocessable } from "../../errors";
 import { appendAudit } from "../audit";
 import { loadCertificate, verifyStoredCertificate } from "../certificates";
-import { DeferredFailure, withDeferredFailures, type Actor } from "../common";
+import { DeferredFailure, retryOnConflict, withDeferredFailures, type Actor } from "../common";
 import { recordFinding } from "../findings";
 import { cartFromRows, loadOrder, toPaymentDto } from "../orders";
 import { refreshRequestStatus } from "../procurement/status";
@@ -33,56 +33,66 @@ export async function createPayPalOrder(
 ): Promise<{ payment: PaymentDto; paypal_order_id: string }> {
   requirePayPal(ctx);
   const prepared = await withDeferredFailures(ctx, () =>
-    ctx.db.transaction(async (tx) => {
-      const now = ctx.now();
-      const cert = await loadCertificate(tx, actor.organizationId, intentId, true);
-      if (cert.buyerId !== actor.id) throw forbidden("Only the owner who approved this purchase can pay for it.");
-      const [existing] = await tx.select().from(paymentAttempts).where(eq(paymentAttempts.intentId, cert.id)).for("update");
-      if (existing && (existing.status === "VOIDED" || existing.status === "FAILED"))
-        throw conflict("PAYMENT_NOT_CREATABLE", `Payment is ${existing.status}.`);
-      if (existing?.paypalOrderId) return { attempt: existing, cart: null, po: null, supplierName: null };
-      if (existing && existing.status !== "CREATED") throw conflict("PAYMENT_NOT_CREATABLE", `Payment is ${existing.status}.`);
+    retryOnConflict(ctx, "payment.create_order", () =>
+      ctx.db.transaction(async (tx) => {
+        const now = ctx.now();
+        // Lock order everywhere: payment, then certificate. Read the certificate first (tenant
+        // check), lock an existing payment, then the certificate. With no payment yet, the
+        // certificate lock serialises creators, so the payment is re-read after taking it.
+        const visible = await loadCertificate(tx, actor.organizationId, intentId);
+        if (visible.buyerId !== actor.id) throw forbidden("Only the owner who approved this purchase can pay for it.");
+        const lockPayment = () => tx.select().from(paymentAttempts).where(eq(paymentAttempts.intentId, visible.id)).for("update");
+        let [existing] = await lockPayment();
+        const cert = await loadCertificate(tx, actor.organizationId, intentId, true);
+        if (!existing) [existing] = await lockPayment();
+        if (existing && (existing.status === "VOIDED" || existing.status === "FAILED"))
+          throw conflict("PAYMENT_NOT_CREATABLE", `Payment is ${existing.status}.`);
+        if (existing?.paypalOrderId) return { attempt: existing, cart: null, po: null, supplierName: null };
+        if (existing && existing.status !== "CREATED") throw conflict("PAYMENT_NOT_CREATABLE", `Payment is ${existing.status}.`);
 
-      const verification = await verifyStoredCertificate(tx, actor.organizationId, cert, now);
-      if (!verification.valid) {
-        throw new DeferredFailure(
-          unprocessable("CERTIFICATE_INVALID", `Intent certificate is not valid: ${verification.status}.`, { checks: verification.checks }),
-          (db) =>
-            recordFinding(db, {
-              organizationId: actor.organizationId,
-              type: "CERTIFICATE_VERIFICATION_FAILED",
-              severity: verification.status === "CART_MODIFIED" || verification.status === "SIGNATURE_INVALID" ? "CRITICAL" : "MEDIUM",
-              title: `Payment refused: certificate ${verification.status}`,
-              description: "A PayPal order was requested for an intent whose certificate did not verify.",
-              sourceKind: "intent_certificate",
-              sourceId: cert.id,
-              evidence: { checks: verification.checks },
-              relatedPurchaseOrderId: cert.purchaseOrderId,
-            }).then(() => undefined),
-        );
-      }
-      const { po, items } = await loadOrder(tx, actor.organizationId, cert.purchaseOrderId, true);
-      if (!(PAYABLE_PO_STATUSES as readonly string[]).includes(po.status))
-        throw conflict("ORDER_NOT_PAYABLE", `Purchase order is ${po.status}.`);
-      const [supplier] = await tx.select({ name: suppliers.name }).from(suppliers).where(eq(suppliers.id, po.supplierId));
-      const attempt =
-        existing ??
-        (
-          await tx
-            .insert(paymentAttempts)
-            .values({
-              organizationId: actor.organizationId,
-              intentId: cert.id,
-              purchaseOrderId: po.id,
-              status: "CREATED",
-              amountMinor: po.totalMinor,
-              currency: po.currency,
-              createdBy: actor.id,
-            })
-            .returning()
-        )[0]!;
-      return { attempt, cart: cartFromRows(po, items), po, supplierName: supplier?.name ?? "Supplier" };
-    }),
+        const verification = await verifyStoredCertificate(tx, actor.organizationId, cert, now);
+        if (!verification.valid) {
+          throw new DeferredFailure(
+            unprocessable("CERTIFICATE_INVALID", `Intent certificate is not valid: ${verification.status}.`, {
+              checks: verification.checks,
+            }),
+            (db) =>
+              recordFinding(db, {
+                organizationId: actor.organizationId,
+                type: "CERTIFICATE_VERIFICATION_FAILED",
+                severity: verification.status === "CART_MODIFIED" || verification.status === "SIGNATURE_INVALID" ? "CRITICAL" : "MEDIUM",
+                title: `Payment refused: certificate ${verification.status}`,
+                description: "A PayPal order was requested for an intent whose certificate did not verify.",
+                sourceKind: "intent_certificate",
+                sourceId: cert.id,
+                evidence: { checks: verification.checks },
+                relatedPurchaseOrderId: cert.purchaseOrderId,
+              }).then(() => undefined),
+          );
+        }
+        const { po, items } = await loadOrder(tx, actor.organizationId, cert.purchaseOrderId, true);
+        if (!(PAYABLE_PO_STATUSES as readonly string[]).includes(po.status))
+          throw conflict("ORDER_NOT_PAYABLE", `Purchase order is ${po.status}.`);
+        const [supplier] = await tx.select({ name: suppliers.name }).from(suppliers).where(eq(suppliers.id, po.supplierId));
+        const attempt =
+          existing ??
+          (
+            await tx
+              .insert(paymentAttempts)
+              .values({
+                organizationId: actor.organizationId,
+                intentId: cert.id,
+                purchaseOrderId: po.id,
+                status: "CREATED",
+                amountMinor: po.totalMinor,
+                currency: po.currency,
+                createdBy: actor.id,
+              })
+              .returning()
+          )[0]!;
+        return { attempt, cart: cartFromRows(po, items), po, supplierName: supplier?.name ?? "Supplier" };
+      }),
+    ),
   );
 
   if (prepared.attempt.paypalOrderId) return { payment: toPaymentDto(prepared.attempt), paypal_order_id: prepared.attempt.paypalOrderId };
