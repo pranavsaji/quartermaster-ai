@@ -34,6 +34,23 @@ export const captureRequestId = (paymentId: string, attempt: number) =>
 /** A capture is treated as in progress (not abandoned) for this long after it was authorised. */
 const CAPTURE_IN_PROGRESS_MS = 60_000;
 const BUYER_FIXABLE = new Set(["INSTRUMENT_DECLINED", "PAYER_ACTION_REQUIRED"]);
+/**
+ * PayPal capture issues documented to mean nothing was captured. Only these rewind the payment
+ * and tell the buyer "nothing was charged"; any other 4xx is treated as unknown and reconciled.
+ */
+const NOT_CAPTURED_ISSUES = new Set([
+  ...BUYER_FIXABLE,
+  "ORDER_NOT_APPROVED",
+  "TRANSACTION_REFUSED",
+  "PAYER_CANNOT_PAY",
+  "PAYER_ACCOUNT_RESTRICTED",
+  "PAYER_ACCOUNT_LOCKED_OR_CLOSED",
+  "PAYEE_ACCOUNT_RESTRICTED",
+  "MAX_NUMBER_OF_PAYMENT_ATTEMPTS_EXCEEDED",
+  "COMPLIANCE_VIOLATION",
+  "ORDER_EXPIRED",
+]);
+const definitelyNotCaptured = (err: unknown) => err instanceof PayPalApiError && err.issue !== null && NOT_CAPTURED_ISSUES.has(err.issue);
 
 type CaptureResult = { payment: PaymentDto; purchase_order: PurchaseOrderDto };
 
@@ -212,7 +229,7 @@ async function authorizeCapture(
 
 async function handleCaptureError(ctx: AppContext, actor: Actor, paymentId: string, err: unknown): Promise<CaptureResult> {
   const code = paypalFailureCode(err, "CAPTURE_ERROR");
-  if (isAmbiguousPayPalFailure(err)) {
+  if (isAmbiguousPayPalFailure(err) || !definitelyNotCaptured(err)) {
     // Outcome unknown (timeout, 5xx, malformed response, already captured): read the order
     // rather than assume. If PayPal is unreachable the payment stays CAPTURE_PENDING and the
     // sweeper reconciles it.
