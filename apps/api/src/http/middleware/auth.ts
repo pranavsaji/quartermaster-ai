@@ -5,11 +5,13 @@ import { currentScope } from "../../context";
 import { forbidden, unauthorized } from "../../errors";
 import { authenticate, type AuthenticatedUser } from "../../services/auth";
 
-declare module "express-serve-static-core" {
-  interface Request {
-    user?: AuthenticatedUser;
-    correlationId?: string;
-    rawBody?: Buffer;
+declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
+  namespace Express {
+    interface Request {
+      user?: AuthenticatedUser;
+      correlationId?: string;
+    }
   }
 }
 
