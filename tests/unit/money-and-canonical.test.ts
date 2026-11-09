@@ -88,6 +88,7 @@ describe("canonical encoding", () => {
   });
 
   it("rejects sparse arrays instead of emitting invalid JSON", () => {
+    // eslint-disable-next-line no-sparse-arrays -- the hole is the input under test
     expect(() => canonicalize([1, , 3])).toThrow(TypeError);
     expect(() => canonicalize({ a: new Array(2) })).toThrow(/sparse/);
     expect(canonicalize([1, null, 3])).toBe("[1,null,3]");

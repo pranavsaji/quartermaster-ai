@@ -55,7 +55,7 @@ describe("policy engine — totality", () => {
     ["market_price_action", "ALLOW"],
     ["approved_supplier_ids", null],
   ] as const)("blocks a mandate with malformed %s", (field, value) => {
-    const r = blocked(baseInput({ mandate: mandate({ [field]: value } as never) }));
+    const r = blocked(baseInput({ mandate: mandate({ [field]: value }) }));
     expect(r.violations[0]).toMatchObject({ code: "MANDATE_INACTIVE", evidence: { fields: [field] } });
   });
 

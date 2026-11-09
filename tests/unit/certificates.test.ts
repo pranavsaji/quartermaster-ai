@@ -116,8 +116,8 @@ describe("Intent Certificates", () => {
         [newKey.key_id, newKey.public_key],
       ]);
       const resolve = (id: string) => registry.get(id) ?? null;
-      const old = issueCertificate({ ...issue().payload, approved_at: approvedAt, ttl_minutes: 15 } as never, oldKey);
-      const fresh = issueCertificate({ ...issue().payload, approved_at: approvedAt, ttl_minutes: 15 } as never, newKey);
+      const old = issueCertificate({ ...issue().payload, approved_at: approvedAt, ttl_minutes: 15 }, oldKey);
+      const fresh = issueCertificate({ ...issue().payload, approved_at: approvedAt, ttl_minutes: 15 }, newKey);
       expect(verifyCertificate(old, ctx(old, { resolve_public_key: resolve })).status).toBe("VALID");
       expect(verifyCertificate(fresh, ctx(fresh, { resolve_public_key: resolve })).status).toBe("VALID");
       // Swapping in the other key's id fails: the signature no longer matches the resolved key.
@@ -134,7 +134,7 @@ describe("Intent Certificates", () => {
       expect(keyIdMatchesKey("trk_test", b.public_key)).toBe(true); // custom ids are registry-bound
       // A registry that maps a's fingerprint to b's key cannot validate anything b signed as "a".
       const forgedIssuer = { ...b, key_id: a.key_id };
-      const c = issueCertificate({ ...issue().payload, approved_at: approvedAt, ttl_minutes: 15 } as never, forgedIssuer);
+      const c = issueCertificate({ ...issue().payload, approved_at: approvedAt, ttl_minutes: 15 }, forgedIssuer);
       const r = verifyCertificate(c, ctx(c, { resolve_public_key: (id) => (id === a.key_id ? b.public_key : null) }));
       expect(r.status).toBe("UNKNOWN_KEY");
       expect(r.checks.find((x) => x.code === "KEY_KNOWN")?.detail).toMatch(/not the fingerprint/);

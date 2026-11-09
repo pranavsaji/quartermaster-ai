@@ -503,7 +503,7 @@ function evaluate(input: PolicyInput): PolicyResult {
       continue;
     }
     const candidateUnit = line.unit_price_minor / pack;
-    const premiumPct = ((candidateUnit - (refPrice as number)) / (refPrice as number)) * 100;
+    const premiumPct = ((candidateUnit - (refPrice)) / (refPrice)) * 100;
     if (!Number.isFinite(premiumPct)) {
       violate({
         code: "MARKET_REFERENCE_UNAVAILABLE",
@@ -631,7 +631,7 @@ function failClosed(input: PolicyInput, err: unknown): PolicyResult {
     mandate_version: safeVersion(mandate),
     policy_version: POLICY_VERSION,
     input_digest: inputDigest(input),
-    evaluated_at: validNow((input as { now?: unknown } | null | undefined)?.now) ? (input.now as Date).toISOString() : INVALID_TIME,
+    evaluated_at: validNow((input as { now?: unknown } | null | undefined)?.now) ? (input.now).toISOString() : INVALID_TIME,
   };
 }
 
