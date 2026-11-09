@@ -8,18 +8,19 @@ import { useSession } from "@/components/session/SessionProvider";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { LoadMore } from "@/components/ui/LoadMore";
 import { Notice } from "@/components/ui/Notice";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { RefreshErrorNotice } from "@/components/ui/RefreshErrorNotice";
 import { api } from "@/lib/api";
-import { useResource } from "@/lib/hooks";
+import { usePagedResource } from "@/lib/hooks";
 
 function ProcurementContent() {
   const { user, config, can } = useSession();
   const router = useRouter();
   const params = useSearchParams();
   const composing = params.get("compose") === "1" && can("createRequest");
-  const requests = useResource((signal) => api.procurement.list({ limit: 100 }, { signal }), []);
+  const requests = usePagedResource((cursor, signal) => api.procurement.list({ limit: 100, cursor }, { signal }), []);
 
   return (
     <>
@@ -71,15 +72,18 @@ function ProcurementContent() {
         <div className="p-3">
           <RefreshErrorNotice
             error={requests.error}
-            hasData={Boolean(requests.data)}
+            hasData={Boolean(requests.items)}
             updatedAt={requests.updatedAt}
             onRetry={requests.reload}
             className="mb-3"
           />
-          {requests.error && !requests.data ? (
+          {requests.error && !requests.items ? (
             <ErrorNotice error={requests.error} onRetry={requests.reload} />
           ) : (
-            <RequestList requests={requests.data?.items} />
+            <>
+              <RequestList requests={requests.items} />
+              <LoadMore state={requests} noun="requests" />
+            </>
           )}
         </div>
       </Card>

@@ -34,6 +34,7 @@ import type {
   ProcurementRequestSummaryDto,
   PublicConfig,
   PurchaseOrderDto,
+  PurchaseOrderStatus,
   ReceiveDeliveryRequest,
   RefundRequest,
   RefundResponse,
@@ -51,6 +52,11 @@ type Signal = { signal?: AbortSignal };
 export interface PageQuery {
   limit?: number;
   cursor?: string | null;
+}
+
+export interface PurchaseOrdersFilter extends PageQuery {
+  /** Only these statuses, filtered by the API (sent as `status=A,B`). Omit or pass [] for all. */
+  statuses?: readonly PurchaseOrderStatus[];
 }
 
 export interface SecurityEventsFilter extends PageQuery {
@@ -130,7 +136,11 @@ export const api = {
   },
 
   purchaseOrders: {
-    list: (q?: PageQuery, o?: Signal) => get<Page<PurchaseOrderDto>>("/purchase-orders", { ...o, query: pageQuery(q) }),
+    list: (q?: PurchaseOrdersFilter, o?: Signal) =>
+      get<Page<PurchaseOrderDto>>("/purchase-orders", {
+        ...o,
+        query: { ...pageQuery(q), status: q?.statuses?.length ? q.statuses.join(",") : undefined },
+      }),
     get: (poId: string, o?: Signal) => get<PurchaseOrderDto>(`/purchase-orders/${id(poId)}`, o),
   },
 
@@ -161,19 +171,3 @@ export const api = {
     summary: (o?: Signal) => get<AnalyticsSummaryDto>("/analytics/summary", o),
   },
 } as const;
-
-/**
- * Fetches every page of a cursor-paginated endpoint, up to `maxPages` as a
- * safety bound.
- */
-export async function fetchAllPages<T>(fetchPage: (cursor: string | null) => Promise<Page<T>>, maxPages = 10): Promise<T[]> {
-  const items: T[] = [];
-  let cursor: string | null = null;
-  for (let i = 0; i < maxPages; i += 1) {
-    const page: Page<T> = await fetchPage(cursor);
-    items.push(...page.items);
-    if (!page.next_cursor) break;
-    cursor = page.next_cursor;
-  }
-  return items;
-}

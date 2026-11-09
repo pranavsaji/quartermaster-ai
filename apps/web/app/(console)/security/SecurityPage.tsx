@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Select } from "@/components/ui/Field";
+import { LoadMore } from "@/components/ui/LoadMore";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { RefreshErrorNotice } from "@/components/ui/RefreshErrorNotice";
 import { StatTile } from "@/components/ui/StatTile";
@@ -18,20 +19,6 @@ import { num } from "@/lib/format";
 import { usePagedResource, useResource, type PagedState } from "@/lib/hooks";
 
 type Tab = "findings" | "decisions" | "audit";
-
-function LoadMore<T>({ state }: { state: PagedState<T> }) {
-  if (!state.hasMore && !state.moreError) return null;
-  return (
-    <div className="mt-3 flex flex-col items-center gap-2">
-      {state.moreError ? <ErrorNotice error={state.moreError} title="Couldn't load more" className="w-full" /> : null}
-      {state.hasMore ? (
-        <Button variant="secondary" size="sm" onClick={state.loadMore} loading={state.loadingMore}>
-          {state.moreError ? "Try loading more again" : "Load more"}
-        </Button>
-      ) : null}
-    </div>
-  );
-}
 
 /**
  * Rows currently loaded. The API returns no totals for these lists, so when
@@ -155,7 +142,7 @@ export function SecurityPage() {
           ) : (
             <>
               {active.node}
-              {active.state.stale ? null : <LoadMore state={active.state} />}
+              <LoadMore state={active.state} noun={tab === "audit" ? "events" : tab === "decisions" ? "decisions" : "findings"} />
             </>
           )}
         </div>

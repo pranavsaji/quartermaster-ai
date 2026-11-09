@@ -1,6 +1,6 @@
 "use client";
 
-import type { PurchaseOrderDto } from "@qm/contracts";
+import { SETTLED_PAYMENT_STATUSES, type PurchaseOrderDto } from "@qm/contracts";
 import { useMemo } from "react";
 import { useSession } from "@/components/session/SessionProvider";
 import { DecisionBadge } from "@/components/trustrail/DecisionBadge";
@@ -10,17 +10,21 @@ import { ButtonLink } from "@/components/ui/ButtonLink";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { LoadMore } from "@/components/ui/LoadMore";
 import { Notice } from "@/components/ui/Notice";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { RefreshErrorNotice } from "@/components/ui/RefreshErrorNotice";
 import { SkeletonRows } from "@/components/ui/Skeleton";
 import { SourceLabel } from "@/components/ui/SourceLabel";
-import { api, fetchAllPages } from "@/lib/api";
+import { api } from "@/lib/api";
 import { countdown, money, relativeTime } from "@/lib/format";
-import { useNow, useResource } from "@/lib/hooks";
+import { useNow, usePagedResource } from "@/lib/hooks";
 import { PO_STATUS_TONES } from "@/lib/labels";
 
-const AWAITING = new Set<PurchaseOrderDto["status"]>(["PROPOSED", "APPROVED", "PAYMENT_PENDING"]);
+/** Statuses that wait on the owner; the API filters by them so older items are never crowded out. */
+const AWAITING_STATUSES = ["PROPOSED", "APPROVED", "PAYMENT_PENDING"] as const satisfies readonly PurchaseOrderDto["status"][];
+const AWAITING = new Set<PurchaseOrderDto["status"]>(AWAITING_STATUSES);
+const SETTLED = new Set<string>(SETTLED_PAYMENT_STATUSES);
 
 type Stage = "review" | "pay";
 
@@ -78,15 +82,18 @@ function ApprovalRow({ po, now }: { po: PurchaseOrderDto; now: number }) {
 export function ApprovalsPage() {
   const { can } = useSession();
   const now = useNow(5000);
-  const orders = useResource((signal) => fetchAllPages((cursor) => api.purchaseOrders.list({ limit: 100, cursor }, { signal })), []);
+  const orders = usePagedResource(
+    (cursor, signal) => api.purchaseOrders.list({ limit: 100, cursor, statuses: AWAITING_STATUSES }, { signal }),
+    [],
+  );
 
   const awaiting = useMemo(
     () =>
-      (orders.data ?? [])
+      (orders.items ?? [])
         .filter((po) => AWAITING.has(po.status))
-        .filter((po) => !(po.payment && ["COMPLETED", "REFUNDED", "PARTIALLY_REFUNDED"].includes(po.payment.status)))
+        .filter((po) => !(po.payment && SETTLED.has(po.payment.status)))
         .sort((a, b) => a.created_at.localeCompare(b.created_at)),
-    [orders.data],
+    [orders.items],
   );
   const groups: Record<Stage, PurchaseOrderDto[]> = { review: [], pay: [] };
   for (const po of awaiting) groups[stageOf(po)].push(po);
@@ -109,10 +116,10 @@ export function ApprovalsPage() {
         </Notice>
       ) : null}
 
-      {orders.error && !orders.data ? <ErrorNotice error={orders.error} onRetry={orders.reload} /> : null}
+      {orders.error && !orders.items ? <ErrorNotice error={orders.error} onRetry={orders.reload} /> : null}
       <RefreshErrorNotice
         error={orders.error}
-        hasData={Boolean(orders.data)}
+        hasData={Boolean(orders.items)}
         updatedAt={orders.updatedAt}
         onRetry={orders.reload}
         className="mb-6"
@@ -130,9 +137,9 @@ export function ApprovalsPage() {
               id={`stage-${stage}`}
               title={title}
               description={description}
-              actions={orders.data ? <Badge tone={groups[stage].length > 0 ? "accent" : "neutral"}>{groups[stage].length}</Badge> : null}
+              actions={orders.items ? <Badge tone={groups[stage].length > 0 ? "accent" : "neutral"}>{groups[stage].length}</Badge> : null}
             />
-            {!orders.data && !orders.error ? (
+            {!orders.items && !orders.error ? (
               <div className="p-5">
                 <SkeletonRows rows={2} />
               </div>
@@ -151,6 +158,7 @@ export function ApprovalsPage() {
             )}
           </Card>
         ))}
+        <LoadMore state={orders} noun="proposals awaiting you (newest first)" />
       </div>
     </>
   );

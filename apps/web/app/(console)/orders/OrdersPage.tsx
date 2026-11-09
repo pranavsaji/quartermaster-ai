@@ -1,6 +1,6 @@
 "use client";
 
-import type { DeliveryDto, InvoiceDto, PurchaseOrderDto } from "@qm/contracts";
+import { PO_STATUSES, type DeliveryDto, type InvoiceDto, type PurchaseOrderDto } from "@qm/contracts";
 import { useCallback, useMemo, useState } from "react";
 import { DelayDialog, ReceiveDialog, type DeliveryTarget } from "@/components/orders/DeliveryDialogs";
 import { InvoiceForm, type InvoicePrefill } from "@/components/orders/InvoiceForm";
@@ -10,21 +10,27 @@ import { useSession } from "@/components/session/SessionProvider";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
+import { LoadMore } from "@/components/ui/LoadMore";
 import { Notice } from "@/components/ui/Notice";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { RefreshErrorNotice } from "@/components/ui/RefreshErrorNotice";
 import { SkeletonCard } from "@/components/ui/Skeleton";
 import { SourceLabel } from "@/components/ui/SourceLabel";
-import { api, fetchAllPages } from "@/lib/api";
+import { api } from "@/lib/api";
 import { date, humanize } from "@/lib/format";
-import { useResource } from "@/lib/hooks";
+import { usePagedResource, useResource } from "@/lib/hooks";
 
 /** Proposals that never became orders; they live on the procurement pages. */
 const NOT_ORDERS = new Set<PurchaseOrderDto["status"]>(["PROPOSED", "BLOCKED", "SUPERSEDED"]);
+/** Every other status, asked of the API so proposals never take up a page of orders. */
+const ORDER_STATUSES = PO_STATUSES.filter((s) => !NOT_ORDERS.has(s));
 
 export function OrdersPage() {
   const { user, can } = useSession();
-  const orders = useResource((signal) => fetchAllPages((cursor) => api.purchaseOrders.list({ limit: 100, cursor }, { signal })), []);
+  const orders = usePagedResource(
+    (cursor, signal) => api.purchaseOrders.list({ limit: 100, cursor, statuses: ORDER_STATUSES }, { signal }),
+    [],
+  );
   const deliveries = useResource((signal) => api.deliveries.list({ signal }), []);
   const invoices = useResource((signal) => api.invoices.list({ signal }), []);
   const suppliers = useResource((signal) => api.suppliers.list({ signal }), []);
@@ -33,7 +39,7 @@ export function OrdersPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [invoicePrefill, setInvoicePrefill] = useState<InvoicePrefill | null>(null);
 
-  const placedOrders = useMemo(() => orders.data?.filter((po) => !NOT_ORDERS.has(po.status)), [orders.data]);
+  const placedOrders = useMemo(() => orders.items?.filter((po) => !NOT_ORDERS.has(po.status)), [orders.items]);
   const rows = useMemo<OrderRow[] | undefined>(() => {
     if (!placedOrders) return undefined;
     const byPo = new Map((deliveries.data?.items ?? []).map((d) => [d.purchase_order_id, d]));
@@ -67,7 +73,7 @@ export function OrdersPage() {
   );
 
   const supplierNames = useMemo(() => new Map((suppliers.data?.items ?? []).map((s) => [s.id, s.name])), [suppliers.data]);
-  const poNumbers = useMemo(() => new Map((orders.data ?? []).map((o) => [o.id, o.number])), [orders.data]);
+  const poNumbers = useMemo(() => new Map((orders.items ?? []).map((o) => [o.id, o.number])), [orders.items]);
 
   return (
     <>
@@ -110,7 +116,7 @@ export function OrdersPage() {
           <div className="p-3">
             <RefreshErrorNotice
               error={orders.error}
-              hasData={Boolean(orders.data)}
+              hasData={Boolean(orders.items)}
               updatedAt={orders.updatedAt}
               onRetry={orders.reload}
               className="mb-3"
@@ -122,7 +128,7 @@ export function OrdersPage() {
               onRetry={deliveries.reload}
               className="mb-3"
             />
-            {orders.error && !orders.data ? (
+            {orders.error && !orders.items ? (
               <ErrorNotice error={orders.error} onRetry={orders.reload} />
             ) : (
               <OrdersGrid
@@ -134,6 +140,7 @@ export function OrdersPage() {
                 onInvoice={onInvoice}
               />
             )}
+            <LoadMore state={orders} noun="orders" />
             {deliveries.error && !deliveries.data ? (
               <ErrorNotice error={deliveries.error} onRetry={deliveries.reload} title="Couldn't load deliveries" className="mt-3" />
             ) : null}
