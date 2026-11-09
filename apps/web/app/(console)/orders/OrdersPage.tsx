@@ -1,6 +1,6 @@
 "use client";
 
-import type { DeliveryDto, InvoiceDto } from "@qm/contracts";
+import type { DeliveryDto, InvoiceDto, PurchaseOrderDto } from "@qm/contracts";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { DelayDialog, ReceiveDialog, type DeliveryTarget } from "@/components/orders/DeliveryDialogs";
 import { InvoiceForm, type InvoiceFormHandle } from "@/components/orders/InvoiceForm";
@@ -19,6 +19,9 @@ import { api, fetchAllPages } from "@/lib/api";
 import { date, humanize } from "@/lib/format";
 import { useResource } from "@/lib/hooks";
 
+/** Proposals that never became orders; they live on the procurement pages. */
+const NOT_ORDERS = new Set<PurchaseOrderDto["status"]>(["PROPOSED", "BLOCKED", "SUPERSEDED"]);
+
 export function OrdersPage() {
   const { user, can } = useSession();
   const orders = useResource((signal) => fetchAllPages((cursor) => api.purchaseOrders.list({ limit: 100, cursor }, { signal })), []);
@@ -31,14 +34,12 @@ export function OrdersPage() {
   const invoiceForm = useRef<InvoiceFormHandle>(null);
   const invoiceSection = useRef<HTMLDivElement>(null);
 
+  const placedOrders = useMemo(() => orders.data?.filter((po) => !NOT_ORDERS.has(po.status)), [orders.data]);
   const rows = useMemo<OrderRow[] | undefined>(() => {
-    if (!orders.data) return undefined;
+    if (!placedOrders) return undefined;
     const byPo = new Map((deliveries.data?.items ?? []).map((d) => [d.purchase_order_id, d]));
-    // Only orders that went past proposal are "orders"; proposals live on the procurement pages.
-    return orders.data
-      .filter((po) => !["PROPOSED", "BLOCKED", "SUPERSEDED"].includes(po.status))
-      .map((po) => ({ ...po, delivery_view: byPo.get(po.id) ?? po.delivery }));
-  }, [orders.data, deliveries.data]);
+    return placedOrders.map((po) => ({ ...po, delivery_view: byPo.get(po.id) ?? po.delivery }));
+  }, [placedOrders, deliveries.data]);
 
   const targetOf = (row: OrderRow): DeliveryTarget | null => (row.delivery_view ? { po: row, delivery: row.delivery_view } : null);
   const onReceive = useCallback((row: OrderRow) => setReceiving(targetOf(row)), []);
@@ -122,11 +123,11 @@ export function OrdersPage() {
 
         <div ref={invoiceSection} className="scroll-mt-20">
           {can("analyzeInvoices") ? (
-            suppliers.data && orders.data ? (
+            suppliers.data && placedOrders ? (
               <InvoiceForm
                 ref={invoiceForm}
                 suppliers={suppliers.data.items}
-                orders={orders.data.filter((o) => !["PROPOSED", "BLOCKED", "SUPERSEDED"].includes(o.status))}
+                orders={placedOrders}
                 currency={user.organization.currency}
                 onAnalyzed={onAnalyzed}
               />
