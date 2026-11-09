@@ -8,6 +8,14 @@ import { StatusBadge } from "@/components/ui/Badge";
 
 type Field<T> = NonNullable<ColDef<T>["field"]>;
 
+/**
+ * Cell class for right-aligned numeric cells. A colDef `cellClass` replaces the
+ * one from `type: "rightAligned"`, so the alignment class must be repeated.
+ */
+export function rightCell(extra = ""): string {
+  return `ag-right-aligned-cell tnum ${extra}`.trim();
+}
+
 /** Right-aligned tabular money column over an integer minor-unit field. */
 export function moneyColumn<T>(
   field: Field<T>,
@@ -19,7 +27,7 @@ export function moneyColumn<T>(
     field,
     headerName,
     type: "rightAligned",
-    cellClass: "tnum",
+    cellClass: rightCell(),
     valueFormatter: (p: ValueFormatterParams<T>) =>
       p.data ? money(typeof p.value === "number" ? p.value : null, currencyOf(p.data)) : "",
     comparator: (a: unknown, b: unknown) => Number(a ?? 0) - Number(b ?? 0),
@@ -32,7 +40,7 @@ export function numberColumn<T>(field: Field<T>, headerName: string, extra: Part
     field,
     headerName,
     type: "rightAligned",
-    cellClass: "tnum",
+    cellClass: rightCell(),
     valueFormatter: (p: ValueFormatterParams<T>) => (typeof p.value === "number" ? num(p.value) : "—"),
     ...extra,
   };

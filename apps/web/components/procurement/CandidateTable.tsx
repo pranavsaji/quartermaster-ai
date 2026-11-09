@@ -5,7 +5,7 @@ import type { CustomCellRendererProps } from "ag-grid-react";
 import type { CandidateDto } from "@qm/contracts";
 import { useMemo } from "react";
 import { DataGrid } from "@/components/grid/DataGrid";
-import { moneyColumn, numberColumn } from "@/components/grid/columns";
+import { moneyColumn, numberColumn, rightCell } from "@/components/grid/columns";
 import { Badge } from "@/components/ui/Badge";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -101,9 +101,9 @@ export function CandidateTable({
       moneyColumn<Row>("fees_minor", "Fees", cur, {
         cellClassRules: { "text-block font-medium": (p) => typeof p.value === "number" && p.value > 0 },
       }),
-      moneyColumn<Row>("delivered_total_minor", "Delivered total", cur, { cellClass: "tnum font-medium", minWidth: 130 }),
+      moneyColumn<Row>("delivered_total_minor", "Delivered total", cur, { cellClass: rightCell("font-medium"), minWidth: 130 }),
       moneyColumn<Row>("delivered_unit_cost_minor", "Delivered / unit", cur, {
-        cellClass: "tnum font-semibold text-ink",
+        cellClass: rightCell("font-semibold text-ink"),
         minWidth: 135,
       }),
       numberColumn<Row>("lead_time_days", "Lead", {

@@ -5,7 +5,7 @@ import type { CustomCellRendererProps } from "ag-grid-react";
 import type { PolicyDecisionDto, PolicyDecisionKind } from "@qm/contracts";
 import { useMemo } from "react";
 import { DataGrid } from "@/components/grid/DataGrid";
-import { dateTimeColumn, statusColumn } from "@/components/grid/columns";
+import { dateTimeColumn, statusColumn, rightCell } from "@/components/grid/columns";
 import { Badge } from "@/components/ui/Badge";
 import { truncateMiddle } from "@/lib/format";
 import { DECISION_LABELS, DECISION_TONES } from "@/lib/labels";
@@ -42,7 +42,7 @@ export function DecisionsGrid({ decisions }: { decisions: PolicyDecisionDto[] | 
         headerName: "Checks",
         width: 110,
         type: "rightAligned",
-        cellClass: "tnum",
+        cellClass: rightCell(),
         valueGetter: (p) => (p.data ? `${p.data.checks.filter((c) => c.passed).length}/${p.data.checks.length}` : ""),
       },
       {

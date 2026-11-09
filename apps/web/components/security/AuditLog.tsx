@@ -5,7 +5,7 @@ import type { CustomCellRendererProps } from "ag-grid-react";
 import type { AuditChainVerificationDto, AuditEventDto } from "@qm/contracts";
 import { useMemo, useState } from "react";
 import { DataGrid } from "@/components/grid/DataGrid";
-import { dateTimeColumn } from "@/components/grid/columns";
+import { dateTimeColumn, rightCell } from "@/components/grid/columns";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
@@ -37,7 +37,7 @@ export function AuditLog({ events }: { events: AuditEventDto[] | undefined }) {
         width: 90,
         sort: "desc",
         type: "rightAligned",
-        cellClass: "tnum",
+        cellClass: rightCell(),
       },
       { field: "action", headerName: "Action", minWidth: 200, flex: 1, cellClass: "font-mono text-[12px]" },
       {

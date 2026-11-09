@@ -5,7 +5,7 @@ import type { CustomCellRendererProps } from "ag-grid-react";
 import type { InventoryItemDto } from "@qm/contracts";
 import { useMemo } from "react";
 import { DataGrid } from "@/components/grid/DataGrid";
-import { numberColumn, statusColumn } from "@/components/grid/columns";
+import { numberColumn, statusColumn, rightCell } from "@/components/grid/columns";
 import { Button } from "@/components/ui/Button";
 import { num } from "@/lib/format";
 import { categoryLabel, STOCK_LABELS, STOCK_TONES } from "@/lib/labels";
@@ -49,7 +49,7 @@ export function InventoryGrid({
       numberColumn<InventoryItemDto>("inbound_confirmed", "Inbound"),
       numberColumn<InventoryItemDto>("committed", "Committed"),
       numberColumn<InventoryItemDto>("available", "Available", {
-        cellClass: "tnum font-medium",
+        cellClass: rightCell("font-medium"),
         valueFormatter: (p) => (p.data ? `${num(p.data.available)} ${p.data.unit}` : ""),
         minWidth: 120,
       }),
