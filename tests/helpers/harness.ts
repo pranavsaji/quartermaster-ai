@@ -1,6 +1,6 @@
 import request from "supertest";
 import { randomUUID } from "node:crypto";
-import { seedDemo, DEMO_CREDENTIALS } from "@qm/database";
+import { DEMO_CREDENTIALS, jobLeases, paypalWebhookEvents, seedDemo } from "@qm/database";
 import { generateSigningKey } from "@qm/trustrail";
 import { bootstrap } from "../../apps/api/src/bootstrap";
 import { createApp } from "../../apps/api/src/http/app";
@@ -30,14 +30,17 @@ export async function createHarness(
 ): Promise<Harness> {
   const paypal = new FakePayPal();
   const clock = { now: new Date() };
-  const key = generateSigningKey("trk_integration");
+  // A unique key id per harness: on a shared PostgreSQL database every test file registers its own
+  // key, and TrustRail refuses to rebind an existing id to a different key.
+  const keyId = `itest_${randomUUID().slice(0, 8)}`;
+  const key = generateSigningKey(keyId);
   const env: NodeJS.ProcessEnv = {
     NODE_ENV: "test",
     LOG_LEVEL: "silent",
     // HARNESS_DATABASE_URL runs the same suite against a real PostgreSQL server.
     DATABASE_URL: process.env.HARNESS_DATABASE_URL ?? "pglite://memory",
     TRUSTRAIL_SIGNING_KEY: Buffer.from(key.private_key_pem).toString("base64"),
-    TRUSTRAIL_SIGNING_KEY_ID: "trk_integration",
+    TRUSTRAIL_SIGNING_KEY_ID: keyId,
     PAYPAL_CLIENT_ID: "fake-client",
     PAYPAL_CLIENT_SECRET: "fake-secret",
     PAYPAL_WEBHOOK_ID: "WH-FAKE",
@@ -54,6 +57,10 @@ export async function createHarness(
     openaiFetch: opts.openaiFetch,
     now: () => clock.now,
   });
+  // Tables outside any organisation survive the demo reset; clear them so test files sharing one
+  // PostgreSQL database start from the same state as a fresh in-memory one.
+  await ctx.db.delete(paypalWebhookEvents);
+  await ctx.db.delete(jobLeases);
   await seedDemo(ctx.db, { password: PASSWORD, now: clock.now, reset: true });
   const app = createApp(ctx);
 

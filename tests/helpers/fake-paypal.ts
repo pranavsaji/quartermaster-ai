@@ -38,6 +38,8 @@ export class FakePayPal {
   /** Applied to GET responses to simulate a provider-side amount discrepancy. */
   tamperAmount: string | null = null;
   private seq = 0;
+  /** Distinguishes ids across fake instances, so test files sharing one database never collide. */
+  private readonly nonce = Math.random().toString(36).slice(2, 8).toUpperCase();
 
   readonly fetch: typeof fetch = async (input, init) => {
     const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url);
@@ -68,7 +70,7 @@ export class FakePayPal {
           details: [{ issue: "AMOUNT_MISMATCH", description: "breakdown does not add up" }],
         });
       }
-      const id = `FAKE${(++this.seq).toString().padStart(13, "0")}`;
+      const id = `FAKE${this.nonce}${(++this.seq).toString().padStart(7, "0")}`;
       const order: PayPalOrder = {
         id,
         status: "CREATED",
@@ -125,7 +127,7 @@ export class FakePayPal {
       stored.order.purchase_units![0]!.payments = {
         captures: [
           {
-            id: `CAP${this.seq}${this.captureCount}`,
+            id: `CAP${this.nonce}${this.seq}${this.captureCount}`,
             status: this.captureStatus,
             amount: { ...amount },
             final_capture: true,
@@ -148,7 +150,7 @@ export class FakePayPal {
     const refundMatch = /^\/v2\/payments\/captures\/([^/]+)\/refund$/.exec(url.pathname);
     if (refundMatch && method === "POST") {
       const body = JSON.parse(String(init?.body ?? "{}")) as { amount?: { value: string; currency_code: string } };
-      const refund = { id: `REF${++this.seq}`, status: this.refundStatus, amount: body.amount };
+      const refund = { id: `REF${this.nonce}${++this.seq}`, status: this.refundStatus, amount: body.amount };
       this.refundCount++;
       if (requestId) this.requestIds.set(requestId, refund);
       if (this.dropNextRefundResponse) {
@@ -180,7 +182,7 @@ export class FakePayPal {
     const stored = this.orders.get(orderId);
     if (!stored) throw new Error(`unknown order ${orderId}`);
     this.captureCount++;
-    const id = `CAP${++this.seq}`;
+    const id = `CAP${this.nonce}${++this.seq}`;
     stored.order.status = "COMPLETED";
     stored.order.payer = { payer_id: "FAKEPAYER" };
     stored.order.purchase_units![0]!.payments = {
