@@ -54,9 +54,6 @@ export function RequestList({ requests }: { requests: ProcurementRequestSummaryD
       columns={columns}
       emptyMessage="No requests yet. Create one to get started."
       onRowDoubleClicked={(e) => e.data && router.push(`/procurement/${e.data.id}`)}
-      pagination
-      paginationPageSize={20}
-      paginationPageSizeSelector={false}
     />
   );
 }

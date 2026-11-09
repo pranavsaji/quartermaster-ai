@@ -14,12 +14,15 @@ import { ResourceView } from "@/components/ui/ResourceView";
 import { api } from "@/lib/api";
 import { usePagedResource } from "@/lib/hooks";
 
+const REQUESTS_PAGE_SIZE = 25;
+
 function ProcurementContent() {
   const { user, config, can } = useSession();
   const router = useRouter();
   const params = useSearchParams();
   const composing = params.get("compose") === "1" && can("createRequest");
-  const requests = usePagedResource((cursor, signal) => api.procurement.list({ limit: 100, cursor }, { signal }), []);
+  // One paging scheme: the API pages (newest first) and "Load more" appends; the grid itself never paginates.
+  const requests = usePagedResource((cursor, signal) => api.procurement.list({ limit: REQUESTS_PAGE_SIZE, cursor }, { signal }), []);
 
   return (
     <>
@@ -71,7 +74,7 @@ function ProcurementContent() {
         <div className="p-3">
           <ResourceView resource={requests} hasData={Boolean(requests.items)}>
             <RequestList requests={requests.items} />
-            <LoadMore state={requests} noun="requests" />
+            <LoadMore state={requests} noun="requests, newest first" />
           </ResourceView>
         </div>
       </Card>
