@@ -119,9 +119,13 @@ export async function refundPayment(
     const status: RefundStatus = isAmbiguousPayPalFailure(err) ? "UNKNOWN" : "FAILED";
     ctx.log.warn({ err, payment_id: paymentId, refund_id: prepared.refund.id, code, status }, "PayPal refund failed");
     await ctx.db.update(refunds).set({ status }).where(eq(refunds.id, prepared.refund.id));
-    throw badGateway("PAYPAL_REFUND_FAILED", "PayPal did not confirm the refund. Retry with the same request to resolve it.", {
-      code,
-      outcome: status,
+    if (status === "FAILED") {
+      // PayPal definitively refused: nothing was refunded and a new refund may be requested.
+      throw unprocessable("REFUND_DECLINED", "PayPal declined the refund. Nothing was refunded.", { paypal_issue: code });
+    }
+    // Outcome unknown: the client must retry with the same Idempotency-Key to resolve it.
+    throw badGateway("PAYPAL_REFUND_UNCONFIRMED", "PayPal did not confirm the refund. Retry with the same request to resolve it.", {
+      retryable: true,
     });
   }
 

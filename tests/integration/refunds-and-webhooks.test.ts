@@ -78,8 +78,8 @@ describe("refunds", () => {
     const o = await paidOrder(h, owner, "ING-CANOLA");
     h.paypal.rejectNextRefund = { status: 422, issue: "REFUND_NOT_ALLOWED" };
     const rejected = await refund(o.paymentId, { amount_minor: 200 });
-    expect(rejected.status).toBe(502);
-    expect(rejected.body.error.code).toBe("PAYPAL_REFUND_FAILED");
+    expect(rejected.status).toBe(422);
+    expect(rejected.body.error).toMatchObject({ code: "REFUND_DECLINED", details: { paypal_issue: "REFUND_NOT_ALLOWED" } });
     const rows = await h.ctx.db.select().from(refunds).where(eq(refunds.paymentAttemptId, o.paymentId));
     expect(rows.map((r) => r.status)).toEqual(["FAILED"]);
     expect((await payment(o.paymentId)).refunded_amount_minor).toBe(0);

@@ -210,5 +210,9 @@ async function handleCaptureError(ctx: AppContext, actor: Actor, paymentId: stri
       restart: true,
     });
   }
-  throw badGateway("PAYPAL_CAPTURE_FAILED", "PayPal could not capture the payment.", { code });
+  // A definitive PayPal rejection (nothing captured) that the buyer cannot fix by switching funding.
+  throw unprocessable("PAYPAL_CAPTURE_REJECTED", "PayPal could not capture the payment. Nothing was charged; you can try again.", {
+    paypal_issue: code,
+    restart: true,
+  });
 }

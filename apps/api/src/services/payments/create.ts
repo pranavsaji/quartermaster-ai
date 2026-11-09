@@ -108,7 +108,6 @@ export async function createPayPalOrder(
     // An ambiguous outcome is safe to retry: the same PayPal-Request-Id returns the same order.
     throw badGateway("PAYPAL_ORDER_FAILED", "PayPal did not create the order. Try again.", {
       retryable: isAmbiguousPayPalFailure(err),
-      code,
     });
   }
 
