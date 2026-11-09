@@ -175,6 +175,8 @@ export async function refundPayment(
         status: "REQUESTED",
         reason,
         createdBy: actor.id,
+        // The sweeper ages refunds by the application clock, so they are stamped with it.
+        createdAt: ctx.now(),
       })
       .returning();
     return { done: false as const, refundId: r!.id };
@@ -297,6 +299,7 @@ export async function recordReportedRefund(
           amountMinor: report.amountMinor,
           status: "REQUESTED",
           reason: report.kind === "REVERSAL" ? "Reversed by PayPal (chargeback or reversal)" : "Reported by PayPal webhook",
+          createdAt: now,
         })
         .returning();
     }

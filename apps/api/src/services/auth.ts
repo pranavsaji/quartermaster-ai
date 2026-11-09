@@ -83,6 +83,9 @@ export async function login(ctx: AppContext, email: string, password: string, me
       userId: user.id,
       organizationId: membership.organizationId,
       expiresAt,
+      // Timestamps come from the application clock, the same clock the session checks use.
+      createdAt: now,
+      lastSeenAt: now,
       userAgent: meta.userAgent?.slice(0, 300) ?? null,
       ip: meta.ip ?? null,
     });
