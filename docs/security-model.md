@@ -49,7 +49,7 @@ statuses: `VALID`, `EXPIRED`, `CART_MODIFIED`, `SIGNATURE_INVALID`, `UNKNOWN_KEY
 
 `ALLOW`, `REVIEW_REQUIRED` (owner must tick each REVIEW code) or `BLOCK`. For this release
 `human_approval_required` is always true for payments. Each decision records the mandate version,
-the policy version (`trustrail-policy/1.2.0`) and a digest of the exact facts evaluated.
+the policy version (`trustrail-policy/1.3.0`) and a digest of the exact facts evaluated.
 
 ## Key management
 
