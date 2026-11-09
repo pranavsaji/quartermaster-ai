@@ -30,8 +30,14 @@ services:
         value: production
       - key: NODE_VERSION
         value: "22"
+      # Browser traffic arrives as client → Render edge → quartermaster-web (Next.js rewrite,
+      # appends the edge address to X-Forwarded-For) → API, so two hops are trusted to make
+      # req.ip the browser's address for the per-IP rate limits. Caveat: this service is also
+      # public (for PayPal webhooks); a client calling it directly can prepend one forged
+      # X-Forwarded-For entry. If that matters, set TRUST_PROXY to the private-network subnets
+      # instead (e.g. "10.0.0.0/8") or expose only /api/v1/webhooks publicly.
       - key: TRUST_PROXY
-        value: "1"
+        value: "2"
       - key: LOG_LEVEL
         value: info
       - key: DATABASE_URL
@@ -40,6 +46,11 @@ services:
           property: connectionString
       - key: DATABASE_SSL
         value: disable # internal connection on Render's private network
+      - key: DATABASE_ALLOW_INSECURE_TRANSPORT
+        value: "true" # production refuses DATABASE_SSL=disable without this explicit opt-in
+      # The hosted demo uses the simulated "mark delivered" actions (off by default in production).
+      - key: ALLOW_SYNTHETIC_DELIVERY_ACTIONS
+        value: "true"
       - key: APP_BASE_URL
         sync: false # e.g. https://quartermaster-web.onrender.com
       - key: SWEEPER_INTERVAL_SECONDS
@@ -106,6 +117,11 @@ services:
         fromDatabase:
           name: quartermaster-postgres
           property: connectionString
+      # Production defaults to DATABASE_SSL=require; match the API's private-network setting.
+      - key: DATABASE_SSL
+        value: disable
+      - key: DATABASE_ALLOW_INSECURE_TRANSPORT
+        value: "true"
       - key: TRUSTRAIL_SIGNING_KEY_ID
         sync: false
       - key: TRUSTRAIL_SIGNING_KEY
@@ -117,4 +133,7 @@ services:
       - key: PAYPAL_CLIENT_SECRET
         sync: false
       - key: PAYPAL_WEBHOOK_ID
+        sync: false
+      # Required in production whenever PayPal credentials are set.
+      - key: PAYPAL_MERCHANT_ID
         sync: false
