@@ -58,7 +58,7 @@ export interface MarketResearchResult {
 export async function researchItem(
   db: DbOrTx,
   channel3: Channel3Client,
-  args: { organizationId: string; requestId: string; item: InventoryRow; currency: string; now: Date; maxAgeHours: number },
+  args: { organizationId: string; requestId: string; item: InventoryRow; currency: string; now: Date; maxAgeHours: number; signal?: AbortSignal },
   log?: Pick<Logger, "warn">,
 ): Promise<MarketResearchResult> {
   if (!channel3.enabled) {
@@ -76,7 +76,7 @@ export async function researchItem(
   // database error while storing quotes is a real failure and propagates.
   let offers: ReturnType<typeof flattenOffers> = [];
   try {
-    const result = await channel3.search({ query: args.item.searchQuery, limit: 12, inStockOnly: true });
+    const result = await channel3.search({ query: args.item.searchQuery, limit: 12, inStockOnly: true, signal: args.signal });
     offers = flattenOffers(result.products).slice(0, 24);
   } catch (err) {
     log?.warn({ err, inventory_item_id: args.item.id }, "Channel3 market search failed; using cached quotes");
