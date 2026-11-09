@@ -114,14 +114,23 @@ export async function handlePayPalWebhook(ctx: AppContext, headers: WebhookHeade
         orgId = p.organizationId;
         const amount = event.resource.amount as { value?: string; currency_code?: string } | undefined;
         const refundMinor = amount?.value && amount.currency_code ? decimalStringToMinor(amount.value, amount.currency_code) : 0;
+        // A refund can be reported before our capture finalisation has been applied. Reconcile
+        // first; if the payment is still not COMPLETED, fail so PayPal redelivers later.
+        if (!["COMPLETED", "PARTIALLY_REFUNDED", "REFUNDED"].includes(p.status)) {
+          const status = await reconcilePayment(ctx, p.id);
+          if (!["COMPLETED", "PARTIALLY_REFUNDED", "REFUNDED"].includes(status)) {
+            throw new AppError(503, "REFUND_BEFORE_CAPTURE", "Capture not yet recorded; retry later.");
+          }
+        }
         await ctx.db.transaction(async (tx) => {
+          // Lock the payment first so the API refund path and this handler serialise.
+          const [locked] = await tx.select().from(paymentAttempts).where(eq(paymentAttempts.id, p.id)).for("update");
           const ins = await tx
             .insert(refunds)
             .values({ organizationId: p.organizationId, paymentAttemptId: p.id, paypalRefundId: resourceId, amountMinor: refundMinor, status: String(event.resource.status ?? "COMPLETED"), reason: "Reported by PayPal webhook" })
             .onConflictDoNothing({ target: refunds.paypalRefundId })
             .returning();
           if (ins.length === 0) return; // already recorded via the API path
-          const [locked] = await tx.select().from(paymentAttempts).where(eq(paymentAttempts.id, p.id)).for("update");
           const refunded = locked!.refundedAmountMinor + refundMinor;
           const next: PaymentStatus = refunded >= (locked!.capturedAmountMinor ?? 0) ? "REFUNDED" : "PARTIALLY_REFUNDED";
           await tx
@@ -135,11 +144,18 @@ export async function handlePayPalWebhook(ctx: AppContext, headers: WebhookHeade
         resultText = "refund recorded";
       }
     }
-  } finally {
+  } catch (err) {
+    // Leave the event unprocessed so PayPal's redelivery is handled rather than dropped as a duplicate.
     await ctx.db
       .update(paypalWebhookEvents)
-      .set({ processed: true, result: resultText, organizationId: orgId, processedAt: ctx.now() })
+      .set({ result: `failed: ${err instanceof Error ? err.message.slice(0, 200) : "error"}`, organizationId: orgId })
       .where(eq(paypalWebhookEvents.eventId, event.id));
+    if (err instanceof AppError) throw err;
+    throw new AppError(503, "WEBHOOK_PROCESSING_FAILED", "Webhook could not be processed; PayPal will retry.");
   }
+  await ctx.db
+    .update(paypalWebhookEvents)
+    .set({ processed: true, result: resultText, organizationId: orgId, processedAt: ctx.now() })
+    .where(eq(paypalWebhookEvents.eventId, event.id));
   return outcome;
 }
