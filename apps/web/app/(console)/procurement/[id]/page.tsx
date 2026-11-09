@@ -1,13 +1,11 @@
-"use client";
-
-import { useParams } from "next/navigation";
+import type { Metadata } from "next";
 import { Suspense } from "react";
 import { RequestDetail } from "./RequestDetail";
 
-export default function ProcurementRequestPage() {
-  const params = useParams<{ id: string }>();
-  const id = params?.id;
-  if (!id) return null;
+export const metadata: Metadata = { title: "Procurement request" };
+
+export default async function ProcurementRequestPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   return (
     <Suspense fallback={null}>
       <RequestDetail key={id} id={id} />
