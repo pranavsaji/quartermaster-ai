@@ -88,7 +88,9 @@ export function ProposalCard({
               {po.supplier_name}
             </h3>
             <StatusBadge status={po.status} tones={PO_STATUS_TONES} kind="Proposal" />
-            {decision ? <DecisionBadge decision={decision.decision} size="sm" /> : null}
+            {decision && !(po.status === "BLOCKED" && decision.decision === "BLOCK") ? (
+              <DecisionBadge decision={decision.decision} size="sm" />
+            ) : null}
           </div>
           <p className="mt-1 flex flex-wrap items-center gap-2 text-[12px] text-ink-3">
             <span className="font-mono">{po.number}</span>
