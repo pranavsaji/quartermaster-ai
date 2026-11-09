@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, inArray } from "drizzle-orm";
 import type { ApproveRequest, CreateProcurementRequest, IntentCertificateDto, PurchaseOrderDto } from "@qm/contracts";
-import { approvalEvents, intentCertificates, inventoryItems, organizations, purchaseOrders, purchaseRequests, spendMandates, type DbOrTx } from "@qm/database";
+import { approvalEvents, intentCertificates, inventoryItems, organizations, purchaseOrders, purchaseRequests, spendMandates } from "@qm/database";
 import { computeCartHash, issueCertificate, reviewCodes } from "@qm/trustrail";
 import type { AppContext } from "../../context";
 import { conflict, notFound, unprocessable } from "../../errors";
 import { appendAudit } from "../audit";
+import { DeferredFailure, withDeferredFailures, type Actor } from "../common";
 import { currentAccount, localDate, reserve } from "../budget";
 import { recordFinding } from "../findings";
 import { rowToMandate } from "../mandates";
@@ -15,13 +16,6 @@ import { AgentRun } from "../agent/runtime";
 import { interpretInstruction } from "../agent/llm";
 import { getRequestDto } from "./dto";
 import { refreshRequestStatus } from "./status";
-
-export interface Actor {
-  id: string;
-  organizationId: string;
-  ip?: string;
-  userAgent?: string;
-}
 
 /** Creates a request and interprets the instruction (model with deterministic fallback). */
 export async function createRequest(ctx: AppContext, actor: Actor, input: CreateProcurementRequest) {
@@ -255,36 +249,6 @@ export async function approveProposal(
     return { purchase_order: dto!, certificate: toCertificateDto(cert!) };
   }));
   return result;
-}
-
-/**
- * An error raised inside a transaction whose evidence (findings, audit, status) must survive the
- * rollback. The follow-up runs in its own transaction after the original one has rolled back.
- */
-export class DeferredFailure extends Error {
-  constructor(
-    readonly error: Error,
-    readonly after: (db: DbOrTx) => Promise<void>,
-  ) {
-    super(error.message);
-    this.name = "DeferredFailure";
-  }
-}
-
-export async function withDeferredFailures<T>(ctx: AppContext, fn: () => Promise<T>): Promise<T> {
-  try {
-    return await fn();
-  } catch (err) {
-    if (err instanceof DeferredFailure) {
-      try {
-        await ctx.db.transaction((tx) => err.after(tx));
-      } catch (followUp) {
-        ctx.log.error({ err: followUp }, "failed to persist evidence for a refused operation");
-      }
-      throw err.error;
-    }
-    throw err;
-  }
 }
 
 export async function rejectRequest(ctx: AppContext, actor: Actor, requestId: string, reason: string, purchaseOrderId?: string) {

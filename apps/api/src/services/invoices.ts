@@ -6,7 +6,7 @@ import type { AppContext } from "../context";
 import { notFound } from "../errors";
 import { appendAudit } from "./audit";
 import { recordFinding } from "./findings";
-import type { Actor } from "./procurement/lifecycle";
+import type { Actor } from "./common";
 
 type InvoiceRow = typeof invoices.$inferSelect;
 

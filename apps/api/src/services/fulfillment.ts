@@ -6,7 +6,7 @@ import { conflict, notFound, unprocessable } from "../errors";
 import { appendAudit } from "./audit";
 import { toDeliveryDto } from "./orders";
 import { refreshRequestStatus } from "./procurement/status";
-import type { Actor } from "./procurement/lifecycle";
+import type { Actor } from "./common";
 
 export async function listDeliveries(db: DbOrTx, organizationId: string): Promise<DeliveryDto[]> {
   const rows = await db.select().from(deliveries).where(eq(deliveries.organizationId, organizationId)).orderBy(desc(deliveries.createdAt)).limit(200);

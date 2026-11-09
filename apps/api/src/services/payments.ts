@@ -31,7 +31,7 @@ import { loadCertificate, verifyStoredCertificate } from "./certificates";
 import { recordFinding } from "./findings";
 import { cartFromRows, loadOrder, orderDtos, toPaymentDto } from "./orders";
 import { evaluateOrder } from "./policy";
-import { DeferredFailure, withDeferredFailures, type Actor } from "./procurement/lifecycle";
+import { DeferredFailure, withDeferredFailures, type Actor } from "./common";
 import { refreshRequestStatus } from "./procurement/status";
 import { budgetReservations } from "@qm/database";
 
