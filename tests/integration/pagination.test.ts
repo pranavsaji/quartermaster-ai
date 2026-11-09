@@ -31,7 +31,7 @@ describe("keyset pagination", () => {
       Array.from({ length: 23 }, (_, i) => ({
         organizationId: orgId,
         type: "POLICY_VIOLATION",
-        severity: "LOW",
+        severity: "LOW" as const,
         title: `Tie ${i}`,
         description: "Same timestamp",
         sourceKind: "test",

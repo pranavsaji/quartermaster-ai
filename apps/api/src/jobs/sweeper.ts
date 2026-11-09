@@ -17,7 +17,7 @@ export interface SweepReport {
   errors: number;
 }
 
-const INSTANCE_ID = randomUUID();
+const INSTANCE_ID: string = randomUUID();
 const LEASE_SECONDS = 120;
 /** How long after voiding an attempt the sweeper keeps checking PayPal for a late capture. */
 const LATE_CAPTURE_WINDOW_MS = 6 * 3_600_000;
