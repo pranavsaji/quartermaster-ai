@@ -15,7 +15,8 @@ export type WebhookOutcome = "PROCESSED" | "DUPLICATE" | "IGNORED";
 const REFUND_EVENTS = new Set(["PAYMENT.CAPTURE.REFUNDED", "PAYMENT.CAPTURE.REVERSED"]);
 
 function refundStatusOf(status: unknown): RefundStatus {
-  return status === "PENDING" || status === "FAILED" || status === "CANCELLED" ? status : "COMPLETED";
+  // Only an explicit COMPLETED counts money; anything unexpected stays unresolved for the sweeper.
+  return status === "COMPLETED" || status === "PENDING" || status === "FAILED" || status === "CANCELLED" ? status : "UNKNOWN";
 }
 
 /** Structural validation of a webhook body before anything is read from it. */
@@ -150,17 +151,34 @@ export async function handlePayPalWebhook(ctx: AppContext, headers: WebhookHeade
             throw new AppError(503, "REFUND_BEFORE_CAPTURE", "Capture not yet recorded; retry later.");
           }
         }
-        const reversal = event.event_type === "PAYMENT.CAPTURE.REVERSED";
-        const applied = await recordReportedRefund(ctx, p.id, {
-          paypalRefundId: resourceId,
-          amountMinor: decimalStringToMinor(amount.value, amount.currency_code),
-          // A reversal moves money back immediately; a refund event carries the refund's status.
-          status: reversal ? "COMPLETED" : refundStatusOf(event.resource.status),
-          kind: reversal ? "REVERSAL" : "REFUND",
-          eventId: event.id,
-        });
-        outcome = "PROCESSED";
-        resultText = `${reversal ? "reversal" : "refund"} ${applied.toLowerCase()}`;
+        if (amount.currency_code !== p.currency) {
+          // Never convert or count money in a currency the payment was not made in.
+          await recordFinding(ctx.db, {
+            organizationId: p.organizationId,
+            type: "PAYMENT_AMOUNT_MISMATCH",
+            severity: "HIGH",
+            title: "PayPal reported a refund in a different currency",
+            description: `A ${event.event_type} event reported ${amount.currency_code}; the payment was made in ${p.currency}. It was not applied.`,
+            sourceKind: "paypal_webhook",
+            sourceId: resourceId,
+            evidence: { event_id: event.id, currency: amount.currency_code.slice(0, 8) },
+            relatedPurchaseOrderId: p.purchaseOrderId,
+          });
+          outcome = "PROCESSED";
+          resultText = "refund currency mismatch; not applied";
+        } else {
+          const reversal = event.event_type === "PAYMENT.CAPTURE.REVERSED";
+          const applied = await recordReportedRefund(ctx, p.id, {
+            paypalRefundId: resourceId,
+            amountMinor: decimalStringToMinor(amount.value, amount.currency_code),
+            // A reversal moves money back immediately; a refund event carries the refund's status.
+            status: reversal ? "COMPLETED" : refundStatusOf(event.resource.status),
+            kind: reversal ? "REVERSAL" : "REFUND",
+            eventId: event.id,
+          });
+          outcome = "PROCESSED";
+          resultText = `${reversal ? "reversal" : "refund"} ${applied.toLowerCase()}`;
+        }
       } else {
         resultText = p ? "refund event without amount" : "no matching payment";
       }
