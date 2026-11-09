@@ -122,6 +122,7 @@ export const FINDING_TYPES = [
   "CERTIFICATE_VERIFICATION_FAILED",
   "PAYMENT_AMOUNT_MISMATCH",
   "ACCESS_DENIED",
+  "PAYMENT_REVERSED",
 ] as const;
 export type FindingType = (typeof FINDING_TYPES)[number];
 
