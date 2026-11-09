@@ -6,6 +6,7 @@ import type { ProcurementRequestSummaryDto } from "@qm/contracts";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo } from "react";
+import { ActionCell, controlColumn } from "@/components/grid/ActionCell";
 import { DataGrid } from "@/components/grid/DataGrid";
 import { dateTimeColumn, moneyColumn, statusColumn } from "@/components/grid/columns";
 import { REQUEST_STATUS_TONES } from "@/lib/labels";
@@ -19,15 +20,18 @@ export function RequestList({ requests }: { requests: ProcurementRequestSummaryD
         headerName: "Request",
         flex: 3,
         minWidth: 280,
+        ...controlColumn<ProcurementRequestSummaryDto>(),
         cellRenderer: (p: CustomCellRendererProps<ProcurementRequestSummaryDto>) =>
           p.data ? (
-            <Link
-              href={`/procurement/${p.data.id}`}
-              className="block truncate font-medium text-ink hover:text-accent hover:underline"
-              title={p.data.instruction}
-            >
-              {p.data.instruction}
-            </Link>
+            <ActionCell eGridCell={p.eGridCell} className="min-w-0">
+              <Link
+                href={`/procurement/${p.data.id}`}
+                className="block truncate font-medium text-ink hover:text-accent hover:underline"
+                title={p.data.instruction}
+              >
+                {p.data.instruction}
+              </Link>
+            </ActionCell>
           ) : null,
       },
       statusColumn<ProcurementRequestSummaryDto, ProcurementRequestSummaryDto["status"]>(

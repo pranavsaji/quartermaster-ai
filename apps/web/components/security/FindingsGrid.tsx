@@ -5,6 +5,7 @@ import type { CustomCellRendererProps } from "ag-grid-react";
 import type { SecurityFindingDto, Severity } from "@qm/contracts";
 import Link from "next/link";
 import { useMemo } from "react";
+import { ActionCell, controlColumn } from "@/components/grid/ActionCell";
 import { DataGrid } from "@/components/grid/DataGrid";
 import { dateTimeColumn, statusColumn } from "@/components/grid/columns";
 import { findingLabel, SEVERITY_TONES } from "@/lib/labels";
@@ -33,9 +34,10 @@ export function FindingsGrid({ findings }: { findings: SecurityFindingDto[] | un
         minWidth: 260,
         autoHeight: true,
         wrapText: true,
+        ...controlColumn<SecurityFindingDto>(),
         cellRenderer: (p: CustomCellRendererProps<SecurityFindingDto>) =>
           p.data ? (
-            <div className="py-2 leading-snug">
+            <ActionCell eGridCell={p.eGridCell} className="block h-auto py-2 leading-snug">
               <p className="font-medium text-ink">{p.data.title}</p>
               {p.data.description ? <p className="text-[12px] text-ink-3">{p.data.description}</p> : null}
               {p.data.related_request_id ? (
@@ -43,7 +45,7 @@ export function FindingsGrid({ findings }: { findings: SecurityFindingDto[] | un
                   View request
                 </Link>
               ) : null}
-            </div>
+            </ActionCell>
           ) : null,
       },
       {
