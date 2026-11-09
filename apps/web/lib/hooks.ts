@@ -54,17 +54,16 @@ export function useResource<T>(
   const depsVersion = useDepsVersion(deps);
   const [loaded, setLoaded] = useState<Loaded<T>>({ value: undefined, version: -1, at: undefined });
   const [failure, setFailure] = useState<{ error: unknown; version: number } | null>(null);
-  const [inFlight, setInFlight] = useState(enabled);
   const [reloads, setReloads] = useState(0);
+  // A request is identified by (deps version, reload count); it is in flight until it settles.
+  const requestKey = `${depsVersion}:${reloads}`;
+  const [settledKey, setSettledKey] = useState<string | null>(null);
+  const inFlight = enabled && settledKey !== requestKey;
   const fetchLatest = useEffectEvent(fetcher);
 
   useEffect(() => {
-    if (!enabled) {
-      setInFlight(false);
-      return;
-    }
+    if (!enabled) return;
     const controller = new AbortController();
-    setInFlight(true);
     fetchLatest(controller.signal)
       .then((result) => {
         if (controller.signal.aborted) return;
@@ -76,10 +75,10 @@ export function useResource<T>(
         setFailure({ error: err, version: depsVersion });
       })
       .finally(() => {
-        if (!controller.signal.aborted) setInFlight(false);
+        if (!controller.signal.aborted) setSettledKey(requestKey);
       });
     return () => controller.abort();
-  }, [enabled, reloads, depsVersion]);
+  }, [enabled, requestKey, depsVersion]);
 
   const reload = useCallback(() => setReloads((n) => n + 1), []);
   const setData = useCallback(

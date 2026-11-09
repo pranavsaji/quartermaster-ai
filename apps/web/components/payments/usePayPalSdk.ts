@@ -16,33 +16,36 @@ export function usePayPalSdk(
   config: PublicConfig["paypal"],
   currency: string,
 ): { state: PayPalSdkState; retry: () => void } {
-  const enabled = config.enabled && Boolean(config.client_id);
-  const [state, setState] = useState<PayPalSdkState>(enabled ? { status: "loading" } : { status: "disabled" });
+  const clientId = config.enabled ? config.client_id : null;
   const [attempt, setAttempt] = useState(0);
+  // The outcome of one load attempt; any other key means a newer attempt is still loading.
+  const key = `${clientId}|${config.sdk_url}|${currency}|${attempt}`;
+  const [result, setResult] = useState<{ key: string; state: PayPalSdkState } | null>(null);
 
   useEffect(() => {
-    const clientId = config.client_id;
-    if (!enabled || !clientId) {
-      setState({ status: "disabled" });
-      return;
-    }
+    if (!clientId) return;
     let cancelled = false;
-    setState({ status: "loading" });
     (async () => {
+      let state: PayPalSdkState;
       try {
         const sdk = await getPayPalInstance(config.sdk_url, clientId);
         const eligibility = await sdk.findEligibleMethods({ currencyCode: currency });
-        if (cancelled) return;
-        setState(eligibility.isEligible("paypal") ? { status: "ready", sdk } : { status: "ineligible" });
+        state = eligibility.isEligible("paypal") ? { status: "ready", sdk } : { status: "ineligible" };
       } catch (error) {
-        if (!cancelled) setState({ status: "error", error });
+        state = { status: "error", error };
       }
+      if (!cancelled) setResult({ key, state });
     })();
     return () => {
       cancelled = true;
     };
-  }, [enabled, config.client_id, config.sdk_url, currency, attempt]);
+  }, [clientId, config.sdk_url, currency, key]);
 
   const retry = useCallback(() => setAttempt((a) => a + 1), []);
+  const state: PayPalSdkState = !clientId
+    ? { status: "disabled" }
+    : result && result.key === key
+      ? result.state
+      : { status: "loading" };
   return { state, retry };
 }
