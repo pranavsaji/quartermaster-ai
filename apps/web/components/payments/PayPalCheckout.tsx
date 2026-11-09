@@ -27,13 +27,20 @@ function isAmbiguousFailure(error: unknown): boolean {
   return error instanceof ApiRequestError ? error.isAmbiguous : true;
 }
 
+/** A definitive decline (e.g. INSTRUMENT_DECLINED) the buyer can recover from by paying again. */
+function canRestart(error: unknown): boolean {
+  if (!(error instanceof ApiRequestError) || typeof error.details !== "object" || error.details === null) return false;
+  return (error.details as { restart?: unknown }).restart === true;
+}
+
 /**
  * PayPal JS SDK v6 one-time payment.
  *
  * On click we synchronously call `session.start()` (so popups aren't blocked)
  * with the *pending* promise of `POST /intents/:id/paypal-order`. The API only
  * creates the PayPal order after re-verifying the signed Intent Certificate.
- * On approval we ask the API to capture; whatever status it returns is shown.
+ * On approval we ask the API to capture; whatever status it returns is shown (a
+ * CAPTURE_PENDING answer hands over to PaymentStatusPanel, which polls it).
  *
  * If the capture call fails ambiguously the money may or may not have moved:
  * we say so, re-read the payment from the API (so the status panel can poll)
@@ -241,6 +248,9 @@ export function PayPalCheckout({
         </Notice>
       ) : null}
       <ErrorNotice error={error} title="Payment didn't go through" />
+      {canRestart(error) ? (
+        <p className="text-[12.5px] text-ink-2">Nothing was charged. Use the PayPal button again to choose another way to pay.</p>
+      ) : null}
     </div>
   );
 }

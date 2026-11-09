@@ -72,7 +72,10 @@ describe("PayPalCheckout", () => {
     mockFetch({
       "POST /api/v1/intents/intent-1/paypal-order": [jsonResponse({ payment: payment(), paypal_order_id: "ORDER-1" })],
       "POST /api/v1/payments/pay-1/capture": [
-        jsonResponse({ error: { code: "AMOUNT_MISMATCH", message: "The captured amount does not match." } }, 422),
+        jsonResponse(
+          { error: { code: "INSTRUMENT_DECLINED", message: "PayPal declined the funding source.", details: { restart: true } } },
+          422,
+        ),
       ],
     });
     const { container } = render(
@@ -81,7 +84,8 @@ describe("PayPalCheckout", () => {
     fireEvent.click(container.querySelector("paypal-button")!);
 
     expect(await screen.findByText("Payment didn't go through")).toBeInTheDocument();
-    expect(screen.getByText("The captured amount does not match.")).toBeInTheDocument();
+    expect(screen.getByText("PayPal declined the funding source.")).toBeInTheDocument();
+    expect(screen.getByText(/Use the PayPal button again/)).toBeInTheDocument();
     expect(screen.queryByText("Payment outcome unknown")).not.toBeInTheDocument();
   });
 });
