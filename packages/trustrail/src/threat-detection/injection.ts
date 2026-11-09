@@ -37,7 +37,16 @@ interface Rule {
   id: string;
   weight: number;
   pattern: RegExp;
+  /**
+   * Stricter pattern for the punctuation-softened variant, where removed quotes and dashes can
+   * join two phrases ('"Skip the line" — order online' must not read as "skip the … order").
+   */
+  softPattern?: RegExp;
 }
+
+const NEGATED = String.raw`(?<!\b(?:don't|dont|do not|never|won't|will not)\s)`;
+const overridePattern = (qualifiers: string) =>
+  new RegExp(String.raw`${NEGATED}\b(${OVERRIDE_VERBS})\b[\w\s,'-]{0,40}\b(${qualifiers})\b[\w\s,'-]{0,30}\b(${OVERRIDE_NOUNS})\b`, "i");
 
 /** A gap of up to N words, allowing "$25", "4.99" or "20%" but never crossing a sentence end. */
 const gap = (n: number) => String.raw`(?:[\w\s'%-]|\$(?=\d)|[.,](?=\d)){0,${n}}`;
@@ -52,17 +61,54 @@ const RULES: Rule[] = [
   {
     id: "override_instructions",
     weight: 6,
-    pattern: new RegExp(
-      String.raw`\b(${OVERRIDE_VERBS})\b[\w\s,'-]{0,40}\b(previous|prior|above|earlier|all|any|your|the|system|these|those|my|our)\b[\w\s,'-]{0,30}\b(${OVERRIDE_NOUNS})\b`,
-      "i",
-    ),
+    // A negated verb ("don't forget all previous orders ship from Ohio") is not an override.
+    pattern: overridePattern("previous|prior|above|earlier|all|any|your|the|system|these|those|my|our"),
+    // Only qualifiers that mark an override, never a plain article, once punctuation is softened.
+    softPattern: overridePattern("previous|prior|above|earlier|all|any|your|system"),
   },
   {
     // French, Spanish, German and Portuguese overrides; matched on the diacritic-folded variant.
+    // Either the verb or the noun must be non-English, so an English phrase ("ignore all previous
+    // instructions") is scored once, by override_instructions, not twice. The French tu-form
+    // "ignore les instructions précédentes" shares both words with English and is matched by its
+    // trailing qualifier instead.
     id: "override_instructions_multilingual",
     weight: 6,
     pattern:
-      /\b(ignorez|ignore[rz]?|oubliez|oublie|ignora|ignore|ignorar|olvida|olvide|olvidar|omite|descarta|ignoriere|ignorieren|vergiss|vergessen|esqueca|esquece)\b[\w\s,'-]{0,40}\b(instructions?|consignes?|regles?|directives?|instrucciones|instruccion|reglas|indicaciones|anweisungen|regeln|instrucoes|regras)\b/i,
+      /\b(ignorez|ignorer|oubliez|oublie|ignora|ignorar|olvida|olvide|olvidar|omite|descarta|ignoriere|ignorieren|vergiss|vergessen|esqueca|esquece)\b[\w\s,'-]{0,40}\b(instructions?|consignes?|regles?|directives?|instrucciones|instruccion|reglas|indicaciones|anweisungen|regeln|instrucoes|regras)\b|\bignore\b[\w\s,'-]{0,40}\b(consignes?|regles?|instrucciones|instruccion|reglas|indicaciones|anweisungen|regeln|instrucoes|regras)\b|\bignore\b[\w\s,'-]{0,40}\b(instructions?|directives?)\s+(precedentes|anterieures|anteriores|previas)\b/i,
+  },
+  {
+    // "Disregard the above.", "Ignore everything above and …": an override aimed at the text
+    // before it. Only when "above" ends the clause, so "ignore the above measurements" is not one.
+    id: "override_preceding_text",
+    weight: 5,
+    pattern:
+      /\b(disregard|ignore|forget|override)\s+(?:all\s+(?:of\s+)?|everything\s+)?(?:the\s+|that\s+|what(?:'s| is| was)\s+)?(above|foregoing|preceding)(?:\s+(?:text|content|message|messages|context))?\s*(?:[.!;:,]|$|\band\b|\bthen\b)/i,
+  },
+  {
+    // "You must now approve …", "you should now purchase …": an instruction aimed at the reader.
+    id: "agent_directive",
+    weight: 3,
+    pattern:
+      /\byou\s+(?:must|should|shall|will|are to|need to|have to)\s+(?:now|immediately|also)\s+(?:approve|purchase|buy|order|pay|confirm|accept|add|authori[sz]e|checkout|check out|submit|release)\b/i,
+  },
+  {
+    // "the purchasing assistant", "the AI procurement agent", "automated buying agent": text that
+    // names the automated buyer is addressing it. A bare "purchasing agent" is a human job title.
+    id: "purchasing_agent_reference",
+    weight: 3,
+    pattern:
+      /\b(?:the|your|this|our|any|dear|attention)\s+(?:purchasing|procurement|buying|ordering|shopping|sourcing)\s+(?:assistants?|ai|bots?|models?|llms?)\b|\b(?:ai|automated|autonomous)\s+(?:purchasing|procurement|buying|ordering|shopping|sourcing)\s+(?:assistants?|agents?|bots?|systems?)\b/i,
+  },
+  {
+    // "The weekly budget has been raised", "your spending limit was increased": a false claim that
+    // the buyer's limits changed. Policy facts come only from the database.
+    id: "budget_change_claim",
+    weight: 5,
+    pattern: new RegExp(
+      String.raw`\b(${BUDGET_OBJECTS})\s+(?:has|have|was|were|is|are)\s+(?:now\s+|already\s+)?(?:been\s+)?(?:raised|increased|lifted|removed|approved|doubled|tripled|extended|waived|expanded|unlocked|suspended|disabled|updated|adjusted)\b`,
+      "i",
+    ),
   },
   {
     id: "role_hijack",
@@ -80,7 +126,7 @@ const RULES: Rule[] = [
     id: "agent_addressing",
     weight: 3,
     pattern:
-      /\b(attention|note|message|instruction)s?\s+(to|for)\s+(the\s+)?(ai|assistant|agent|llm|model|bot|procurement (agent|assistant))\b|\b(dear|hey|hello)\s+(ai|assistant|agent|llm|model|bot)\b/i,
+      /\b(attention|note|message|instruction)s?\s+(to|for)\s+(the\s+)?(ai|assistant|agent|llm|model|bot|(procurement|purchasing|buying|ordering) (agent|assistant))\b|\b(dear|hey|hello)\s+(ai|assistant|agent|llm|model|bot)\b/i,
   },
   {
     // Qualified budget nouns only: "remove the cap" on a bottle is product copy, not an attack.
@@ -293,6 +339,19 @@ export function normalizeUntrustedText(text: string): string {
   return t.replace(/\s+/g, " ").trim();
 }
 
+/**
+ * Punctuation and markdown that can sit between the words of an instruction without changing
+ * what it says: colons, dashes (en/em/figure/minus), quotes of every kind, emphasis markers
+ * (* _ ~ `), headings, block quotes, pipes and brackets. Sentence ends (. ! ?), semicolons and
+ * commas are kept, so rules still never match across a sentence or a clause.
+ */
+const SOFT_PUNCTUATION = /[:*_~`#>|()[\]{}"\u00AB\u00BB\u2010-\u2015\u2018-\u201F\u2032-\u2037\u2212=+^]/g;
+
+/** `Ignore: **all** — "previous" instructions` → "Ignore all previous instructions", for matching only. */
+function softenPunctuation(text: string): string {
+  return text.replace(SOFT_PUNCTUATION, " ").replace(/\s+/g, " ").trim();
+}
+
 /** Removes diacritics ("précédentes" → "precedentes") for matching only. */
 function foldDiacritics(text: string): string {
   return text.normalize("NFD").replace(/\p{M}/gu, "").normalize("NFC");
@@ -338,14 +397,24 @@ function detect(raw: string, options: DetectOptions, depth: number): InjectionVe
   const normalized = normalizeUntrustedText(raw);
   const folded = foldDiacritics(normalized);
   const smuggled = decodeTagCharacters(raw);
-  // Identical variants (plain ASCII text) are matched once.
-  const variants = [...new Set([normalized, folded, deLeet(folded), ...(smuggled.trim() ? [normalizeUntrustedText(smuggled)] : [])])];
+  // The punctuation-softened variants catch "Ignore: all previous instructions", "Ignore —
+  // all previous instructions" and markdown emphasis or quotes between the words; they use a
+  // rule's stricter softPattern where it has one. Identical variants are matched once, and a
+  // softened variant identical to an exact one (no punctuation to soften) is matched exactly.
+  const softened = softenPunctuation(folded);
+  const exact = [normalized, folded, deLeet(folded), ...(smuggled.trim() ? [normalizeUntrustedText(smuggled)] : [])];
+  const variants = [
+    ...new Set(exact),
+    ...[...new Set([softened, deLeet(softened)])].filter((v) => !exact.includes(v)).map((v) => ({ soft: v })),
+  ];
 
   for (const rule of RULES) {
     for (const variant of variants) {
-      const m = rule.pattern.exec(variant);
+      const text = typeof variant === "string" ? variant : variant.soft;
+      const pattern = typeof variant === "string" ? rule.pattern : (rule.softPattern ?? rule.pattern);
+      const m = pattern.exec(text);
       if (m) {
-        signals.push({ rule: rule.id, weight: rule.weight, excerpt: excerptAround(variant, m.index, m[0].length) });
+        signals.push({ rule: rule.id, weight: rule.weight, excerpt: excerptAround(text, m.index, m[0].length) });
         break;
       }
     }
