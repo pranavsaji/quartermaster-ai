@@ -68,7 +68,15 @@ export function createApp(ctx: AppContext) {
   api.use(webhookRoutes(ctx));
   api.use(json({ limit: "100kb" }));
   api.use(cookieParser());
-  api.use(rateLimit({ windowMs: 60_000, limit: ctx.config.env === "test" ? 10_000 : 300, standardHeaders: "draft-8", legacyHeaders: false }));
+  api.use(
+    rateLimit({
+      windowMs: 60_000,
+      limit: ctx.config.rateLimits.perMinute,
+      standardHeaders: "draft-8",
+      legacyHeaders: false,
+      message: { error: { code: "RATE_LIMITED", message: "Too many requests. Try again shortly." } },
+    }),
+  );
   api.use(csrfGuard);
   api.use(authRoutes(ctx));
 
