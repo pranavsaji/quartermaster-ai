@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { PO_STATUSES, applyBps } from "@qm/contracts";
 import { COMMITTED_ORDER_STATUSES, buildCart, evaluatePolicy, isCommittedOrderStatus, type PolicyInput } from "@qm/trustrail";
 import { buildSupplierQuote } from "@qm/quartermaster";
-import { SUPPLIER, baseInput, product, shipping, tax } from "../helpers/fixtures";
+import { NOW, SUPPLIER, baseInput, mandate, product, shipping, tax } from "../helpers/fixtures";
 
 const codes = (r: ReturnType<typeof evaluatePolicy>) => r.violations.map((v) => v.code);
 const withSupplier = (patch: Partial<NonNullable<PolicyInput["supplier"]>>, lines = [product(), shipping(0), tax(1_320)]) => {
@@ -10,6 +10,78 @@ const withSupplier = (patch: Partial<NonNullable<PolicyInput["supplier"]>>, line
   input.supplier = { ...input.supplier!, ...patch };
   return input;
 };
+
+describe("policy engine — totality", () => {
+  const blocked = (input: PolicyInput) => {
+    let r!: ReturnType<typeof evaluatePolicy>;
+    expect(() => (r = evaluatePolicy(input))).not.toThrow();
+    expect(r.decision).toBe("BLOCK");
+    expect(r.human_approval_required).toBe(true);
+    expect(r.input_digest).toMatch(/^sha256:[a-f0-9]{64}$/);
+    return r;
+  };
+
+  it("blocks a non-finite market reference price instead of throwing while hashing", () => {
+    const input = baseInput({ market: [{ sku: "TK-250", reference_unit_price_minor: Number.NaN, candidate_unit_price_minor: Number.POSITIVE_INFINITY, observed_at: NOW.toISOString(), comparable: true }] });
+    const r = evaluatePolicy(input);
+    expect(r.decision).toBe("REVIEW_REQUIRED");
+    expect(r.violations[0]?.evidence?.reason).toBe("invalid_price");
+  });
+
+  it("blocks a fractional quantity with an arithmetic violation", () => {
+    const r = blocked(baseInput({}, [product({ quantity: 1.5, line_total_minor: 12_000 }), shipping(899), tax(990)]));
+    expect(r.violations.map((v) => v.code)).toContain("CART_ARITHMETIC_INVALID");
+  });
+
+  it("blocks NaN cart totals and never skips human approval", () => {
+    const input = baseInput();
+    input.cart = { ...input.cart, total_minor: Number.NaN };
+    expect(blocked(input).violations.map((v) => v.code)).toContain("CART_ARITHMETIC_INVALID");
+  });
+
+  it("blocks an invalid clock", () => {
+    const r = blocked(baseInput({ now: new Date(Number.NaN) }));
+    expect(r.violations[0]).toMatchObject({ code: "MANDATE_INACTIVE", evidence: { reason: "invalid_now" } });
+    expect(r.evaluated_at).toBe("invalid-time");
+  });
+
+  it.each([
+    ["per_order_limit_minor", Number.NaN],
+    ["weekly_budget_minor", 1.5],
+    ["auto_approval_limit_minor", -1],
+    ["max_market_price_premium_pct", Number.POSITIVE_INFINITY],
+    ["duplicate_window_hours", Number.NaN],
+    ["max_quantity_multiple_of_need", 0],
+    ["market_price_action", "ALLOW"],
+    ["approved_supplier_ids", null],
+  ] as const)("blocks a mandate with malformed %s", (field, value) => {
+    const r = blocked(baseInput({ mandate: mandate({ [field]: value } as never) }));
+    expect(r.violations[0]).toMatchObject({ code: "MANDATE_INACTIVE", evidence: { fields: [field] } });
+  });
+
+  it("blocks a malformed budget snapshot or request budget", () => {
+    expect(blocked(baseInput({ budget: { limit_minor: 50_000, spent_minor: Number.NaN, reserved_minor: 0 } })).violations.map((v) => v.code)).toContain("WEEKLY_BUDGET_EXCEEDED");
+    expect(blocked(baseInput({ request_budget_limit_minor: 1.5 })).violations.map((v) => v.code)).toContain("REQUEST_BUDGET_EXCEEDED");
+    // A negative request limit is legal (other committed orders already used it up) and simply exceeded.
+    expect(blocked(baseInput({ request_budget_limit_minor: -100 })).violations.map((v) => v.code)).toContain("REQUEST_BUDGET_EXCEEDED");
+  });
+
+  it("fails closed when the input is structurally broken", () => {
+    const r = blocked({ ...baseInput(), catalog: null as never });
+    expect(r.violations).toEqual([expect.objectContaining({ code: "MANDATE_INACTIVE", evidence: expect.objectContaining({ reason: "evaluation_error" }) })]);
+    expect(r.mandate_version).toBe(1);
+    expect(() => evaluatePolicy(null as never)).not.toThrow();
+    expect(evaluatePolicy(null as never).decision).toBe("BLOCK");
+    expect(evaluatePolicy({} as never).decision).toBe("BLOCK");
+  });
+
+  it("gives different malformed inputs different digests", () => {
+    const a = evaluatePolicy(baseInput({ request_budget_limit_minor: 1.5 }));
+    const b = evaluatePolicy(baseInput({ request_budget_limit_minor: 2.5 }));
+    const c = evaluatePolicy(baseInput({ request_budget_limit_minor: Number.NaN }));
+    expect(new Set([a.input_digest, b.input_digest, c.input_digest]).size).toBe(3);
+  });
+});
 
 describe("policy engine — supplier binding", () => {
   it("blocks when the supplier terms belong to a different supplier than the cart", () => {

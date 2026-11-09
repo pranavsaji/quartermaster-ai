@@ -111,8 +111,42 @@ export const MARKET_CLOCK_SKEW_MS = 5 * 60_000;
  * Deterministic TrustRail policy evaluation. Pure function: identical input produces an
  * identical decision. Nothing produced by a language model can change the result except by
  * changing the cart itself, which is then evaluated on its own merits.
+ *
+ * Total: it never throws. Malformed input (non-finite or fractional amounts, an invalid clock,
+ * a malformed mandate, or anything that makes evaluation fail) yields a BLOCK decision with a
+ * violation explaining why, so a caller bug can never turn into an unhandled exception on the
+ * approval or capture path, nor into an ALLOW.
  */
 export function evaluatePolicy(input: PolicyInput): PolicyResult {
+  try {
+    return evaluate(input);
+  } catch (err) {
+    return failClosed(input, err);
+  }
+}
+
+const isMinor = (v: unknown): v is number => typeof v === "number" && Number.isSafeInteger(v);
+const isNonNegativeMinor = (v: unknown): v is number => isMinor(v) && v >= 0;
+const isNonNegativeFinite = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 0;
+
+/** Names of mandate fields whose values the engine cannot reason about. */
+function malformedMandateFields(m: SpendMandate): string[] {
+  const bad: string[] = [];
+  for (const f of ["weekly_budget_minor", "per_order_limit_minor", "auto_approval_limit_minor"] as const) if (!isNonNegativeMinor(m[f])) bad.push(f);
+  for (const f of ["max_market_price_premium_pct", "duplicate_window_hours"] as const) if (!isNonNegativeFinite(m[f])) bad.push(f);
+  if (!(typeof m.max_quantity_multiple_of_need === "number" && Number.isFinite(m.max_quantity_multiple_of_need) && m.max_quantity_multiple_of_need > 0)) {
+    bad.push("max_quantity_multiple_of_need");
+  }
+  if (!Array.isArray(m.approved_supplier_ids)) bad.push("approved_supplier_ids");
+  if (!Array.isArray(m.allowed_categories)) bad.push("allowed_categories");
+  if (m.market_price_action !== "REVIEW" && m.market_price_action !== "BLOCK") bad.push("market_price_action");
+  if (m.duplicate_action !== "REVIEW" && m.duplicate_action !== "BLOCK") bad.push("duplicate_action");
+  return bad;
+}
+
+const validNow = (now: unknown): now is Date => now instanceof Date && !Number.isNaN(now.getTime());
+
+function evaluate(input: PolicyInput): PolicyResult {
   const violations: Violation[] = [];
   const checks: PolicyCheck[] = [];
   const { cart, mandate, supplier } = input;
@@ -125,7 +159,31 @@ export function evaluatePolicy(input: PolicyInput): PolicyResult {
     violate({ code: "MANDATE_INACTIVE", severity: "BLOCK", message: "No active Spend Mandate is in force." });
     return finalize(input, violations, checks, mandate);
   }
+  const badFields = malformedMandateFields(mandate);
+  if (badFields.length > 0) {
+    violate({ code: "MANDATE_INACTIVE", severity: "BLOCK", message: "The Spend Mandate is malformed; no valid mandate is in force.", evidence: { fields: badFields } });
+    return finalize(input, violations, checks, mandate);
+  }
+  if (!validNow(input.now)) {
+    // Freshness, duplicate windows and the mandate's validity are all judged at `now`.
+    violate({ code: "MANDATE_INACTIVE", severity: "BLOCK", message: "Evaluation time is invalid; the mandate cannot be applied.", evidence: { reason: "invalid_now" } });
+    return finalize(input, violations, checks, mandate);
+  }
   check("MANDATE_ACTIVE", true, `Mandate v${mandate.version} is active.`);
+
+  // --- Malformed facts from the system of record ----------------------------------------
+  const budgetFields = (["limit_minor", "spent_minor", "reserved_minor"] as const).filter((f) => !isNonNegativeMinor(input.budget?.[f]));
+  if (budgetFields.length > 0) {
+    violate({ code: "WEEKLY_BUDGET_EXCEEDED", severity: "BLOCK", message: "The budget snapshot is malformed; remaining budget cannot be verified.", evidence: { fields: budgetFields } });
+  }
+  if (input.request_budget_limit_minor !== null && !isMinor(input.request_budget_limit_minor)) {
+    violate({
+      code: "REQUEST_BUDGET_EXCEEDED",
+      severity: "BLOCK",
+      message: "The request budget is malformed; it cannot be verified.",
+      evidence: { request_limit_minor: String(input.request_budget_limit_minor) },
+    });
+  }
 
   // --- Cart shape ---------------------------------------------------------------------
   const productLines = cart.lines.filter((l) => l.kind === "PRODUCT");
@@ -529,19 +587,84 @@ function finalize(input: PolicyInput, violations: Violation[], checks: PolicyChe
     : violations.length > 0
       ? "REVIEW_REQUIRED"
       : "ALLOW";
+  // Written as "not provably within the limit" so NaN can never skip human approval.
   const human_approval_required =
-    decision !== "ALLOW" || !mandate || mandate.human_approval_required || input.cart.total_minor > mandate.auto_approval_limit_minor;
+    decision !== "ALLOW" || !mandate || mandate.human_approval_required !== false || !(input.cart.total_minor <= mandate.auto_approval_limit_minor);
 
   return {
     decision,
     violations,
     checks,
     human_approval_required,
-    mandate_version: mandate?.version ?? 0,
+    mandate_version: safeVersion(mandate),
     policy_version: POLICY_VERSION,
-    input_digest: digest(policyInputFingerprint(input)),
-    evaluated_at: input.now.toISOString(),
+    input_digest: inputDigest(input),
+    evaluated_at: validNow(input.now) ? input.now.toISOString() : INVALID_TIME,
   };
+}
+
+/** `evaluated_at` reported when the caller passed an invalid clock. */
+export const INVALID_TIME = "invalid-time";
+
+const safeVersion = (m: unknown): number => {
+  const v = (m as { version?: unknown } | null | undefined)?.version;
+  return typeof v === "number" && Number.isSafeInteger(v) ? v : 0;
+};
+
+function failClosed(input: PolicyInput, err: unknown): PolicyResult {
+  const mandate = (input as { mandate?: unknown } | null | undefined)?.mandate;
+  return {
+    decision: "BLOCK",
+    violations: [
+      {
+        code: "MANDATE_INACTIVE",
+        severity: "BLOCK",
+        message: "Policy input is malformed; evaluation failed closed.",
+        evidence: { reason: "evaluation_error", error: (err instanceof Error ? err.message : String(err)).slice(0, 200) },
+      },
+    ],
+    checks: [],
+    human_approval_required: true,
+    mandate_version: safeVersion(mandate),
+    policy_version: POLICY_VERSION,
+    input_digest: inputDigest(input),
+    evaluated_at: validNow((input as { now?: unknown } | null | undefined)?.now) ? (input.now as Date).toISOString() : INVALID_TIME,
+  };
+}
+
+/**
+ * Maps any value onto the canonical-encodable domain without throwing and without collapsing
+ * distinct values: safe integers stay as they are; other numbers (fractions, NaN, ±Infinity,
+ * -0 is already 0) become `{ $num: String(n) }` (ECMAScript's number-to-string is exact and
+ * engine-independent); Dates become ISO strings; holes, cycles and unsupported types become
+ * tagged markers.
+ */
+function digestable(value: unknown, ancestors: Set<object> = new Set()): unknown {
+  if (value === null || typeof value === "string" || typeof value === "boolean") return value;
+  if (typeof value === "number") return Number.isSafeInteger(value) ? value : { $num: String(value) };
+  if (value === undefined) return { $undefined: true };
+  if (typeof value !== "object") return { $unsupported: typeof value };
+  if (value instanceof Date) return { $date: Number.isNaN(value.getTime()) ? "invalid" : value.toISOString() };
+  if (ancestors.has(value)) return { $cycle: true };
+  ancestors.add(value);
+  try {
+    if (Array.isArray(value)) return Array.from({ length: value.length }, (_, i) => (i in value ? digestable(value[i], ancestors) : { $hole: true }));
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value)) if (v !== undefined) out[k] = digestable(v, ancestors);
+    return out;
+  } finally {
+    ancestors.delete(value);
+  }
+}
+
+/** Digest of the decision inputs; never throws. */
+function inputDigest(input: PolicyInput): string {
+  try {
+    return digest(digestable(policyInputFingerprint(input)));
+  } catch (err) {
+    // Only reachable when the input object itself cannot be read (e.g. a throwing getter).
+    return digest({ policy_version: POLICY_VERSION, unreadable_input: err instanceof Error ? err.message.slice(0, 200) : String(err) });
+  }
 }
 
 /** Stable subset of the input used to prove which facts a decision was made on. */
