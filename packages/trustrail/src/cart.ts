@@ -1,4 +1,4 @@
-import type { LineKind, ProductCategory } from "@qm/contracts";
+import { LINE_KINDS, type LineKind, type ProductCategory } from "@qm/contracts";
 import { digest } from "./canonical";
 
 export interface CartLine {
@@ -62,6 +62,17 @@ export interface ArithmeticIssue {
 export function checkCartArithmetic(cart: Cart): ArithmeticIssue[] {
   const issues: ArithmeticIssue[] = [];
   cart.lines.forEach((l, i) => {
+    // Structural validation: unknown kinds would be silently dropped from the totals, and a
+    // non-boolean `recurring` would be interpreted differently by the hash and the policy.
+    if (!(LINE_KINDS as readonly string[]).includes(l.kind)) {
+      issues.push({ path: `lines[${i}].kind`, expected: 0, actual: -1 });
+    }
+    if (l.recurring !== undefined && typeof l.recurring !== "boolean") {
+      issues.push({ path: `lines[${i}].recurring`, expected: 0, actual: -1 });
+    }
+    if (l.kind === "TAX" && (l.quantity !== 1 || l.unit_price_minor !== l.line_total_minor)) {
+      issues.push({ path: `lines[${i}].tax_shape`, expected: l.line_total_minor, actual: l.unit_price_minor });
+    }
     for (const [field, v] of [
       ["quantity", l.quantity],
       ["unit_price_minor", l.unit_price_minor],
@@ -73,7 +84,7 @@ export function checkCartArithmetic(cart: Cart): ArithmeticIssue[] {
       issues.push({ path: `lines[${i}].quantity`, expected: 1, actual: l.quantity });
     }
     const expected = l.quantity * l.unit_price_minor;
-    if (l.kind !== "TAX" && expected !== l.line_total_minor) {
+    if (expected !== l.line_total_minor) {
       issues.push({ path: `lines[${i}].line_total_minor`, expected, actual: l.line_total_minor });
     }
   });

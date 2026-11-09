@@ -187,7 +187,7 @@ export function evaluatePolicy(input: PolicyInput): PolicyResult {
           evidence: { sku: entry.sku, category: entry.category },
         });
       }
-      if ((entry.recurring || line.recurring) && !mandate.subscriptions_allowed) {
+      if ((entry.recurring || line.recurring === true) && !mandate.subscriptions_allowed) {
         violate({
           code: "SUBSCRIPTION_NOT_ALLOWED",
           severity: "BLOCK",
@@ -224,7 +224,7 @@ export function evaluatePolicy(input: PolicyInput): PolicyResult {
           evidence: { code: line.sku, expected_minor: expectedAmount, cart_minor: line.line_total_minor },
         });
       }
-      if (line.recurring && !mandate.subscriptions_allowed) {
+      if (line.recurring === true && !mandate.subscriptions_allowed) {
         violate({ code: "SUBSCRIPTION_NOT_ALLOWED", severity: "BLOCK", message: `"${line.description}" is recurring.` });
       }
     } else if (line.kind === "TAX") {
