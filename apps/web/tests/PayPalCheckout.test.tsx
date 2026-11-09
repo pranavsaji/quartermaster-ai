@@ -40,7 +40,10 @@ describe("PayPalCheckout", () => {
   });
 
   it("reports an ambiguous capture as unknown, re-reads the payment, and retries with the same idempotency key", async () => {
-    const captured = { payment: payment({ status: "COMPLETED", captured_amount_minor: 12345 }), purchase_order: { id: "po-1" } };
+    const captured = {
+      payment: payment({ status: "COMPLETED", captured_amount_minor: 12345 }),
+      purchase_order: { id: "po-1", status: "PAID" },
+    };
     const { calls } = mockFetch({
       "POST /api/v1/intents/intent-1/paypal-order": [jsonResponse({ payment: payment(), paypal_order_id: "ORDER-1" })],
       "POST /api/v1/payments/pay-1/capture": [

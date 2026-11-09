@@ -210,6 +210,8 @@ export async function request<T>(method: HttpMethod, path: string, options: Requ
   if (body.kind === "other") throw unexpectedResponse(response);
   // A successful write can change any cached read (e.g. the analytics summary).
   if (mutating) clearSharedCache();
+  // Trusted to match @qm/contracts, which the API shares. Responses that move money or sign
+  // certificates are additionally shape-checked in lib/api.ts (see lib/response-guards.ts).
   return (body.kind === "json" ? body.value : undefined) as T;
 }
 
