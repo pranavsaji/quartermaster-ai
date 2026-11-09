@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, lt } from "drizzle-orm";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import type {
   AgentStepDto,
   CandidateDto,
@@ -27,6 +27,7 @@ import { notFound } from "../../errors";
 import { toFindingDto } from "../findings";
 import { toForecastDto } from "../inventory";
 import { orderDtos } from "../orders";
+import { afterCursor, decodeCursor, newestFirst, toPage } from "../pagination";
 
 export async function getRequestDto(db: DbOrTx, organizationId: string, id: string): Promise<ProcurementRequestDto> {
   const [req] = await db.select().from(purchaseRequests).where(and(eq(purchaseRequests.id, id), eq(purchaseRequests.organizationId, organizationId)));
@@ -114,14 +115,13 @@ export async function getRequestDto(db: DbOrTx, organizationId: string, id: stri
 }
 
 export async function listRequests(db: DbOrTx, organizationId: string, limit: number, cursor?: string): Promise<Page<ProcurementRequestSummaryDto>> {
-  const before = cursor ? new Date(cursor) : null;
   const rows = await db
     .select()
     .from(purchaseRequests)
-    .where(before && !Number.isNaN(before.getTime()) ? and(eq(purchaseRequests.organizationId, organizationId), lt(purchaseRequests.createdAt, before)) : eq(purchaseRequests.organizationId, organizationId))
-    .orderBy(desc(purchaseRequests.createdAt))
+    .where(and(eq(purchaseRequests.organizationId, organizationId), afterCursor(purchaseRequests.createdAt, purchaseRequests.id, decodeCursor(cursor))))
+    .orderBy(...newestFirst(purchaseRequests.createdAt, purchaseRequests.id))
     .limit(limit + 1);
-  const page = rows.slice(0, limit);
+  const { page, nextCursor } = toPage(rows, limit);
   const totals = page.length
     ? await db
         .select({ requestId: purchaseOrders.requestId, total: purchaseOrders.totalMinor, status: purchaseOrders.status })
@@ -140,6 +140,6 @@ export async function listRequests(db: DbOrTx, organizationId: string, limit: nu
         created_at: r.createdAt.toISOString(),
       };
     }),
-    next_cursor: rows.length > limit ? page[page.length - 1]!.createdAt.toISOString() : null,
+    next_cursor: nextCursor,
   };
 }

@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { randomBytes } from "node:crypto";
 import type {
+  Page,
   DeliveryDto,
   IntentCertificateDto,
   IntentCertificatePayload,
@@ -24,6 +25,7 @@ import {
 } from "@qm/database";
 import { buildCart, computeCartHash, type Cart, type CartLine } from "@qm/trustrail";
 import { notFound } from "../errors";
+import { afterCursor, decodeCursor, newestFirst, toPage } from "./pagination";
 
 export type PurchaseOrderRow = typeof purchaseOrders.$inferSelect;
 export type PurchaseOrderItemRow = typeof purchaseOrderItems.$inferSelect;
@@ -250,4 +252,16 @@ export async function orderDtos(db: DbOrTx, organizationId: string, pos: Purchas
       created_at: po.createdAt.toISOString(),
     };
   });
+}
+
+/** Purchase orders newest first, with keyset pagination. */
+export async function listOrders(db: DbOrTx, organizationId: string, q: { limit: number; cursor?: string }): Promise<Page<PurchaseOrderDto>> {
+  const rows = await db
+    .select()
+    .from(purchaseOrders)
+    .where(and(eq(purchaseOrders.organizationId, organizationId), afterCursor(purchaseOrders.createdAt, purchaseOrders.id, decodeCursor(q.cursor))))
+    .orderBy(...newestFirst(purchaseOrders.createdAt, purchaseOrders.id))
+    .limit(q.limit + 1);
+  const { page, nextCursor } = toPage(rows, q.limit);
+  return { items: await orderDtos(db, organizationId, page), next_cursor: nextCursor };
 }
