@@ -79,7 +79,10 @@ describe("bypass regression corpus", () => {
 });
 
 describe("invisible characters", () => {
-  const invisibles = [0x200b, 0x200d, 0x2066, 0x2067, 0x2068, 0x2069, 0x202e, 0x034f, 0xfe0f, 0xfe00, 0x180e, 0xe0041, 0xe007f, 0xe0100, 0x00ad, 0xfeff, 0x2060];
+  const invisibles = [
+    0x200b, 0x200d, 0x2066, 0x2067, 0x2068, 0x2069, 0x202e, 0x034f, 0xfe0f, 0xfe00, 0x180e, 0xe0041, 0xe007f, 0xe0100, 0x00ad, 0xfeff,
+    0x2060,
+  ];
 
   it.each(invisibles.map((p) => [p.toString(16)]))("strips U+%s in normalisation and fencing", (hex) => {
     const ch = cp(Number.parseInt(hex, 16));
@@ -106,7 +109,9 @@ describe("invisible characters", () => {
   });
 
   it("keeps word boundaries when collapsing letter-spaced text", () => {
-    expect(normalizeUntrustedText(`${between("ignore", " ")}  ${between("all", " ")}  ${between("previous", " ")}`)).toBe("ignore all previous");
+    expect(normalizeUntrustedText(`${between("ignore", " ")}  ${between("all", " ")}  ${between("previous", " ")}`)).toBe(
+      "ignore all previous",
+    );
     expect(normalizeUntrustedText("Sizes S M L available, I am a chef")).toBe("Sizes SML available, I am a chef");
   });
 });
@@ -125,18 +130,15 @@ describe("robustness", () => {
     ["letters then spaces", `${"word".repeat(10_000)}${" ".repeat(40_000)}word`],
   ];
 
-  it.each(adversarialInputs)("analyses ~100 KB of %s in under 200 ms", (_name, text) => {
+  // At 400 KB a linear detector finishes in roughly 100 ms; a quadratic pattern needs many seconds.
+  // The bound leaves an order of magnitude for a slow or busy CI worker, so it cannot flake.
+  it.each(adversarialInputs)("analyses 400 KB of %s in linear time", (_name, text) => {
     expect(text.length).toBeGreaterThanOrEqual(60_000);
-    const input = text.slice(0, 100_000);
+    const input = text.repeat(Math.ceil(400_000 / text.length)).slice(0, 400_000);
     detectPromptInjection("warm up the regular expressions");
-    // Best of three, so a busy CI worker does not turn a linear-time check into a flaky one; a
-    // quadratic pattern takes seconds here, far beyond any scheduling noise.
-    const timings = [0, 1, 2].map(() => {
-      const started = performance.now();
-      detectPromptInjection(input);
-      return performance.now() - started;
-    });
-    expect(Math.min(...timings)).toBeLessThan(200);
+    const started = performance.now();
+    detectPromptInjection(input);
+    expect(performance.now() - started).toBeLessThan(2_500);
   });
 
   it("never throws on non-string input", () => {
