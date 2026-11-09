@@ -4,6 +4,7 @@ import Link from "next/link";
 import type { InventoryItemDto } from "@qm/contracts";
 import { useSession } from "@/components/session/SessionProvider";
 import { StatusBadge } from "@/components/ui/Badge";
+import { ButtonLink } from "@/components/ui/ButtonLink";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
@@ -111,12 +112,9 @@ export function LowStockList({
         ) : null}
         {low && low.length > 0 && can("createRequest") ? (
           <div className="mt-4">
-            <Link
-              href="/procurement?compose=1"
-              className="inline-flex h-9 items-center gap-2 rounded-lg bg-accent px-3.5 text-sm font-medium text-white shadow-sm hover:bg-accent-strong"
-            >
+            <ButtonLink href="/procurement?compose=1" variant="primary">
               Restock with Quartermaster
-            </Link>
+            </ButtonLink>
           </div>
         ) : null}
       </CardBody>

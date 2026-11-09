@@ -6,6 +6,7 @@ import { KpiRow } from "@/components/overview/KpiRow";
 import { LowStockList } from "@/components/overview/LowStockList";
 import { UpcomingDeliveries } from "@/components/overview/UpcomingDeliveries";
 import { useSession } from "@/components/session/SessionProvider";
+import { ButtonLink } from "@/components/ui/ButtonLink";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Notice } from "@/components/ui/Notice";
@@ -31,12 +32,9 @@ export function OverviewPage() {
         description="Stock levels, spend against your mandate and everything TrustRail has stopped this week."
         actions={
           can("createRequest") ? (
-            <Link
-              href="/procurement?compose=1"
-              className="inline-flex h-9 items-center gap-2 rounded-lg bg-accent px-3.5 text-sm font-medium text-white shadow-sm hover:bg-accent-strong"
-            >
+            <ButtonLink href="/procurement?compose=1" variant="primary">
               New procurement request
-            </Link>
+            </ButtonLink>
           ) : null
         }
       />

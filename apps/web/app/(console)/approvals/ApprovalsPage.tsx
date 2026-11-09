@@ -1,12 +1,12 @@
 "use client";
 
 import type { PurchaseOrderDto } from "@qm/contracts";
-import Link from "next/link";
 import { useMemo } from "react";
 import { useSession } from "@/components/session/SessionProvider";
 import { DecisionBadge } from "@/components/trustrail/DecisionBadge";
 import { Badge, StatusBadge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { ButtonLink } from "@/components/ui/ButtonLink";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
@@ -65,16 +65,9 @@ function ApprovalRow({ po, now }: { po: PurchaseOrderDto; now: number }) {
       <div className="flex w-full items-center justify-between gap-3 sm:w-auto">
         <span className="text-[12.5px] text-ink-3 sm:hidden">{nextAction(po)}</span>
         {href ? (
-          <Link
-            href={href}
-            className={
-              blockedDecision
-                ? "inline-flex h-8 items-center rounded-md border border-line-strong bg-surface px-3 text-[13px] font-medium text-ink-2 hover:bg-canvas"
-                : "inline-flex h-8 items-center rounded-md bg-accent px-3 text-[13px] font-medium text-white shadow-sm hover:bg-accent-strong"
-            }
-          >
+          <ButtonLink href={href} size="sm" variant={blockedDecision ? "secondary" : "primary"}>
             {po.status === "PROPOSED" ? "Review" : "Open"}
-          </Link>
+          </ButtonLink>
         ) : (
           <Badge tone="neutral">No linked request</Badge>
         )}

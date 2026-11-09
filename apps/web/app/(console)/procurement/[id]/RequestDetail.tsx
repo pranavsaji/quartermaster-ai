@@ -16,6 +16,7 @@ import { FindingsList } from "@/components/security/FindingsList";
 import { useSession } from "@/components/session/SessionProvider";
 import { StatusBadge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { ButtonLink } from "@/components/ui/ButtonLink";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Notice } from "@/components/ui/Notice";
@@ -160,12 +161,9 @@ export function RequestDetail({ id }: { id: string }) {
               </Button>
             ) : null}
             {readyCount > 0 ? (
-              <a
-                href="#proposals"
-                className="inline-flex h-9 items-center rounded-lg bg-accent px-3.5 text-sm font-medium text-white shadow-sm hover:bg-accent-strong"
-              >
+              <ButtonLink href="#proposals" variant="primary">
                 Review {readyCount} proposal{readyCount === 1 ? "" : "s"}
-              </a>
+              </ButtonLink>
             ) : null}
           </>
         }
