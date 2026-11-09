@@ -4,7 +4,8 @@
  *
  *  OWNER   — everything, and the only role that can approve, reject, pay, refund
  *            or edit the spend mandate.
- *  MANAGER — operational work: requests, research, inventory, deliveries, invoices.
+ *  MANAGER — operational work: requests, research, inventory, deliveries, invoices,
+ *            audit-chain verification.
  *  VIEWER  — read-only.
  */
 import type { Role, SessionUser } from "@qm/contracts";
@@ -20,7 +21,9 @@ export type Capability =
   | "adjustInventory"
   | "runForecast"
   | "manageDeliveries"
-  | "analyzeInvoices";
+  | "analyzeInvoices"
+  /** Re-verify the audit hash chain (GET /security/audit/verify is MANAGER+). */
+  | "verifyAudit";
 
 const OWNER_ONLY: ReadonlySet<Capability> = new Set(["approve", "reject", "pay", "refund", "editMandate"]);
 
