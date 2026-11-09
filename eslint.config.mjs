@@ -5,16 +5,20 @@ import prettier from "eslint-config-prettier";
 import globals from "globals";
 import tseslint from "typescript-eslint";
 
-/** Imports that would make a pure package touch the outside world. */
-const IMPURE = [
-  { name: "@qm/database", message: "Pure packages cannot use the database; pass data in." },
-  { name: "drizzle-orm", message: "Pure packages cannot use the database; pass data in." },
-  { name: "pg", message: "Pure packages cannot use the database; pass data in." },
-  { name: "node:fs", message: "Pure packages cannot touch the filesystem." },
-  { name: "node:http", message: "Pure packages cannot do network I/O." },
-  { name: "node:https", message: "Pure packages cannot do network I/O." },
-  { name: "@qm/payments", message: "Pure packages cannot call payment providers." },
-  { name: "@qm/integrations", message: "Pure packages cannot call external services." },
+/**
+ * Pure packages may import each other, zod and node:crypto (hashing and Ed25519), nothing else
+ * from Node or I/O libraries.
+ */
+const IMPURE_PATTERNS = [
+  { group: ["node:*", "!node:crypto"], message: "Pure packages cannot use Node I/O; only node:crypto is allowed." },
+  {
+    group: ["fs", "fs/*", "path", "os", "net", "http", "https", "child_process", "worker_threads", "dns", "tls", "crypto"],
+    message: "Pure packages cannot use Node I/O (import node:crypto for hashing).",
+  },
+  {
+    group: ["@qm/database", "@qm/payments", "@qm/integrations", "drizzle-orm", "drizzle-orm/*", "pg", "@electric-sql/*"],
+    message: "Pure packages cannot reach databases or external services; pass data in.",
+  },
 ];
 
 export default tseslint.config(
@@ -72,9 +76,24 @@ export default tseslint.config(
     // TrustRail and Quartermaster decide about money: keep them deterministic and I/O-free.
     files: ["packages/trustrail/src/**/*.ts", "packages/quartermaster/src/**/*.ts", "packages/contracts/src/**/*.ts"],
     rules: {
-      "no-restricted-imports": ["error", { paths: IMPURE }],
-      "no-restricted-globals": ["error", { name: "fetch", message: "Pure packages cannot do network I/O." }],
-      "no-restricted-properties": ["error", { object: "Date", property: "now", message: "Pass `now` in; pure packages have no clock." }],
+      "no-restricted-imports": ["error", { patterns: IMPURE_PATTERNS }],
+      "no-restricted-globals": [
+        "error",
+        { name: "fetch", message: "Pure packages cannot do network I/O." },
+        { name: "XMLHttpRequest", message: "Pure packages cannot do network I/O." },
+        { name: "WebSocket", message: "Pure packages cannot do network I/O." },
+      ],
+      "no-restricted-properties": [
+        "error",
+        { object: "Date", property: "now", message: "Pass `now` in; pure packages have no clock." },
+        { object: "performance", property: "now", message: "Pass `now` in; pure packages have no clock." },
+        { object: "process", property: "env", message: "Pure packages take configuration as arguments, not from the environment." },
+        {
+          object: "Math",
+          property: "random",
+          message: "Pure packages must be deterministic; use node:crypto for randomness that is part of the contract.",
+        },
+      ],
       "no-restricted-syntax": [
         "error",
         { selector: "NewExpression[callee.name='Date'][arguments.length=0]", message: "Pass `now` in; pure packages have no clock." },
