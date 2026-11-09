@@ -139,29 +139,6 @@ function RefundAction({
   onPayment: (payment: PaymentDto) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [amount, setAmount] = useState(minorToInput(maxMinor, payment.currency));
-  const [reason, setReason] = useState("");
-  const [fieldError, setFieldError] = useState<string | null>(null);
-  const refund = useAction(async (amountMinor: number | undefined) => {
-    const res = await api.payments.refund(payment.id, { amount_minor: amountMinor, reason: reason.trim() });
-    onPayment(res.payment);
-    setOpen(false);
-  });
-
-  function submit() {
-    const minor = inputToMinor(amount, payment.currency);
-    if (minor === null || minor <= 0 || minor > maxMinor) {
-      setFieldError(`Enter an amount between ${money(1, payment.currency)} and ${money(maxMinor, payment.currency)}.`);
-      return;
-    }
-    if (!reason.trim()) {
-      setFieldError("A reason is required.");
-      return;
-    }
-    setFieldError(null);
-    void refund.run(minor === maxMinor ? undefined : minor);
-  }
-
   return (
     <>
       <div className="mt-3">
@@ -169,35 +146,75 @@ function RefundAction({
           Refund…
         </Button>
       </div>
-      <Dialog
-        open={open}
-        onClose={() => setOpen(false)}
-        title="Refund payment"
-        description={`Up to ${money(maxMinor, payment.currency)} can be refunded through PayPal sandbox.`}
-        size="sm"
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setOpen(false)}>
-              Cancel
-            </Button>
-            <Button variant="danger" onClick={submit} loading={refund.pending}>
-              Issue refund
-            </Button>
-          </>
-        }
-      >
-        <div className="space-y-4">
-          <Field label="Amount" error={fieldError}>
-            {(control) => (
-              <MoneyInput {...control} currency={payment.currency} value={amount} onChange={(e) => setAmount(e.target.value)} />
-            )}
-          </Field>
-          <Field label="Reason" required>
-            {(control) => <Textarea {...control} value={reason} onChange={(e) => setReason(e.target.value)} maxLength={255} className="min-h-16" />}
-          </Field>
-          <ErrorNotice error={refund.error} />
-        </div>
-      </Dialog>
+      {open ? <RefundDialog payment={payment} maxMinor={maxMinor} onPayment={onPayment} onClose={() => setOpen(false)} /> : null}
     </>
+  );
+}
+
+/** Mounted per opening, so the default amount is what is refundable *now* (after any partial refund). */
+function RefundDialog({
+  payment,
+  maxMinor,
+  onPayment,
+  onClose,
+}: {
+  payment: PaymentDto;
+  maxMinor: number;
+  onPayment: (payment: PaymentDto) => void;
+  onClose: () => void;
+}) {
+  const [amount, setAmount] = useState(() => minorToInput(maxMinor, payment.currency));
+  const [reason, setReason] = useState("");
+  const [errors, setErrors] = useState<{ amount?: string; reason?: string }>({});
+  const refund = useAction(async (amountMinor: number | undefined) => {
+    const res = await api.payments.refund(payment.id, { amount_minor: amountMinor, reason: reason.trim() });
+    onPayment(res.payment);
+    onClose();
+  });
+
+  function submit() {
+    const next: typeof errors = {};
+    const minor = inputToMinor(amount, payment.currency);
+    if (minor === null || minor <= 0 || minor > maxMinor) {
+      next.amount = `Enter an amount between ${money(1, payment.currency)} and ${money(maxMinor, payment.currency)}.`;
+    }
+    if (!reason.trim()) next.reason = "Say why you're refunding.";
+    setErrors(next);
+    if (minor === null || Object.keys(next).length > 0) return;
+    void refund.run(minor === maxMinor ? undefined : minor);
+  }
+
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title="Refund payment"
+      description={`Up to ${money(maxMinor, payment.currency)} can be refunded through PayPal sandbox.`}
+      size="sm"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button variant="danger" onClick={submit} loading={refund.pending}>
+            Issue refund
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <Field label="Amount" required error={errors.amount}>
+          {(control) => (
+            <MoneyInput {...control} currency={payment.currency} value={amount} onChange={(e) => setAmount(e.target.value)} />
+          )}
+        </Field>
+        <Field label="Reason" required error={errors.reason}>
+          {(control) => (
+            <Textarea {...control} value={reason} onChange={(e) => setReason(e.target.value)} maxLength={255} className="min-h-16" />
+          )}
+        </Field>
+        <ErrorNotice error={refund.error} />
+      </div>
+    </Dialog>
   );
 }
