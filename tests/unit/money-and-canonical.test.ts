@@ -64,6 +64,27 @@ describe("canonical encoding", () => {
     expect(() => canonicalize({ a: () => 1 })).toThrow();
   });
 
+  it("rejects sparse arrays instead of emitting invalid JSON", () => {
+    expect(() => canonicalize([1, , 3])).toThrow(TypeError);
+    expect(() => canonicalize({ a: new Array(2) })).toThrow(/sparse/);
+    expect(canonicalize([1, null, 3])).toBe("[1,null,3]");
+  });
+
+  it("rejects cycles with a TypeError but allows shared references", () => {
+    const cyclic: Record<string, unknown> = { a: 1 };
+    cyclic.self = cyclic;
+    expect(() => canonicalize(cyclic)).toThrow(TypeError);
+    const arr: unknown[] = [];
+    arr.push(arr);
+    expect(() => canonicalize(arr)).toThrow(/cyclic/);
+    const shared = { x: 1 };
+    expect(canonicalize({ a: shared, b: [shared, shared] })).toBe('{"a":{"x":1},"b":[{"x":1},{"x":1}]}');
+  });
+
+  it("does not Unicode-normalise strings (documented)", () => {
+    expect(canonicalize("é")).not.toBe(canonicalize("é"));
+  });
+
   it("escapes strings exactly like JSON", () => {
     expect(canonicalize({ s: 'quote " and  ' })).toBe(JSON.stringify({ s: 'quote " and  ' }));
   });
