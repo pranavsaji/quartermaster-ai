@@ -22,7 +22,8 @@ const server = app.listen(ctx.config.port, () => {
   );
 });
 server.headersTimeout = 65_000;
-server.requestTimeout = 120_000;
+// Long enough for the longest permitted research run, with headroom for planning and the response.
+server.requestTimeout = Math.max(120_000, ctx.config.agent.deadlineMs + 30_000);
 
 const lifecycle = createShutdown({
   server,

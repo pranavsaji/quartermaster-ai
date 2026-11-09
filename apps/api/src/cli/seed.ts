@@ -8,6 +8,11 @@ if (!password || password.length < 12) {
   console.error("Set DEMO_USER_PASSWORD (at least 12 characters) before seeding.");
   process.exit(1);
 }
+if (process.argv.includes("--reset") && process.env.NODE_ENV === "production" && process.env.ALLOW_DEMO_RESET !== "true") {
+  // --reset deletes the demo organisation including its audit log.
+  console.error("Refusing --reset in production. Set ALLOW_DEMO_RESET=true if you really mean to delete the demo organisation.");
+  process.exit(1);
+}
 const ctx = await bootstrap({ migrate: true });
 try {
   const result = await seedDemo(ctx.db, { password, reset: process.argv.includes("--reset") });

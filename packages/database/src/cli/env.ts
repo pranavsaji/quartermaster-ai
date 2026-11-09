@@ -16,6 +16,19 @@ export function databaseUrl(): string {
   return `pglite://${path.join(REPO_ROOT, ".data", "pglite")}`;
 }
 
+/** Same rule as the API: TLS by default in production, opt out only explicitly. */
 export function databaseSsl(): boolean {
-  return process.env.DATABASE_SSL === "require";
+  const mode = process.env.DATABASE_SSL ?? (process.env.NODE_ENV === "production" ? "require" : "disable");
+  return mode === "require";
+}
+
+/**
+ * `--reset` deletes the demo organisation, including its audit log. Refused in production unless
+ * explicitly allowed, so a stray command cannot wipe a live deployment's history.
+ */
+export function assertResetAllowed(reset: boolean): void {
+  if (reset && process.env.NODE_ENV === "production" && process.env.ALLOW_DEMO_RESET !== "true") {
+    console.error("Refusing --reset in production. Set ALLOW_DEMO_RESET=true if you really mean to delete the demo organisation.");
+    process.exit(1);
+  }
 }

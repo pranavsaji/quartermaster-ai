@@ -1,6 +1,6 @@
 import { createDatabase } from "../client";
 import { DEMO_CREDENTIALS, seedDemo } from "../seed";
-import { databaseSsl, databaseUrl, loadEnv } from "./env";
+import { assertResetAllowed, databaseSsl, databaseUrl, loadEnv } from "./env";
 
 loadEnv();
 const password = process.env.DEMO_USER_PASSWORD;
@@ -8,6 +8,7 @@ if (!password || password.length < 12) {
   console.error("Set DEMO_USER_PASSWORD (at least 12 characters) before seeding.");
   process.exit(1);
 }
+assertResetAllowed(process.argv.includes("--reset"));
 const handle = await createDatabase({ url: databaseUrl(), ssl: databaseSsl(), sslCa: process.env.DATABASE_CA_CERT });
 try {
   await handle.migrate();
