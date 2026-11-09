@@ -31,13 +31,19 @@ export function LoginForm() {
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
   const { containerRef, focusFirstError, attempt } = useErrorFocus<HTMLFormElement>();
 
+  // Stays true after a successful sign-in until the console replaces this page, so the button
+  // can't be pressed again (and start a second session) while the navigation is under way.
+  const [navigating, setNavigating] = useState(false);
   const login = useAction(async (body: LoginRequest) => {
     await api.auth.login(body);
+    setNavigating(true);
     router.replace(safeNext(params.get("next"), window.location.origin));
   });
+  const busy = login.pending || navigating;
 
   function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (busy) return;
     const parsed = LoginRequest.safeParse({ email, password });
     if (!parsed.success) {
       const errs: { email?: string; password?: string } = {};
@@ -83,7 +89,7 @@ export function LoginForm() {
       <ErrorSummary key={attempt} messages={[fieldErrors.email, fieldErrors.password]} />
       {login.error ? <ErrorNotice error={login.error} title="Sign-in failed" /> : null}
 
-      <Button type="submit" variant="primary" size="lg" className="w-full" loading={login.pending}>
+      <Button type="submit" variant="primary" size="lg" className="w-full" loading={busy}>
         Sign in
       </Button>
 
