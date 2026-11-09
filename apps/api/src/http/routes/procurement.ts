@@ -1,5 +1,5 @@
 import { Router } from "express";
-import rateLimit from "express-rate-limit";
+import rateLimit, { ipKeyGenerator } from "express-rate-limit";
 import { ApproveRequest, CreateProcurementRequest, PaginationQuery, RejectRequest } from "@qm/contracts";
 import type { AppContext } from "../../context";
 import { getRequestDto, listRequests } from "../../services/procurement/dto";
@@ -16,7 +16,7 @@ export function procurementRoutes(ctx: AppContext): Router {
   const researchLimiter = rateLimit({
     windowMs: 10 * 60_000,
     limit: ctx.config.env === "test" ? 1000 : 20,
-    keyGenerator: (req) => req.user?.id ?? req.ip ?? "anonymous",
+    keyGenerator: (req) => req.user?.id ?? ipKeyGenerator(req.ip ?? "0.0.0.0"),
     standardHeaders: "draft-8",
     legacyHeaders: false,
     message: { error: { code: "RATE_LIMITED", message: "Too many research runs. Try again in a few minutes." } },
