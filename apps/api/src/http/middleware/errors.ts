@@ -85,6 +85,20 @@ export function errorHandler(log: Logger): ErrorRequestHandler {
         .status(409)
         .json({ error: { code: "CONFLICT", message: "The resource was modified concurrently. Retry the request.", correlation_id } });
     }
+    // A transaction that lost a lock race (serialization failure or deadlock) changed nothing and
+    // is safe to retry.
+    if (sqlState === "40001" || sqlState === "40P01") {
+      log.warn({ sqlstate: sqlState, correlation_id, path: req.path }, "transaction conflict returned to client");
+      res.set("Retry-After", "1");
+      return void res.status(503).json({
+        error: {
+          code: "CONCURRENT_UPDATE",
+          message: "Another change happened at the same time. Retry the request.",
+          details: { retryable: true },
+          correlation_id,
+        },
+      });
+    }
     log.error({ err, correlation_id, path: req.path }, "unhandled error");
     res.status(500).json({ error: { code: "INTERNAL", message: "An unexpected error occurred.", correlation_id } });
   };

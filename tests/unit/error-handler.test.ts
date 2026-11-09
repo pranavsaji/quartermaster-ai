@@ -19,8 +19,12 @@ function run(err: unknown) {
       },
     }),
   );
-  const sent: { status?: number; body?: { error: Record<string, unknown> } } = {};
+  const sent: { status?: number; body?: { error: Record<string, unknown> }; headers: Record<string, string> } = { headers: {} };
   const res = {
+    set(name: string, value: string) {
+      sent.headers[name] = value;
+      return this;
+    },
     status(s: number) {
       sent.status = s;
       return this;
@@ -76,5 +80,18 @@ describe("error handler", () => {
     expect(publicServerErrorDetails("raw text")).toBeUndefined();
     expect(publicServerErrorDetails(["a"])).toBeUndefined();
     expect(new AppError(503, "X", "m").details).toBeUndefined();
+  });
+
+  it("turns lost lock races into a retryable 503, including driver-wrapped ones", () => {
+    for (const err of [
+      Object.assign(new Error("deadlock detected"), { code: "40P01" }),
+      new Error("Failed query", { cause: { code: "40001" } }),
+    ]) {
+      const { sent, logged } = run(err);
+      expect(sent.status).toBe(503);
+      expect(sent.body!.error).toMatchObject({ code: "CONCURRENT_UPDATE", details: { retryable: true } });
+      expect(sent.headers["Retry-After"]).toBe("1");
+      expect(logged.some((l) => l.msg === "unhandled error")).toBe(false);
+    }
   });
 });
