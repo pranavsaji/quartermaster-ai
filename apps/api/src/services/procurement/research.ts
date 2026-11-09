@@ -12,14 +12,14 @@ import {
 } from "@qm/quartermaster";
 import { detectPromptInjection, mergeVerdicts, type SpendMandate } from "@qm/trustrail";
 import type { AppContext } from "../../context";
-import { AppError, conflict, notFound } from "../../errors";
+import { AppError, conflict, notFound, unprocessable } from "../../errors";
 import { appendAudit } from "../audit";
 import { recordFinding } from "../findings";
 import { runForecast, type InventoryRow } from "../inventory";
 import { getActiveMandateRow, rowToMandate } from "../mandates";
 import { researchItem } from "../market";
 import { createProposal, loadOrder } from "../orders";
-import { evaluateOrder } from "../policy";
+import { evaluateOrder, parseStoredIntent, type StoredIntent } from "../policy";
 import {
   loadCatalogForItems,
   loadSuppliers,
@@ -39,15 +39,6 @@ const RESEARCHABLE = ["DRAFT", "READY_FOR_REVIEW", "BLOCKED", "FAILED"];
 
 type RequestRow = typeof purchaseRequests.$inferSelect;
 type Candidate = CandidateEvaluation & { id: string };
-
-/** The interpreted intent as stored on the request. */
-interface StoredIntent {
-  inventory_item_ids?: string[];
-  demand_multiplier?: number;
-  notes?: string;
-  budget_limit_minor?: number | null;
-  required_by?: string | null;
-}
 
 /** Everything every research stage needs: who, which request, and the run's envelope. */
 interface ResearchContext {
@@ -120,6 +111,9 @@ export async function researchRequest(ctx: AppContext, user: { id: string; organ
       },
     });
     run.aiMode = ctx.openai.enabled ? "LLM" : "DETERMINISTIC_FALLBACK";
+    // The intent carries the owner's cap: research never runs on one it cannot read.
+    const intent = parseStoredIntent(claimed.intent);
+    if (!intent) throw unprocessable("REQUEST_INTENT_INVALID", "The request's stored intent is malformed. Create a new request.");
     return await runResearch({
       ctx,
       run,
@@ -127,7 +121,7 @@ export async function researchRequest(ctx: AppContext, user: { id: string; organ
       userId: user.id,
       requestId,
       request: claimed,
-      intent: claimed.intent ?? {},
+      intent,
       now,
       createdProposalIds,
     });
