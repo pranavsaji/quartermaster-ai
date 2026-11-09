@@ -1,0 +1,41 @@
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "23 4 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: github/codeql-action/init@9418214df1f2c4b8128c770156c409013b07d6b9 # v3
+        with:
+          languages: javascript-typescript
+          queries: security-extended
+      # The repository is private without GitHub Advanced Security, so results cannot be uploaded
+      # to code scanning. Analyse locally, keep the SARIF, and fail on error-level results.
+      - uses: github/codeql-action/analyze@9418214df1f2c4b8128c770156c409013b07d6b9 # v3
+        with:
+          upload: never
+          output: sarif-results
+      - name: Fail on error-level findings
+        run: |
+          count=$(jq '[.runs[].results[] | select(.level == "error")] | length' sarif-results/*.sarif)
+          jq -r '.runs[].results[] | select(.level == "error") | "\(.ruleId): \(.message.text) (\(.locations[0].physicalLocation.artifactLocation.uri):\(.locations[0].physicalLocation.region.startLine))"' sarif-results/*.sarif
+          test "$count" -eq 0
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: codeql-sarif
+          path: sarif-results/
+          retention-days: 14
