@@ -6,7 +6,12 @@ import type { AppContext } from "../context";
 import { AppError } from "../errors";
 import { appendAudit } from "./audit";
 
-const MAX_FAILED_LOGINS = 5;
+/**
+ * Account-wide lockout is a backstop against distributed guessing. Ordinary brute force is
+ * stopped earlier by the per-IP+email limiter (10 per 15 minutes), which only slows the attacker's
+ * own address; a low account-wide threshold would let anyone lock the owner out of approvals.
+ */
+export const MAX_FAILED_LOGINS = 25;
 const LOCKOUT_MINUTES = 15;
 
 export interface AuthenticatedUser {

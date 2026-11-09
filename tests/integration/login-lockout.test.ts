@@ -4,6 +4,7 @@ import request from "supertest";
 import { DEMO_CREDENTIALS, users } from "@qm/database";
 import { login } from "../../apps/api/src/services/auth";
 import { AppError } from "../../apps/api/src/errors";
+import { MAX_FAILED_LOGINS } from "../../apps/api/src/services/auth";
 import { createHarness, PASSWORD, type Harness } from "../helpers/harness";
 
 let h: Harness;
@@ -27,10 +28,10 @@ const httpLogin = (email: string, password: string) =>
 describe("sign-in lockout", () => {
   it("counts concurrent failures atomically and locks the account", async () => {
     const email = DEMO_CREDENTIALS.manager.email;
-    const results = await Promise.all(Array.from({ length: 5 }, () => attempt(email, "wrong-password-xyz")));
+    const results = await Promise.all(Array.from({ length: MAX_FAILED_LOGINS }, () => attempt(email, "wrong-password-xyz")));
     expect(results.every((r) => r === "401 INVALID_CREDENTIALS")).toBe(true);
     const [row] = await h.ctx.db.select().from(users).where(eq(users.email, email));
-    // With a read-modify-write counter, five parallel failures each wrote 1 and nothing locked.
+    // With a read-modify-write counter, parallel failures each wrote 1 and nothing locked.
     expect(row!.lockedUntil!.getTime()).toBeGreaterThan(h.clock.now.getTime());
     expect(row!.failedLogins).toBe(0);
     // Even the right password is refused while locked.
@@ -39,7 +40,7 @@ describe("sign-in lockout", () => {
 
   it("does not lose a lock to a slower concurrent failure", async () => {
     const email = DEMO_CREDENTIALS.viewer.email;
-    await Promise.all(Array.from({ length: 9 }, () => attempt(email, "wrong-password-xyz")));
+    await Promise.all(Array.from({ length: 2 * MAX_FAILED_LOGINS - 1 }, () => attempt(email, "wrong-password-xyz")));
     const [row] = await h.ctx.db.select().from(users).where(eq(users.email, email));
     expect(row!.lockedUntil).not.toBeNull();
     expect(row!.lockedUntil!.getTime()).toBeGreaterThan(h.clock.now.getTime());
