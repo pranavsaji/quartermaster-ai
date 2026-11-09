@@ -9,6 +9,7 @@ import {
   paymentAttempts,
   purchaseOrders,
   purchaseRequests,
+  rateLimitHits,
   sessions,
   type Database,
 } from "@qm/database";
@@ -203,6 +204,8 @@ export async function sweep(ctx: AppContext): Promise<SweepReport> {
       .where(lt(idempotencyKeys.createdAt, new Date(now.getTime() - 48 * 3_600_000)))
       .returning({ id: idempotencyKeys.id });
     report.idempotencyPurged = purgedKeys.length;
+    // Rate-limit windows are timed by the database clock; anything past its reset is dead.
+    await ctx.db.delete(rateLimitHits).where(lt(rateLimitHits.resetAt, sql`now() - interval '1 minute'`));
   } finally {
     await releaseLease(ctx.db, "sweeper");
   }

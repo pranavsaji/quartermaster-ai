@@ -35,6 +35,8 @@ const EnvSchema = z.object({
   LOGIN_RATE_LIMIT_PER_IP: z.coerce.number().int().min(1).max(100_000).optional(),
   /** PayPal webhook deliveries per source IP, per minute. */
   WEBHOOK_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().min(1).max(100_000).default(120),
+  /** Where rate-limit counters live: shared in the database (production default) or per process. */
+  RATE_LIMIT_STORE: z.enum(["memory", "database"]).optional(),
 
   DATABASE_URL: z.string().min(1).optional(),
   /** Defaults to `require` in production and `disable` elsewhere. */
@@ -101,7 +103,7 @@ export interface AppConfig {
   corsOrigins: string[];
   /** Hop count, or trusted proxy addresses/subnets. */
   trustProxy: number | string[];
-  rateLimits: { perMinute: number; loginPerAccount: number; loginPerIp: number; webhookPerMinute: number };
+  rateLimits: { perMinute: number; loginPerAccount: number; loginPerIp: number; webhookPerMinute: number; store: "memory" | "database" };
   database: { url: string; ssl: boolean; ca?: string; poolMax: number };
   session: { ttlHours: number; cookieSecure: boolean; cookieName: string };
   signing: { privateKey: string | null; keyId: string | undefined };
@@ -210,6 +212,7 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
       loginPerAccount: e.LOGIN_RATE_LIMIT_PER_ACCOUNT ?? (e.NODE_ENV === "test" ? 1000 : 10),
       loginPerIp: e.LOGIN_RATE_LIMIT_PER_IP ?? (e.NODE_ENV === "test" ? 1000 : 100),
       webhookPerMinute: e.WEBHOOK_RATE_LIMIT_PER_MINUTE,
+      store: e.RATE_LIMIT_STORE ?? (production ? "database" : "memory"),
     },
     database: {
       url: e.DATABASE_URL ?? "pglite://./.data/pglite",

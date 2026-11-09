@@ -6,6 +6,7 @@ import type { AppContext } from "../../context";
 import { login, logout, sessionUser } from "../../services/auth";
 import { sessionAuth } from "../middleware/auth";
 import { asyncHandler, parse } from "../middleware/errors";
+import { limiterStore } from "../rate-limit-store";
 
 /** Normalised email for rate-limit keys; malformed bodies share one bucket per IP. */
 export function loginEmailKey(body: unknown): string {
@@ -23,6 +24,7 @@ export function authRoutes(ctx: AppContext): Router {
   const limited = { error: { code: "RATE_LIMITED", message: "Too many sign-in attempts. Try again later." } };
   const loginPerAccount = rateLimit({
     windowMs: 15 * 60_000,
+    ...limiterStore(ctx, "login-account"),
     limit: ctx.config.rateLimits.loginPerAccount,
     standardHeaders: "draft-8",
     legacyHeaders: false,
@@ -31,6 +33,7 @@ export function authRoutes(ctx: AppContext): Router {
   });
   const loginPerIp = rateLimit({
     windowMs: 15 * 60_000,
+    ...limiterStore(ctx, "login-ip"),
     limit: ctx.config.rateLimits.loginPerIp,
     standardHeaders: false,
     legacyHeaders: false,

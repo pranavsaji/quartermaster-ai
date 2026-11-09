@@ -8,6 +8,7 @@ import { researchRequest } from "../../services/procurement/research";
 import { actorOf, requireRole } from "../middleware/auth";
 import { asyncHandler, param, parse } from "../middleware/errors";
 import { idempotent } from "../middleware/idempotency";
+import { limiterStore } from "../rate-limit-store";
 
 export function procurementRoutes(ctx: AppContext): Router {
   const r = Router();
@@ -15,6 +16,7 @@ export function procurementRoutes(ctx: AppContext): Router {
   // Research runs paid model and market-data calls; cap it per user to bound cost and abuse.
   const researchLimiter = rateLimit({
     windowMs: 10 * 60_000,
+    ...limiterStore(ctx, "research"),
     limit: ctx.config.env === "test" ? 1000 : 20,
     keyGenerator: (req) => req.user?.id ?? ipKeyGenerator(req.ip ?? "0.0.0.0"),
     standardHeaders: "draft-8",

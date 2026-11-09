@@ -2,6 +2,7 @@ import type { RequestHandler } from "express";
 import rateLimit from "express-rate-limit";
 import type { AppContext } from "../../context";
 import { AppError } from "../../errors";
+import { limiterStore } from "../rate-limit-store";
 
 /** PayPal signs a transmission time; deliveries outside this window are refused as replays/garbage. */
 export const WEBHOOK_MAX_SKEW_MS = 5 * 60_000;
@@ -51,6 +52,7 @@ export function paypalWebhookGuard(ctx: AppContext): RequestHandler {
 export function paypalWebhookLimiter(ctx: AppContext): RequestHandler {
   return rateLimit({
     windowMs: 60_000,
+    ...limiterStore(ctx, "webhooks"),
     limit: ctx.config.rateLimits.webhookPerMinute,
     standardHeaders: "draft-8",
     legacyHeaders: false,
