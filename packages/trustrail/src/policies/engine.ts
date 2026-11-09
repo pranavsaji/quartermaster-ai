@@ -157,8 +157,21 @@ export function evaluatePolicy(input: PolicyInput): PolicyResult {
   // --- Line items vs. catalog and published terms -------------------------------------
   const catalogBySku = new Map(input.catalog.filter((c) => c.supplier_id === cart.supplier_id).map((c) => [c.sku, c]));
   let unauthorizedCount = 0;
+  const seenChargeCodes = new Set<string>();
+  const seenProductSkus = new Set<string>();
+  let taxLines = 0;
   for (const line of cart.lines) {
     if (line.kind === "PRODUCT") {
+      if (line.sku && seenProductSkus.has(line.sku)) {
+        unauthorizedCount++;
+        violate({
+          code: "UNAUTHORIZED_LINE_ITEM",
+          severity: "BLOCK",
+          message: `Product ${line.sku} appears on more than one line.`,
+          evidence: { sku: line.sku },
+        });
+      }
+      if (line.sku) seenProductSkus.add(line.sku);
       const entry = line.sku ? catalogBySku.get(line.sku) : undefined;
       if (!entry) {
         unauthorizedCount++;
@@ -204,6 +217,20 @@ export function evaluatePolicy(input: PolicyInput): PolicyResult {
         });
       }
     } else if (line.kind === "SHIPPING" || line.kind === "FEE") {
+      // Each published charge may be applied at most once; repeating a legitimate code is a
+      // classic way to smuggle an extra charge past per-line checks.
+      const chargeKey = `${line.kind}:${line.sku ?? ""}`;
+      if (seenChargeCodes.has(chargeKey)) {
+        unauthorizedCount++;
+        violate({
+          code: "UNAUTHORIZED_LINE_ITEM",
+          severity: "BLOCK",
+          message: `Charge "${line.description}" is applied more than once.`,
+          evidence: { code: line.sku, kind: line.kind },
+        });
+        continue;
+      }
+      seenChargeCodes.add(chargeKey);
       const term = supplier?.fee_terms.find((t) => t.code === line.sku && t.kind === line.kind);
       const waived = term && term.waived_over_minor !== null && cart.subtotal_minor >= term.waived_over_minor;
       const expectedAmount = term ? (waived ? 0 : term.amount_minor) : null;
@@ -228,6 +255,12 @@ export function evaluatePolicy(input: PolicyInput): PolicyResult {
         violate({ code: "SUBSCRIPTION_NOT_ALLOWED", severity: "BLOCK", message: `"${line.description}" is recurring.` });
       }
     } else if (line.kind === "TAX") {
+      taxLines++;
+      if (taxLines > 1) {
+        unauthorizedCount++;
+        violate({ code: "UNAUTHORIZED_LINE_ITEM", severity: "BLOCK", message: "The cart contains more than one tax line." });
+        continue;
+      }
       const expectedTax = supplier ? Math.round((cart.subtotal_minor * supplier.tax_rate_bps) / 10_000) : null;
       if (expectedTax === null || line.line_total_minor !== expectedTax) {
         unauthorizedCount++;
@@ -251,6 +284,16 @@ export function evaluatePolicy(input: PolicyInput): PolicyResult {
       message: "Supplier content was quarantined after suspicious instructions were detected.",
       evidence: { supplier_id: cart.supplier_id },
     });
+  }
+  for (const line of productLines) {
+    if (line.sku && quarantined.has(line.sku) && !catalogBySku.get(line.sku)?.quarantined) {
+      violate({
+        code: "QUARANTINED_SOURCE",
+        severity: "BLOCK",
+        message: `Listing ${line.sku} was quarantined by threat detection.`,
+        evidence: { sku: line.sku },
+      });
+    }
   }
   check("NO_QUARANTINED_SOURCES", !violations.some((v) => v.code === "QUARANTINED_SOURCE"), "Quarantine status checked.");
 
@@ -319,16 +362,31 @@ export function evaluatePolicy(input: PolicyInput): PolicyResult {
     const ref = input.market.find((m) => m.sku === line.sku);
     const fresh =
       ref?.observed_at !== null && ref?.observed_at !== undefined && input.now.getTime() - Date.parse(ref.observed_at) <= maxAgeMs;
-    if (!ref || !ref.comparable || ref.reference_unit_price_minor === null || !fresh) {
+    const refPrice = ref?.reference_unit_price_minor ?? null;
+    const usableRef = refPrice !== null && Number.isFinite(refPrice) && refPrice > 0;
+    if (!ref || !ref.comparable || !usableRef || !fresh) {
       violate({
         code: "MARKET_REFERENCE_UNAVAILABLE",
         severity: "REVIEW",
         message: `No recent, comparable market price is available for ${line.sku}; a human must judge the price.`,
-        evidence: { sku: line.sku, reason: !ref ? "missing" : !ref.comparable ? "not_comparable" : !fresh ? "stale" : "no_price" },
+        evidence: { sku: line.sku, reason: !ref ? "missing" : !ref.comparable ? "not_comparable" : !fresh ? "stale" : "invalid_price" },
       });
       continue;
     }
-    const premiumPct = ((ref.candidate_unit_price_minor - ref.reference_unit_price_minor) / ref.reference_unit_price_minor) * 100;
+    // The candidate price is derived from the cart line being approved, never from a caller-
+    // supplied figure, so the check always gates the price that will actually be charged.
+    const pack = input.pack_quantity_by_sku[line.sku] ?? 1;
+    const candidateUnit = line.unit_price_minor / Math.max(1, pack);
+    const premiumPct = ((candidateUnit - (refPrice as number)) / (refPrice as number)) * 100;
+    if (!Number.isFinite(premiumPct)) {
+      violate({
+        code: "MARKET_REFERENCE_UNAVAILABLE",
+        severity: "REVIEW",
+        message: `Market comparison for ${line.sku} could not be computed.`,
+        evidence: { sku: line.sku, reason: "non_finite" },
+      });
+      continue;
+    }
     if (premiumPct > mandate.max_market_price_premium_pct) {
       violate({
         code: "MARKET_PRICE_PREMIUM_EXCEEDED",
@@ -337,8 +395,8 @@ export function evaluatePolicy(input: PolicyInput): PolicyResult {
         evidence: {
           sku: line.sku,
           premium_pct: Math.round(premiumPct * 10) / 10,
-          reference_unit_price_minor: ref.reference_unit_price_minor,
-          candidate_unit_price_minor: ref.candidate_unit_price_minor,
+          reference_unit_price_minor: refPrice,
+          candidate_unit_price_minor: candidateUnit,
         },
       });
     }
