@@ -78,6 +78,25 @@ describe("usableUnits for volume items", () => {
     expect(usableUnits("liter", "Canola 18L", "Heavy-duty jug with handle.")).toEqual({ units: 18, confidence: "HIGH" });
   });
 
+  // Titles and descriptions are capped at 2,000 characters and the patterns have no nested
+  // optional whitespace, so even 400 KB of adversarial text is handled in a few milliseconds. The
+  // bound only separates linear from catastrophic behaviour; it cannot flake on a slow worker.
+  it.each([
+    ["whitespace runs between numbers and dashes", `1${" ".repeat(50)}-${" ".repeat(50)}`],
+    ["digits and spaces", "1 ".repeat(20)],
+    ["dangling multipliers", "12 x ".repeat(20)],
+    ["pack-of chains", "Pack of 2 ".repeat(20)],
+    ["volumes without units", "1.5 - - - ".repeat(20)],
+  ])("handles a 400 KB title of %s in bounded time", (_name, unit) => {
+    const huge = unit.repeat(Math.ceil(400_000 / unit.length)).slice(0, 400_000);
+    usableUnits("liter", "warm up 1 L", "warm up");
+    const started = performance.now();
+    usableUnits("liter", `${huge} 3 L`, huge);
+    usableUnits("liter", huge, huge);
+    parseVolume(huge);
+    expect(performance.now() - started).toBeLessThan(2_500);
+  });
+
   it("never throws and returns positive finite litres or null", () => {
     fc.assert(
       fc.property(fc.string({ maxLength: 120 }), fc.option(fc.string({ maxLength: 120 })), (title, description) => {

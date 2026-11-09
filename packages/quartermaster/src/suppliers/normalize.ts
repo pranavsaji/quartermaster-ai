@@ -29,7 +29,7 @@ const MULTIPACK = new RegExp(
 // "Pack of 150", "Case of 300", "(Pack of 10)"; not "Case of 6 x 50" (that is a multipack).
 const PACK_OF = new RegExp(String.raw`\b(?:pack|case|set|box|bag|carton|bundle|sleeve)\s+of\s+${NUM}(?!\s*[x×]\s*\d)`, "gi");
 // "150 Count", "150-ct", "1,000 pcs", "150 Pack"
-const COUNT = new RegExp(String.raw`${NUM}\s*-?\s*${COUNT_WORDS}\b`, "gi");
+const COUNT = new RegExp(String.raw`${NUM}\s*(?:-\s*)?${COUNT_WORDS}\b`, "gi");
 // "(150)" at the end of a title
 const TRAILING_PAREN = /\((\d{2,6})\)\s*$/;
 // "100 Count (Pack of 10)", "50 count each", "50 per sleeve": the pack-of is a multiplier.
@@ -141,7 +141,7 @@ const VOLUME_UNIT = String.raw`(millilit(?:er|re)s?|ml|lit(?:er|re)s?|ltrs?|lt|l
  * is not "5 L"), and the unit must end the word ("5 lb" and "2 lids" are not litres).
  */
 const VOLUME_RE = new RegExp(
-  String.raw`(?<![\p{N}.,])(\d{1,3}(?:,\d{3})+(?![.,]?\d)|\d{1,6}(?:[.,]\d{1,3})?)\s*-?\s*${VOLUME_UNIT}(?![\p{L}\p{N}])`,
+  String.raw`(?<![\p{N}.,])(\d{1,3}(?:,\d{3})+(?![.,]?\d)|\d{1,6}(?:[.,]\d{1,3})?)\s*(?:-\s*)?${VOLUME_UNIT}(?![\p{L}\p{N}])`,
   "giu",
 );
 const CONTAINER = String.raw`(?:bottles?|jugs?|jars?|cans?|containers?|tubs?|pouches|pouch|refills?|units?|packs?|pk|pcs|pieces|count|ct)`;
@@ -149,16 +149,16 @@ const CONTAINER = String.raw`(?:bottles?|jugs?|jars?|cans?|containers?|tubs?|pou
 const COUNT_BEFORE_VOLUME = new RegExp(String.raw`(?<![\p{N}.,])(\d{1,4})\s*(?:${CONTAINER}\s*)?(?:[x×*]|\/)\s*$`, "iu");
 /** "1 gallon x 4", "500 ml × 12", "750ml bottles x 6", immediately after a volume and not itself a volume. */
 const COUNT_AFTER_VOLUME = new RegExp(
-  String.raw`^\s*(?:${CONTAINER}\s*)?[x×*]\s*(\d{1,4})(?!\p{N}|[.,]\p{N}|\s*-?\s*${VOLUME_UNIT}(?![\p{L}\p{N}]))`,
+  String.raw`^\s*(?:${CONTAINER}\s*)?[x×*]\s*(\d{1,4})(?!\p{N}|[.,]\p{N}|\s*(?:-\s*)?${VOLUME_UNIT}(?![\p{L}\p{N}]))`,
   "iu",
 );
 /** Pack counts anywhere: "(Pack of 2)", "Case of 6", "2-Pack", "6 bottles", "4 count", "6/case", "6 per case". */
 const COUNT_ANYWHERE = [
   new RegExp(
-    String.raw`\b(?:pack|case|box|carton|set|bundle|lot)\s+of\s+(\d{1,4})(?!\p{N}|[.,]\p{N}|\s*-?\s*${VOLUME_UNIT}(?![\p{L}\p{N}]))`,
+    String.raw`\b(?:pack|case|box|carton|set|bundle|lot)\s+of\s+(\d{1,4})(?!\p{N}|[.,]\p{N}|\s*(?:-\s*)?${VOLUME_UNIT}(?![\p{L}\p{N}]))`,
     "giu",
   ),
-  new RegExp(String.raw`(?<![\p{N}.,])(\d{1,4})\s*-?\s*${CONTAINER}(?![\p{L}\p{N}])`, "giu"),
+  new RegExp(String.raw`(?<![\p{N}.,])(\d{1,4})\s*(?:-\s*)?${CONTAINER}(?![\p{L}\p{N}])`, "giu"),
   new RegExp(String.raw`(?<![\p{N}.,])(\d{1,4})\s*(?:\/|per)\s*(?:case|cs|pack|pk|box|carton)\b`, "giu"),
 ];
 
@@ -200,8 +200,12 @@ function volumeHits(text: string): VolumeHit[] {
   return out;
 }
 
-/** Every pack count stated in a text, excluding the digits of volume mentions themselves. */
-function packCounts(text: string, volumes: VolumeHit[]): number[] {
+/**
+ * Every pack count stated in the first 2,000 characters of a text, excluding the digits of
+ * volume mentions themselves (`volumes` must come from `volumeHits` on the same text).
+ */
+function packCounts(fullText: string, volumes: VolumeHit[]): number[] {
+  const text = fullText.slice(0, 2_000);
   const counts: number[] = [];
   const insideVolume = (i: number) => volumes.some((v) => i >= v.index && i < v.end);
   for (const v of volumes) {
@@ -281,15 +285,15 @@ export function usableUnits(
   description?: string | null,
 ): { units: number | null; confidence: PackParse["confidence"] } {
   if (/^(l|liter|litre|liters|litres)$/i.test(unit)) {
-    const t = typeof title === "string" ? title : "";
-    const d = typeof description === "string" ? description : "";
+    const t = (typeof title === "string" ? title : "").slice(0, 2_000);
+    const d = (typeof description === "string" ? description : "").slice(0, 2_000);
     const fromTitle = parseVolume(t);
     if (fromTitle.litres === null) {
       const fromDescription = parseVolume(d);
       return { units: fromDescription.litres, confidence: fromDescription.litres === null ? "NONE" : "LOW" };
     }
     const titleCounts = packCounts(t, volumeHits(t));
-    const descriptionCounts = packCounts(d.slice(0, 2_000), volumeHits(d)).filter((n) => n > 1 && !titleCounts.includes(n));
+    const descriptionCounts = packCounts(d, volumeHits(d)).filter((n) => n > 1 && !titleCounts.includes(n));
     return { units: fromTitle.litres, confidence: descriptionCounts.length > 0 ? "LOW" : fromTitle.confidence };
   }
   const p = parsePackQuantity(title, description);
