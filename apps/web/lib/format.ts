@@ -49,11 +49,6 @@ export function minorToMajor(minor: number, currency = "USD"): number {
   return minor / 10 ** safeExponent(currency);
 }
 
-/** Major units on a chart scale -> integer minor units, for formatting with `money`. */
-export function majorToMinor(major: number, currency = "USD"): number {
-  return Math.round(major * 10 ** safeExponent(currency));
-}
-
 /** Whole-unit money for chart axis ticks, e.g. "$1,500". */
 export function moneyTick(major: number, currency = "USD"): string {
   try {

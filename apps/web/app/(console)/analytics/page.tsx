@@ -11,7 +11,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { SkeletonCard } from "@/components/ui/Skeleton";
 import { StatTile } from "@/components/ui/StatTile";
 import { api } from "@/lib/api";
-import { duration, money, num, shortDate } from "@/lib/format";
+import { duration, minorToMajor, money, moneyTick, num, shortDate } from "@/lib/format";
 import { useResource } from "@/lib/hooks";
 import { categoryLabel, DECISION_LABELS, findingLabel } from "@/lib/labels";
 
@@ -26,7 +26,7 @@ function moneyAxis(currency: string) {
     type: "number" as const,
     position: "left" as const,
     gridLine: { style: [{ stroke: CHART_COLORS.grid, lineDash: [] }] },
-    label: { formatter: ({ value }: { value: number }) => money(Math.round(value * 100), currency).replace(/\.00$/, "") },
+    label: { formatter: ({ value }: { value: number }) => moneyTick(value, currency) },
   };
 }
 
@@ -45,14 +45,21 @@ function useChartOptions(s: AnalyticsSummaryDto | undefined) {
   return useMemo(() => {
     if (!s) return null;
     const cur = s.currency;
+    // Charts plot major units; tables and tooltips format the exact minor-unit values.
     const weekly = s.spend_by_week.map((w) => ({
       week: shortDate(w.week_start),
-      captured: w.captured_minor / 100,
-      reserved: w.reserved_minor / 100,
+      captured: minorToMajor(w.captured_minor, cur),
+      reserved: minorToMajor(w.reserved_minor, cur),
+      captured_minor: w.captured_minor,
+      reserved_minor: w.reserved_minor,
     }));
     const byCategory = [...s.spend_by_category]
       .sort((a, b) => b.captured_minor - a.captured_minor)
-      .map((c) => ({ category: categoryLabel(c.category), captured: c.captured_minor / 100 }));
+      .map((c) => ({
+        category: categoryLabel(c.category),
+        captured: minorToMajor(c.captured_minor, cur),
+        captured_minor: c.captured_minor,
+      }));
     const decisions = s.decisions_by_kind.map((d) => ({
       decision: DECISION_LABELS[d.decision],
       count: d.count,
@@ -65,7 +72,7 @@ function useChartOptions(s: AnalyticsSummaryDto | undefined) {
     const tooltipMoney = (label: string) => ({
       renderer: ({ datum, yKey }: { datum: Record<string, unknown>; yKey: string }) => ({
         heading: String(datum.week ?? datum.category ?? ""),
-        data: [{ label, value: money(Math.round(Number(datum[yKey]) * 100), cur) }],
+        data: [{ label, value: money(Number(datum[`${yKey}_minor`]), cur) }],
       }),
     });
 
@@ -191,8 +198,8 @@ export default function AnalyticsPage() {
               rows={charts.weekly}
               table={[
                 { label: "Week", value: (r) => r.week },
-                { label: "Captured", value: (r) => money(Math.round(r.captured * 100), cur), numeric: true },
-                { label: "Reserved", value: (r) => money(Math.round(r.reserved * 100), cur), numeric: true },
+                { label: "Captured", value: (r) => money(r.captured_minor, cur), numeric: true },
+                { label: "Reserved", value: (r) => money(r.reserved_minor, cur), numeric: true },
               ]}
             />
             <ChartCard
@@ -202,7 +209,7 @@ export default function AnalyticsPage() {
               rows={charts.byCategory}
               table={[
                 { label: "Category", value: (r) => r.category },
-                { label: "Captured", value: (r) => money(Math.round(r.captured * 100), cur), numeric: true },
+                { label: "Captured", value: (r) => money(r.captured_minor, cur), numeric: true },
               ]}
             />
             <ChartCard
