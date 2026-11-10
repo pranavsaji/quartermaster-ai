@@ -343,9 +343,13 @@ describe("accounts: sign-up, invitations, password reset", () => {
         name: "Co Owner",
         password: "co-owner-strong-password",
       });
-      const res = await owner.post(`/members/${co.body.user.id as string}/password-reset`);
+      const coId = co.body.user.id as string;
+      const res = await owner.post(`/members/${coId}/password-reset`);
       expect(res.status).toBe(403);
       expect(res.body.error.code).toBe("RESET_LINK_NOT_ALLOWED");
+      // Demoting the co-owner first does not open the door: they were an owner once.
+      expect((await owner.put(`/members/${coId}/role`, { role: "VIEWER" })).status).toBe(200);
+      expect((await owner.post(`/members/${coId}/password-reset`)).body.error.code).toBe("RESET_LINK_NOT_ALLOWED");
     });
 
     it("changes the password when the current one is right and signs out other sessions", async () => {

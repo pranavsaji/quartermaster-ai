@@ -1,7 +1,9 @@
-import { and, eq, isNull, ne, sql } from "drizzle-orm";
+import { and, eq, isNull, ne, or, sql } from "drizzle-orm";
 import type { ChangePasswordRequest, ResetLinkResponse, ResetPasswordRequest, SignupRequest } from "@qm/contracts";
 import {
+  auditEvents,
   hashPassword,
+  invitations,
   insertStarterMandate,
   memberships,
   organizations,
@@ -205,6 +207,38 @@ export async function changePassword(
 }
 
 /**
+ * Whether the user has ever held the owner role in the organisation: founded it, joined through an
+ * owner invitation, or had a role change to or from owner. Read from the append-only audit log and
+ * invitations, which the owner cannot rewrite.
+ */
+export async function everOwner(db: DbOrTx, organizationId: string, userId: string): Promise<boolean> {
+  const [audited] = await db
+    .select({ id: auditEvents.id })
+    .from(auditEvents)
+    .where(
+      and(
+        eq(auditEvents.organizationId, organizationId),
+        or(
+          and(eq(auditEvents.action, "organization.created"), eq(auditEvents.actorId, userId)),
+          and(
+            eq(auditEvents.action, "member.role_changed"),
+            eq(auditEvents.entityId, userId),
+            or(sql`${auditEvents.data}->>'from' = 'OWNER'`, sql`${auditEvents.data}->>'to' = 'OWNER'`),
+          ),
+        ),
+      ),
+    )
+    .limit(1);
+  if (audited) return true;
+  const [invited] = await db
+    .select({ id: invitations.id })
+    .from(invitations)
+    .where(and(eq(invitations.organizationId, organizationId), eq(invitations.acceptedBy, userId), eq(invitations.role, "OWNER")))
+    .limit(1);
+  return Boolean(invited);
+}
+
+/**
  * An owner issues a one-time reset link for a member of their workspace (works without email;
  * emailed too when email is configured). The member's password is unchanged until the link is used.
  */
@@ -219,9 +253,10 @@ export async function issueMemberResetLink(
     .innerJoin(users, eq(users.id, memberships.userId))
     .where(and(eq(memberships.organizationId, actor.organizationId), eq(memberships.userId, memberUserId)));
   if (!member || member.user.disabled) throw notFound("Member");
-  // A reset link takes over the account it names. Owners may issue one only for managers and
-  // viewers; other owners and operators reset their own passwords by email.
-  if (member.role === "OWNER" || member.user.operator) {
+  // A reset link takes over the account it names. Owners may issue one only for members who have
+  // never been an owner of this workspace (so demoting a co-owner first does not help) and are
+  // not operators; everyone else resets their own password by email.
+  if (member.role === "OWNER" || member.user.operator || (await everOwner(ctx.db, actor.organizationId, memberUserId))) {
     throw new AppError(403, "RESET_LINK_NOT_ALLOWED", "Owners reset their own password with “Forgot password” or from their account page.");
   }
   const { token, expiresAt } = await ctx.db.transaction(async (tx) => {
