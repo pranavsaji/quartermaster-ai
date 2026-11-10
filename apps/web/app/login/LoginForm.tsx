@@ -1,22 +1,20 @@
 "use client";
 
 import { LoginRequest } from "@qm/contracts";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/Button";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Field, Input } from "@/components/ui/Field";
 import { ErrorSummary, useErrorFocus } from "@/components/ui/FormErrors";
+import { AuthFootnote } from "@/components/auth/AuthLayout";
+import { usePublicConfig } from "@/components/auth/usePublicConfig";
 import { api } from "@/lib/api";
 import { useAction } from "@/lib/hooks";
-import { DEMO_MODE } from "@/lib/demo";
 import { safeNext } from "@/lib/redirect";
 
-/**
- * Seeded demo logins, hidden when the build turns demo mode off (see lib/demo).
- */
-const SHOW_DEMO_ACCOUNTS = DEMO_MODE;
-
+/** The shared sample workspace's logins, shown only when the deployment says so (`sample_accounts_hint`). */
 const DEMO_ACCOUNTS = [
   { role: "Owner", email: "owner@demo.quartermaster.dev" },
   { role: "Manager", email: "manager@demo.quartermaster.dev" },
@@ -30,6 +28,8 @@ export function LoginForm() {
   const [password, setPassword] = useState("");
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
   const { containerRef, focusFirstError, attempt } = useErrorFocus<HTMLFormElement>();
+  const config = usePublicConfig().data;
+  const showSampleAccounts = config?.sample_accounts_hint ?? false;
 
   // Stays true after a successful sign-in until the console replaces this page, so the button
   // can't be pressed again (and start a second session) while the navigation is under way.
@@ -70,11 +70,20 @@ export function LoginForm() {
             autoComplete="username"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder={SHOW_DEMO_ACCOUNTS ? "owner@demo.quartermaster.dev" : "you@restaurant.com"}
+            placeholder={showSampleAccounts ? "owner@demo.quartermaster.dev" : "you@restaurant.com"}
           />
         )}
       </Field>
-      <Field label="Password" error={fieldErrors.password} required>
+      <Field
+        label="Password"
+        error={fieldErrors.password}
+        required
+        hint={
+          <Link href="/forgot-password" className="font-medium text-accent hover:underline">
+            Forgot password?
+          </Link>
+        }
+      >
         {(control) => (
           <Input
             {...control}
@@ -93,7 +102,16 @@ export function LoginForm() {
         Sign in
       </Button>
 
-      {SHOW_DEMO_ACCOUNTS ? <DemoAccounts onPick={setEmail} /> : null}
+      {showSampleAccounts ? <DemoAccounts onPick={setEmail} /> : null}
+
+      {config?.accounts.signup_enabled ? (
+        <AuthFootnote>
+          New to Quartermaster?{" "}
+          <Link href="/signup" className="font-medium text-accent hover:underline">
+            Create an account
+          </Link>
+        </AuthFootnote>
+      ) : null}
     </form>
   );
 }
@@ -101,7 +119,7 @@ export function LoginForm() {
 function DemoAccounts({ onPick }: { onPick: (email: string) => void }) {
   return (
     <div className="rounded-lg border border-line bg-canvas px-3.5 py-3 text-[12.5px] text-ink-3">
-      <p className="font-medium text-ink-2">Demo accounts: owner@demo.quartermaster.dev / manager@… / viewer@…</p>
+      <p className="font-medium text-ink-2">Sample workspace: owner@demo.quartermaster.dev / manager@… / viewer@…</p>
       <ul className="mt-2 flex flex-wrap gap-1.5">
         {DEMO_ACCOUNTS.map((a) => (
           <li key={a.email}>
@@ -109,16 +127,14 @@ function DemoAccounts({ onPick }: { onPick: (email: string) => void }) {
               type="button"
               onClick={() => onPick(a.email)}
               className="rounded-md border border-line-strong bg-surface px-2 py-1 font-mono text-[11.5px] text-ink-2 hover:border-accent-line hover:text-accent-strong"
-              aria-label={`Use the ${a.role} demo account email`}
+              aria-label={`Use the ${a.role} sample account email`}
             >
               {a.role.toLowerCase()}@…
             </button>
           </li>
         ))}
       </ul>
-      <p className="mt-2">
-        All demo accounts share the <code className="font-mono">DEMO_USER_PASSWORD</code> set when seeding.
-      </p>
+      <p className="mt-2">All three share one password, published with this deployment&apos;s instructions.</p>
     </div>
   );
 }
