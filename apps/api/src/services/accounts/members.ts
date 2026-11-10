@@ -10,7 +10,7 @@ import type {
   MembersResponse,
   Role,
 } from "@qm/contracts";
-import { hashPassword, invitations, memberships, organizations, sessions, users, type DbOrTx } from "@qm/database";
+import { hashPassword, invitations, memberships, organizations, passwordResetTokens, sessions, users, type DbOrTx } from "@qm/database";
 import type { AppContext } from "../../context";
 import { AppError, conflict, notFound } from "../../errors";
 import { appendAudit } from "../audit";
@@ -237,6 +237,13 @@ export async function updateMemberRole(
     if (target.role === "OWNER" && role !== "OWNER" && all.filter((m) => m.role === "OWNER").length === 1) throw lastOwner();
     if (target.role !== role) {
       await tx.update(memberships).set({ role }).where(eq(memberships.id, target.id));
+      // Links issued while they were a manager or viewer must not survive a promotion.
+      if (role === "OWNER") {
+        await tx
+          .update(passwordResetTokens)
+          .set({ usedAt: ctx.now() })
+          .where(and(eq(passwordResetTokens.userId, userId), isNull(passwordResetTokens.usedAt)));
+      }
       await appendAudit(tx, {
         organizationId: actor.organizationId,
         action: "member.role_changed",

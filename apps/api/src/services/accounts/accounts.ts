@@ -17,7 +17,7 @@ import {
 import type { AppContext } from "../../context";
 import { AppError, conflict, notFound } from "../../errors";
 import { appendAudit } from "../audit";
-import { hashToken, newToken, openSession, sessionUser, type SessionMeta } from "../auth";
+import { hashToken, newToken, openSession, recordFailedPassword, sessionUser, type SessionMeta } from "../auth";
 import { linkWithToken, passwordResetEmail } from "./emails";
 
 export type UserRow = typeof users.$inferSelect;
@@ -146,6 +146,13 @@ export async function resetPassword(ctx: AppContext, input: ResetPasswordRequest
     if (!token || token.usedAt || token.expiresAt <= now) throw invalidResetLink();
     const [user] = await tx.select().from(users).where(eq(users.id, token.userId)).for("update");
     if (!user || user.disabled) throw invalidResetLink();
+    // An owner-issued link is re-checked when used: if its target has since become an owner (or
+    // is an operator), it no longer works.
+    if (token.issuedBy) {
+      const orgs = await organizationsOf(tx, user.id);
+      const privileged = user.operator || (await Promise.all(orgs.map((o) => everOwner(tx, o, user.id)))).some(Boolean);
+      if (privileged) throw invalidResetLink();
+    }
     await tx.update(users).set({ passwordHash, failedLogins: 0, lockedUntil: null }).where(eq(users.id, user.id));
     await tx
       .update(passwordResetTokens)
@@ -176,8 +183,18 @@ export async function changePassword(
   input: ChangePasswordRequest,
 ): Promise<void> {
   const [user] = await ctx.db.select().from(users).where(eq(users.id, actor.id));
-  if (!user || !(await verifyPassword(input.current_password, user.passwordHash))) {
-    throw new AppError(400, "INVALID_CURRENT_PASSWORD", "Your current password is incorrect.");
+  const wrong = new AppError(
+    400,
+    "INVALID_CURRENT_PASSWORD",
+    "Your current password is incorrect, or changes are locked after repeated failures.",
+  );
+  if (!user) throw wrong;
+  // Same lockout as sign-in, so a stolen session cannot be used to guess the password.
+  const ok = await verifyPassword(input.current_password, user.passwordHash);
+  if (user.lockedUntil && user.lockedUntil > ctx.now()) throw wrong;
+  if (!ok) {
+    await recordFailedPassword(ctx, user.id);
+    throw wrong;
   }
   if (input.current_password === input.new_password) {
     throw new AppError(400, "PASSWORD_UNCHANGED", "Choose a password different from your current one.");
@@ -185,7 +202,7 @@ export async function changePassword(
   const passwordHash = await hashPassword(input.new_password);
   const now = ctx.now();
   await ctx.db.transaction(async (tx) => {
-    await tx.update(users).set({ passwordHash }).where(eq(users.id, user.id));
+    await tx.update(users).set({ passwordHash, failedLogins: 0 }).where(eq(users.id, user.id));
     await tx
       .update(sessions)
       .set({ revokedAt: now })

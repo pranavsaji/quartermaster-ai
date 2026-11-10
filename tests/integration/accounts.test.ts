@@ -10,6 +10,7 @@ import {
   spendMandates,
   users,
 } from "@qm/database";
+import { hashToken } from "../../apps/api/src/services/auth";
 import { createHarness, PASSWORD, type Harness } from "../helpers/harness";
 
 interface Sent {
@@ -352,11 +353,45 @@ describe("accounts: sign-up, invitations, password reset", () => {
       expect((await owner.post(`/members/${coId}/password-reset`)).body.error.code).toBe("RESET_LINK_NOT_ALLOWED");
     });
 
+    it("cancels an owner-issued link when its target is promoted to owner", async () => {
+      const h2 = await createHarness();
+      try {
+        const owner = await h2.agent("owner");
+        const [manager] = await h2.ctx.db.select().from(users).where(eq(users.email, DEMO_CREDENTIALS.manager.email));
+        const link = await owner.post(`/members/${manager!.id}/password-reset`);
+        const token = tokenIn(link.body.reset_url as string)!;
+        expect((await owner.put(`/members/${manager!.id}/role`, { role: "OWNER" })).status).toBe(200);
+        const used = await h2.anonymous().post("/auth/password/reset", { token, password: "takeover-attempt-pw" });
+        expect(used.body.error.code).toBe("RESET_LINK_INVALID");
+
+        // Even a link that escaped the cancellation is re-checked when used.
+        await owner.put(`/members/${manager!.id}/role`, { role: "MANAGER" });
+        const [row] = await h2.ctx.db.select().from(users).where(eq(users.id, manager!.id));
+        const { token: raw } = await h2.ctx.db.transaction(async (tx) => {
+          const t = "x".repeat(43);
+          await tx.insert(passwordResetTokens).values({
+            userId: row!.id,
+            tokenHash: hashToken(t),
+            issuedBy: row!.id,
+            expiresAt: new Date(h2.clock.now.getTime() + 3_600_000),
+          });
+          return { token: t };
+        });
+        const late = await h2.anonymous().post("/auth/password/reset", { token: raw, password: "takeover-attempt-pw" });
+        expect(late.body.error.code).toBe("RESET_LINK_INVALID");
+      } finally {
+        await h2.close();
+      }
+    });
+
     it("changes the password when the current one is right and signs out other sessions", async () => {
       const a = await h.signIn("bo@example.com", "correct-horse-battery");
       const b = await h.signIn("bo@example.com", "correct-horse-battery");
       const wrong = await a.post("/auth/password/change", { current_password: "nope-nope-nope", new_password: NEW_PASSWORD });
       expect(wrong.body.error.code).toBe("INVALID_CURRENT_PASSWORD");
+      // Wrong guesses count towards the same lockout as sign-in.
+      const [counted] = await h.ctx.db.select().from(users).where(eq(users.email, "bo@example.com"));
+      expect(counted!.failedLogins).toBe(1);
       const ok = await a.post("/auth/password/change", { current_password: "correct-horse-battery", new_password: NEW_PASSWORD });
       expect(ok.status).toBe(200);
       expect((await a.get("/auth/me")).status).toBe(200);
@@ -364,6 +399,16 @@ describe("accounts: sign-up, invitations, password reset", () => {
       const [bo] = await h.ctx.db.select().from(users).where(eq(users.email, "bo@example.com"));
       const open = await h.ctx.db.select().from(sessions).where(eq(sessions.userId, bo!.id));
       expect(open.filter((s) => !s.revokedAt)).toHaveLength(1);
+      expect(bo!.failedLogins).toBe(0);
+
+      // A locked account refuses even the right current password.
+      await h.ctx.db
+        .update(users)
+        .set({ lockedUntil: new Date(h.clock.now.getTime() + 600_000) })
+        .where(eq(users.id, bo!.id));
+      const locked = await a.post("/auth/password/change", { current_password: NEW_PASSWORD, new_password: "another-new-password" });
+      expect(locked.body.error.code).toBe("INVALID_CURRENT_PASSWORD");
+      await h.ctx.db.update(users).set({ lockedUntil: null }).where(eq(users.id, bo!.id));
     });
   });
 });
