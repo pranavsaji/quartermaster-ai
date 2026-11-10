@@ -1,0 +1,22 @@
+{
+  "name": "@qm/mcp",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Quartermaster MCP server: lets any MCP-capable agent propose purchases through TrustRail (never approve or pay).",
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "build": "tsup",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "@qm/contracts": "workspace:*",
+    "@qm/trustrail": "workspace:*",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "tsup": "^8.5.1",
+    "tsx": "^4.23.15"
+  }
+}
