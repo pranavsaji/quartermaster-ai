@@ -89,9 +89,9 @@ export interface InventoryItemDto {
    * Editable details (PUT /inventory/:id round-trips them). Optional until every API build sends
    * them; the edit form treats a missing value as blank.
    */
-  search_query?: string;
-  keywords?: string[];
-  lead_time_days_override?: number | null;
+  search_query: string;
+  keywords: string[];
+  lead_time_days_override: number | null;
 }
 
 export interface ForecastLineDto {

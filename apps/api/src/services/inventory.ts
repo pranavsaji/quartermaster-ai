@@ -153,6 +153,9 @@ export function toInventoryDto(item: LoadedItem): InventoryItemDto {
     days_of_cover: daysOfCover(available, usage),
     status: stockStatus(available, reorderPoint, input.safety_stock),
     preferred_supplier_id: row.preferredSupplierId,
+    search_query: row.searchQuery,
+    keywords: row.keywords,
+    lead_time_days_override: row.leadTimeDaysOverride,
     data_source: row.dataSource,
   };
 }
