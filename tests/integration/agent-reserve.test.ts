@@ -49,7 +49,8 @@ describe("agent run reserve", () => {
 
     run.release();
     expect(run.signal).toBe(hard);
-    expect(run.budgetMs).toBe(run.remainingMs);
+    // Both getters read the clock, so a millisecond can tick between them: no reserve is left.
+    expect(Math.abs(run.remainingMs - run.budgetMs)).toBeLessThanOrEqual(1);
     // Mandatory steps still run inside the reserved tail.
     await expect(
       run.tool(
