@@ -5,6 +5,7 @@ import { useCallback, useMemo, useState } from "react";
 import { AdjustmentDialog } from "@/components/inventory/AdjustmentDialog";
 import { ForecastPanel } from "@/components/inventory/ForecastPanel";
 import { InventoryGrid } from "@/components/inventory/InventoryGrid";
+import { ItemDialog } from "@/components/inventory/ItemDialog";
 import { useSession } from "@/components/session/SessionProvider";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -20,6 +21,10 @@ export function InventoryPage() {
   const { can } = useSession();
   const inventory = useResource((signal) => api.inventory.list({ signal }), []);
   const [adjusting, setAdjusting] = useState<InventoryItemDto | null>(null);
+  // `null` item = adding a new one.
+  const [editing, setEditing] = useState<{ item: InventoryItemDto | null } | null>(null);
+  const canEdit = can("editInventory");
+  const suppliers = useResource((signal) => api.suppliers.list({ signal }), [], { enabled: canEdit });
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
 
   const items = inventory.data?.items;
@@ -32,6 +37,10 @@ export function InventoryPage() {
   const onAdjust = useCallback((item: InventoryItemDto) => {
     setSavedMessage(null);
     setAdjusting(item);
+  }, []);
+  const onEdit = useCallback((item: InventoryItemDto) => {
+    setSavedMessage(null);
+    setEditing({ item });
   }, []);
 
   const setInventory = inventory.setData;
@@ -49,6 +58,17 @@ export function InventoryPage() {
     [replaceItem],
   );
 
+  const onDetailsSaved = useCallback(
+    (saved: InventoryItemDto) => {
+      setInventory((prev) => {
+        const list = prev?.items ?? [];
+        return { items: list.some((i) => i.id === saved.id) ? list.map((i) => (i.id === saved.id ? saved : i)) : [...list, saved] };
+      });
+      setSavedMessage(`${saved.name} saved.`);
+    },
+    [setInventory],
+  );
+
   const source = items?.[0]?.data_source;
 
   return (
@@ -58,9 +78,16 @@ export function InventoryPage() {
         description="Stock on hand, what's inbound and how many days each item will last at current usage."
         meta={source ? <SourceLabel source={source} /> : null}
         actions={
-          <Button variant="secondary" onClick={inventory.reload} loading={inventory.refreshing}>
-            Refresh
-          </Button>
+          <>
+            <Button variant="secondary" onClick={inventory.reload} loading={inventory.refreshing}>
+              Refresh
+            </Button>
+            {canEdit ? (
+              <Button variant="primary" onClick={() => setEditing({ item: null })}>
+                Add item
+              </Button>
+            ) : null}
+          </>
         }
       />
 
@@ -94,7 +121,7 @@ export function InventoryPage() {
           />
           <div className="p-3">
             <ResourceView resource={inventory} hasData={Boolean(items)}>
-              <InventoryGrid items={items} canAdjust={can("adjustInventory")} onAdjust={onAdjust} />
+              <InventoryGrid items={items} canAdjust={can("adjustInventory")} onAdjust={onAdjust} canEdit={canEdit} onEdit={onEdit} />
             </ResourceView>
           </div>
         </Card>
@@ -102,6 +129,14 @@ export function InventoryPage() {
         <ForecastPanel canRun={can("runForecast")} />
       </div>
 
+      {editing ? (
+        <ItemDialog
+          item={editing.item ?? undefined}
+          suppliers={suppliers.data?.items ?? []}
+          onClose={() => setEditing(null)}
+          onSaved={onDetailsSaved}
+        />
+      ) : null}
       {adjusting ? (
         <AdjustmentDialog item={adjusting} onClose={() => setAdjusting(null)} onSaved={onSaved} onItemChanged={replaceItem} />
       ) : null}

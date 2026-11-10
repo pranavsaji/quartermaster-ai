@@ -15,10 +15,15 @@ export function InventoryGrid({
   items,
   canAdjust,
   onAdjust,
+  canEdit = false,
+  onEdit,
 }: {
   items: InventoryItemDto[] | undefined;
   canAdjust: boolean;
   onAdjust: (item: InventoryItemDto) => void;
+  /** Show "Edit" for an item's details (name, thresholds, supplier, search terms). */
+  canEdit?: boolean;
+  onEdit?: (item: InventoryItemDto) => void;
 }) {
   const columns = useMemo<ColDef<InventoryItemDto>[]>(() => {
     const cols: ColDef<InventoryItemDto>[] = [
@@ -68,28 +73,37 @@ export function InventoryGrid({
         valueFormatter: (p) => (typeof p.value === "number" ? `${p.value} d` : "—"),
       }),
     ];
-    if (canAdjust) {
+    const editable = canEdit && onEdit;
+    if (canAdjust || editable) {
+      const width = canAdjust && editable ? 170 : 100;
       cols.push({
         colId: "actions",
         headerName: "",
         pinned: "right",
         sortable: false,
         resizable: false,
-        minWidth: 100,
-        maxWidth: 110,
+        minWidth: width,
+        maxWidth: width + 10,
         ...controlColumn<InventoryItemDto>(),
         cellRenderer: (p: CustomCellRendererProps<InventoryItemDto>) =>
           p.data ? (
             <ActionCell eGridCell={p.eGridCell}>
-              <Button size="sm" variant="secondary" onClick={() => p.data && onAdjust(p.data)} aria-label={`Adjust ${p.data.name}`}>
-                Adjust
-              </Button>
+              {canAdjust ? (
+                <Button size="sm" variant="secondary" onClick={() => p.data && onAdjust(p.data)} aria-label={`Adjust ${p.data.name}`}>
+                  Adjust
+                </Button>
+              ) : null}
+              {editable ? (
+                <Button size="sm" variant="ghost" onClick={() => p.data && onEdit(p.data)} aria-label={`Edit details of ${p.data.name}`}>
+                  Edit
+                </Button>
+              ) : null}
             </ActionCell>
           ) : null,
       });
     }
     return cols;
-  }, [canAdjust, onAdjust]);
+  }, [canAdjust, onAdjust, canEdit, onEdit]);
 
   return (
     <DataGrid<InventoryItemDto>
