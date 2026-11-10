@@ -1,5 +1,13 @@
 import { sql, type SQL } from "drizzle-orm";
-import { DELIVERY_STATUSES, INVOICE_STATUSES, PAYMENT_STATUSES, PO_STATUSES, REFUND_STATUSES, REQUEST_STATUSES } from "@qm/contracts";
+import {
+  DATA_SOURCES,
+  DELIVERY_STATUSES,
+  INVOICE_STATUSES,
+  PAYMENT_STATUSES,
+  PO_STATUSES,
+  REFUND_STATUSES,
+  REQUEST_STATUSES,
+} from "@qm/contracts";
 import {
   bigint,
   bigserial,
@@ -89,6 +97,50 @@ export const sessions = pgTable(
   (t) => [uniqueIndex("sessions_token_hash_uq").on(t.tokenHash), index("sessions_user_idx").on(t.userId)],
 );
 
+/** A one-time link that adds someone to an organisation. Only the token's SHA-256 is stored. */
+export const invitations = pgTable(
+  "invitations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: orgId(),
+    email: text("email").notNull(),
+    role: text("role", { enum: ["OWNER", "MANAGER", "VIEWER"] }).notNull(),
+    tokenHash: text("token_hash").notNull(),
+    invitedBy: uuid("invited_by").references(() => users.id, { onDelete: "set null" }),
+    expiresAt: ts("expires_at").notNull(),
+    acceptedAt: ts("accepted_at"),
+    acceptedBy: uuid("accepted_by").references(() => users.id, { onDelete: "set null" }),
+    revokedAt: ts("revoked_at"),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex("invitations_token_uq").on(t.tokenHash),
+    // At most one open invitation per address and organisation; re-inviting revokes the old one.
+    uniqueIndex("invitations_org_email_open_uq")
+      .on(t.organizationId, sql`lower(${t.email})`)
+      .where(sql`${t.acceptedAt} is null and ${t.revokedAt} is null`),
+    check("invitations_role_ck", oneOf(t.role, ["OWNER", "MANAGER", "VIEWER"])),
+  ],
+);
+
+/** One-time password reset links (self-service by email, or issued by an owner). Hash only. */
+export const passwordResetTokens = pgTable(
+  "password_reset_tokens",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull(),
+    /** The owner who issued it; null when the user requested it by email. */
+    issuedBy: uuid("issued_by").references(() => users.id, { onDelete: "set null" }),
+    expiresAt: ts("expires_at").notNull(),
+    usedAt: ts("used_at"),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("password_reset_token_uq").on(t.tokenHash), index("password_reset_user_idx").on(t.userId, t.createdAt)],
+);
+
 /* =============================================================== Inventory */
 
 export const inventoryItems = pgTable(
@@ -107,9 +159,7 @@ export const inventoryItems = pgTable(
     preferredSupplierId: uuid("preferred_supplier_id"),
     searchQuery: text("search_query").notNull(),
     keywords: jsonb("keywords").$type<string[]>().notNull().default([]),
-    dataSource: text("data_source", { enum: ["CHANNEL3_MARKET", "SANDBOX_SUPPLIER", "SYNTHETIC"] })
-      .notNull()
-      .default("SYNTHETIC"),
+    dataSource: text("data_source", { enum: DATA_SOURCES }).notNull().default("SYNTHETIC"),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
@@ -876,3 +926,37 @@ export const jobLeases = pgTable("job_leases", {
   holder: text("holder").notNull(),
   leaseUntil: ts("lease_until").notNull(),
 });
+
+/* ============================================================== Monitoring */
+
+/**
+ * Error tracking: server, browser, job and monitor errors grouped by fingerprint, with counts and
+ * alert throttling. Platform-wide (not per organisation); readable only by operators.
+ */
+export const systemErrors = pgTable(
+  "system_errors",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    fingerprint: text("fingerprint").notNull(),
+    source: text("source", { enum: ["api", "web", "job", "monitor"] }).notNull(),
+    level: text("level", { enum: ["warning", "error", "fatal"] }).notNull(),
+    code: text("code").notNull(),
+    message: text("message").notNull(),
+    route: text("route"),
+    sample: jsonb("sample").$type<Record<string, unknown>>().notNull().default({}),
+    occurrences: integer("occurrences").notNull().default(1),
+    firstSeenAt: ts("first_seen_at").notNull().defaultNow(),
+    lastSeenAt: ts("last_seen_at").notNull().defaultNow(),
+    lastCorrelationId: text("last_correlation_id"),
+    lastAlertedAt: ts("last_alerted_at"),
+    /** Occurrence count when the last alert went out (re-alert only on new occurrences). */
+    alertedOccurrences: integer("alerted_occurrences").notNull().default(0),
+    resolvedAt: ts("resolved_at"),
+  },
+  (t) => [
+    uniqueIndex("system_errors_fingerprint_uq").on(t.fingerprint),
+    index("system_errors_last_seen_idx").on(t.lastSeenAt),
+    check("system_errors_source_ck", oneOf(t.source, ["api", "web", "job", "monitor"])),
+    check("system_errors_level_ck", oneOf(t.level, ["warning", "error", "fatal"])),
+  ],
+);
