@@ -59,7 +59,10 @@ export function supplierRoutes(ctx: AppContext): Router {
       const input = parse(SupplierInput, req.body);
       const orgId = req.user!.organizationId;
       const id = param(req, "id");
-      await ctx.db.transaction((tx) => updateSupplier(tx, { id: req.user!.id, organizationId: orgId }, id, input));
+      const mandate = await mandateOf(orgId);
+      await ctx.db.transaction((tx) =>
+        updateSupplier(tx, { id: req.user!.id, organizationId: orgId, role: req.user!.role }, id, input, mandate),
+      );
       res.json({ supplier: await supplierDetail(ctx.db, orgId, id, await mandateOf(orgId)) });
     }),
   );

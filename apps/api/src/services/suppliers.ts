@@ -1,5 +1,6 @@
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import type {
+  Role,
   CatalogItemDto,
   CatalogItemInput,
   DataSource,
@@ -11,7 +12,7 @@ import type {
 import { inventoryItems, organizations, supplierCatalogItems, suppliers, type DbOrTx } from "@qm/database";
 import type { CatalogOffer, StorefrontQuoteLine, SupplierProfile } from "@qm/quartermaster";
 import { detectPromptInjection, type SpendMandate } from "@qm/trustrail";
-import { conflict, notFound } from "../errors";
+import { AppError, conflict, notFound } from "../errors";
 import { appendAudit } from "./audit";
 import { recordFinding } from "./findings";
 
@@ -191,13 +192,41 @@ export async function createSupplier(
   return row!;
 }
 
+/** Fee terms in a fixed field order (jsonb does not keep key order), for change detection. */
+function feeKey(
+  terms: readonly { code: string; label: string; kind: string; amount_minor: number; waived_over_minor: number | null }[],
+): string {
+  return JSON.stringify(terms.map((t) => [t.code, t.label, t.kind, t.amount_minor, t.waived_over_minor]));
+}
+
+/**
+ * Updates a supplier. Once an owner has approved a supplier in the Spend Mandate, its identity and
+ * terms (name, website, fees, tax, PayPal eligibility) are part of what was approved: TrustRail
+ * treats listed fees as authorised. Only owners may change those; managers may still change the
+ * description, lead time and whether it is active.
+ */
 export async function updateSupplier(
   tx: DbOrTx,
-  actor: { id: string; organizationId: string },
+  actor: { id: string; organizationId: string; role: Role },
   supplierId: string,
   input: SupplierInput,
+  mandate: SpendMandate | null,
 ): Promise<SupplierRow> {
   const before = await loadSupplier(tx, actor.organizationId, supplierId, true);
+  const approved = Boolean(mandate?.approved_supplier_ids.includes(supplierId));
+  const termsChanged =
+    before.name !== input.name ||
+    before.website !== input.website ||
+    before.taxRateBps !== input.tax_rate_bps ||
+    (!before.checkoutEligible && input.checkout_eligible) ||
+    feeKey(before.feeTerms) !== feeKey(input.fee_terms);
+  if (approved && termsChanged && actor.role !== "OWNER") {
+    throw new AppError(
+      403,
+      "APPROVED_SUPPLIER_TERMS",
+      "This supplier is approved in the Spend Mandate, so only an owner can change its name, website, fees, tax or PayPal eligibility.",
+    );
+  }
   await assertSupplierNameFree(tx, actor.organizationId, input.name, supplierId);
   const [row] = await tx.update(suppliers).set(supplierValues(input)).where(eq(suppliers.id, supplierId)).returning();
   const changed = Object.entries({
@@ -206,7 +235,7 @@ export async function updateSupplier(
     checkout_eligible: [before.checkoutEligible, input.checkout_eligible],
     lead_time_days: [before.leadTimeDays, input.lead_time_days],
     tax_rate_bps: [before.taxRateBps, input.tax_rate_bps],
-    fee_terms: [JSON.stringify(before.feeTerms), JSON.stringify(input.fee_terms)],
+    fee_terms: [feeKey(before.feeTerms), feeKey(input.fee_terms)],
     website: [before.website, input.website],
     description: [before.description, input.description],
   })

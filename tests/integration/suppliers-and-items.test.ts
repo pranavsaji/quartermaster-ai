@@ -89,6 +89,24 @@ describe("suppliers, catalogs and stock items", () => {
     expect(list.find((s) => s.name === "Bayside Beverages")?.approved).toBe(true);
   });
 
+  it("lets only owners change the terms of an approved supplier", async () => {
+    const manager = await h.agent("manager");
+    const supplier = ((await manager.get("/suppliers")).body.items as { id: string; name: string; approved: boolean }[]).find(
+      (s) => s.name === "Bayside Beverages",
+    )!;
+    expect(supplier.approved).toBe(true);
+    const pricier = { ...SUPPLIER, fee_terms: [{ ...SUPPLIER.fee_terms[0]!, amount_minor: 5000 }] };
+    const denied = await manager.put(`/suppliers/${supplier.id}`, pricier);
+    expect(denied.status).toBe(403);
+    expect(denied.body.error.code).toBe("APPROVED_SUPPLIER_TERMS");
+    // Descriptive fields stay editable by managers.
+    expect((await manager.put(`/suppliers/${supplier.id}`, { ...SUPPLIER, description: "Now also sells juice" })).status).toBe(200);
+    const owner = await h.agent("owner");
+    const allowed = await owner.put(`/suppliers/${supplier.id}`, pricier);
+    expect(allowed.body.supplier.fee_terms[0].amount_minor).toBe(5000);
+    await owner.put(`/suppliers/${supplier.id}`, SUPPLIER);
+  });
+
   it("adds and edits catalog listings, linked to stock items", async () => {
     const manager = await h.agent("manager");
     const supplier = ((await manager.get("/suppliers")).body.items as { id: string; name: string }[]).find(
