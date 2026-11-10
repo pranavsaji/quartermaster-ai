@@ -26,7 +26,7 @@ Quartermaster is an AI procurement assistant for restaurants and cafés. It watc
 
 ## For judges
 
-**Live app:** <https://quartermaster-web-o0df.onrender.com>. It runs on Render's free plan, so the first request after 15 idle minutes takes about a minute while the services wake up. Health check: <https://quartermaster-api-sziv.onrender.com/readyz>.
+**Live app:** <https://quartermaster-web-o0df.onrender.com>. It runs on Render (web and API on Starter instances, so there is no cold start; Postgres on a paid plan). Health check: <https://quartermaster-api-sziv.onrender.com/readyz>.
 
 **Create your own workspace (recommended):** choose **Create an account** on the sign-in page and keep **Start with sample data** ticked. You get a private copy of the sample restaurant (suppliers, stock, 14 days of usage and the deliberately malicious QuickServe listing), so nothing you do affects other judges. You can then invite teammates from **Team**, add suppliers and catalog listings under **Suppliers**, and add stock items under **Inventory**.
 
@@ -226,7 +226,7 @@ What the suites prove (all reproducible from this repository):
 
 ## Deployment
 
-`render.yaml` deploys the web app, the API (pre-deploy migrations, `/readyz` health check), a 5-minute sweeper cron (PayPal reconciliation, certificate expiry, purges) and Postgres 17. Set the `sync: false` secrets in the Render dashboard, then seed once with `node apps/api/dist/seed.js` from a Render shell. The live demo runs on Render's free plan instead (no cron, shell or pre-deploy step); [docs/operations.md](docs/operations.md) describes both.
+`render.yaml` deploys the web app, the API (pre-deploy migrations, `/readyz` health check), a 5-minute sweeper cron (PayPal reconciliation, certificate expiry, purges) and Postgres 17. Set the `sync: false` secrets in the Render dashboard, then seed once with `node apps/api/dist/seed.js` from a Render shell. The live demo uses the simpler free-plan layout (seeding in the start command, the sweeper inside the API) on Starter instances, so it never sleeps; [docs/operations.md](docs/operations.md) describes both.
 
 ---
 
