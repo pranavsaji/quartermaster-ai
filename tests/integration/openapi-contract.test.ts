@@ -4,6 +4,7 @@ import path from "node:path";
 import { Ajv2020 } from "ajv/dist/2020.js";
 import addFormats from "ajv-formats";
 import { createHarness, DEMO_INSTRUCTION, type Client, type Harness } from "../helpers/harness";
+import { fakeChannel3 } from "../helpers/channel3";
 import { relaxMandate } from "../helpers/flows";
 
 /**
@@ -41,7 +42,8 @@ describe("OpenAPI spec matches real responses", () => {
   let requestId: string;
 
   beforeAll(async () => {
-    h = await createHarness();
+    // With market data, so Channel3 quotes and references are validated too.
+    h = await createHarness({ channel3Fetch: fakeChannel3().fetch });
     owner = await h.agent("owner");
     await relaxMandate(owner);
     const created = await owner.post("/procurement/requests", { instruction: DEMO_INSTRUCTION });
@@ -77,6 +79,8 @@ describe("OpenAPI spec matches real responses", () => {
     const researched = await owner.post(`/procurement/requests/${requestId}/research`);
     expect(researched.status).toBe(200);
     expectConforms("post", "/procurement/requests/{id}/research", 200, researched.body);
+    const market = (researched.body as { market: { quotes: unknown[] }[] }).market;
+    expect(market.flatMap((m) => m.quotes).length).toBeGreaterThan(0);
     const detail = await owner.get(`/procurement/requests/${requestId}`);
     expectConforms("get", "/procurement/requests/{id}", 200, detail.body);
     const supplierId = ((await owner.get("/suppliers")).body.items as { id: string }[])[0]!.id;
