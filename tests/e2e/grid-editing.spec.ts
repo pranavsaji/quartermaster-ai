@@ -21,7 +21,8 @@ test("an owner edits stock levels in the grid and they persist", async ({ page }
 
   await page.goto("/inventory");
   const grid = page.getByRole("region", { name: "Inventory items" });
-  // Rows re-sort by stock status as values change, so the row is looked up by name each time.
+  // Rows re-sort by stock status as values change, so the row is looked up by name each time
+  // (and checks poll a fresh lookup: a row index read before a re-sort can name another row).
   const cell = async (col: string) => {
     const row = grid.getByRole("row").filter({ hasText: "Nitrile gloves" }).first();
     await expect(row).toBeVisible();
@@ -40,15 +41,15 @@ test("an owner edits stock levels in the grid and they persist", async ({ page }
   };
 
   await edit("safety_stock", "250");
-  await expect(await cell("safety_stock")).toHaveText(/250/);
+  await expect.poll(async () => (await cell("safety_stock")).textContent()).toMatch(/250/);
 
   await edit("on_hand", "640");
-  await expect(await cell("on_hand")).toHaveText(/640/);
+  await expect.poll(async () => (await cell("on_hand")).textContent()).toMatch(/640/);
 
   // Saved on the server: a fresh load shows the new values.
   await page.reload();
-  await expect(await cell("safety_stock")).toHaveText(/250/);
-  await expect(await cell("on_hand")).toHaveText(/640/);
+  await expect.poll(async () => (await cell("safety_stock")).textContent()).toMatch(/250/);
+  await expect.poll(async () => (await cell("on_hand")).textContent()).toMatch(/640/);
 
   // Toolbar search narrows the rows.
   await page.getByRole("searchbox").first().fill("napkins");

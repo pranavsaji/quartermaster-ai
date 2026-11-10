@@ -1,6 +1,6 @@
 import request from "supertest";
 import { randomUUID } from "node:crypto";
-import { DEMO_CREDENTIALS, jobLeases, paypalWebhookEvents, seedDemo } from "@qm/database";
+import { DEMO_CREDENTIALS, jobLeases, paypalWebhookEvents, seedDemo, systemErrors } from "@qm/database";
 import { generateSigningKey } from "@qm/trustrail";
 import { bootstrap } from "../../apps/api/src/bootstrap";
 import { createApp } from "../../apps/api/src/http/app";
@@ -77,6 +77,7 @@ export async function createHarness(
   // PostgreSQL database start from the same state as a fresh in-memory one.
   await ctx.db.delete(paypalWebhookEvents);
   await ctx.db.delete(jobLeases);
+  await ctx.db.delete(systemErrors);
   await seedDemo(ctx.db, { password: PASSWORD, now: clock.now, reset: true });
   const app = createApp(ctx);
 
