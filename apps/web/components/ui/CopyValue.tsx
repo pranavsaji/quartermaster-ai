@@ -56,7 +56,7 @@ export function CopyValue({
 
   return (
     <span className={cn("inline-flex max-w-full items-center gap-1 align-middle", className)}>
-      <code ref={codeRef} title={value} className="truncate rounded bg-ink/[0.04] px-1.5 py-0.5 font-mono text-[12px] text-ink-2">
+      <code ref={codeRef} title={value} className="truncate rounded bg-ink/[0.04] px-1.5 py-0.5 font-mono text-xs text-ink-2">
         {status === "selected" ? value : truncateMiddle(value, head, tail)}
       </code>
       <button

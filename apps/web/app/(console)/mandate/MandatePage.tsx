@@ -4,12 +4,12 @@ import type { MandateUpdateResponse } from "@qm/contracts";
 import { useState } from "react";
 import { MandateForm } from "@/components/mandate/MandateForm";
 import { useSession } from "@/components/session/SessionProvider";
-import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 
 import { BudgetMeter } from "@/components/ui/Meter";
 import { Notice } from "@/components/ui/Notice";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { RefreshButton } from "@/components/ui/RefreshButton";
 import { ResourceView } from "@/components/ui/ResourceView";
 import { SkeletonCard } from "@/components/ui/Skeleton";
 import { api } from "@/lib/api";
@@ -33,19 +33,16 @@ export function MandatePage() {
     <>
       <PageHeader
         title="Spend mandate"
-        description="The deterministic rules TrustRail enforces on every cart before it can be approved, signed and paid."
+        description="The rules TrustRail applies to every cart before it can be approved, signed and paid."
         actions={
-          <Button
-            variant="secondary"
+          <RefreshButton
             onClick={() => {
               setSaved(null);
               current.reload();
               suppliers.reload();
             }}
             loading={current.refreshing}
-          >
-            Reload
-          </Button>
+          />
         }
       />
 
@@ -103,7 +100,7 @@ export function MandatePage() {
 
           <Card aria-labelledby="history-title">
             <CardHeader id="history-title" title="Version history" />
-            <CardBody className="text-[13px] leading-relaxed text-ink-2">
+            <CardBody className="text-sm leading-relaxed text-ink-2">
               <p>
                 You are viewing <span className="font-medium text-ink">version {data.mandate.version}</span>, created{" "}
                 {dateTime(data.mandate.created_at)}.

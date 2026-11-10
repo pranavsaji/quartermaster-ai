@@ -12,6 +12,7 @@ import { Select } from "@/components/ui/Field";
 import { LoadMore } from "@/components/ui/LoadMore";
 import { Notice } from "@/components/ui/Notice";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { RefreshButton } from "@/components/ui/RefreshButton";
 import { ResourceView } from "@/components/ui/ResourceView";
 import { SkeletonRows } from "@/components/ui/Skeleton";
 import { StatTile } from "@/components/ui/StatTile";
@@ -54,19 +55,16 @@ function OperatorView() {
         description="Errors from the API, background jobs, monitors and browsers, grouped and counted. Alerts go to the configured channels."
         actions={
           <>
-            <Button
-              variant="secondary"
+            <Button variant="primary" onClick={() => void testAlert.run()} loading={testAlert.pending}>
+              Send test alert
+            </Button>
+            <RefreshButton
               onClick={() => {
                 health.reload();
                 errors.reload();
               }}
               loading={health.refreshing || errors.refreshing}
-            >
-              Refresh
-            </Button>
-            <Button variant="primary" onClick={() => void testAlert.run()} loading={testAlert.pending}>
-              Send test alert
-            </Button>
+            />
           </>
         }
       />
@@ -84,7 +82,7 @@ function OperatorView() {
           title="Errors"
           description="Resolve an error once it is fixed; it reopens (and alerts again) if it comes back."
           actions={
-            <div className="flex items-center gap-2 text-[13px] text-ink-2">
+            <div className="flex items-center gap-2 text-sm text-ink-2">
               <label htmlFor="error-status-filter">Show</label>
               <Select id="error-status-filter" value={status} onChange={(e) => setStatus(e.target.value as StatusFilter)} className="w-32">
                 <option value="OPEN">Open</option>
@@ -97,7 +95,7 @@ function OperatorView() {
         <CardBody>
           <ResourceView resource={errors} hasData={Boolean(rows)} loading={<SkeletonRows rows={4} />}>
             {rows && rows.length === 0 ? (
-              <EmptyState compact title={status === "OPEN" ? "No open errors" : "Nothing here"} />
+              <EmptyState compact icon="system" title={status === "OPEN" ? "No open errors" : "Nothing here"} />
             ) : rows ? (
               <ul className="divide-y divide-line">
                 {rows.map((e) => (
@@ -175,24 +173,24 @@ function ErrorRow({ error: e, onResolved }: { error: SystemErrorDto; onResolved:
     onResolved();
   });
   return (
-    <li className="py-3 text-[13px]">
+    <li className="py-3 text-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
             <StatusBadge status={e.level} tones={ERROR_LEVEL_TONES} kind="Level" />
             <Badge tone="neutral">{e.source}</Badge>
-            <code className="font-mono text-[12px] text-ink-2">{e.code}</code>
+            <code className="font-mono text-xs text-ink-2">{e.code}</code>
             {e.resolved_at ? <Badge tone="allow">Resolved</Badge> : null}
           </div>
           <p className="mt-1 break-words text-ink">{e.message}</p>
-          <p className="mt-0.5 text-[12px] text-ink-3">
+          <p className="mt-0.5 text-xs text-ink-3">
             {e.route ? <span className="font-mono">{e.route}</span> : null}
             {e.route ? " · " : null}
             {plural(e.occurrences, "occurrence")} · first {dateTime(e.first_seen_at)} · last {relativeTime(e.last_seen_at)}
             {e.last_alerted_at ? ` · alerted ${relativeTime(e.last_alerted_at)}` : ""}
           </p>
           {e.last_correlation_id ? (
-            <p className="mt-0.5 font-mono text-[11.5px] text-ink-4">
+            <p className="mt-0.5 font-mono text-2xs text-ink-4">
               correlation id <span className="select-all text-ink-3">{e.last_correlation_id}</span>
             </p>
           ) : null}

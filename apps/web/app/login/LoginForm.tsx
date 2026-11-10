@@ -118,18 +118,20 @@ export function LoginForm() {
 
 function DemoAccounts({ onPick }: { onPick: (email: string) => void }) {
   return (
-    <div className="rounded-lg border border-line bg-canvas px-3.5 py-3 text-[12.5px] text-ink-3">
-      <p className="font-medium text-ink-2">Sample workspace: owner@demo.quartermaster.dev / manager@… / viewer@…</p>
+    <div className="rounded-lg border border-line bg-canvas px-3.5 py-3 text-xs text-ink-3">
+      <p className="font-medium text-ink-2">Sample workspace</p>
+      <p className="mt-0.5">Try it as one of three people. Pick a role to fill in the email:</p>
       <ul className="mt-2 flex flex-wrap gap-1.5">
         {DEMO_ACCOUNTS.map((a) => (
           <li key={a.email}>
             <button
               type="button"
               onClick={() => onPick(a.email)}
-              className="rounded-md border border-line-strong bg-surface px-2 py-1 font-mono text-[11.5px] text-ink-2 hover:border-accent-line hover:text-accent-strong"
+              title={a.email}
+              className="rounded-md border border-line-strong bg-surface px-2.5 py-1 text-xs font-medium text-ink-2 hover:border-accent-line hover:text-accent-strong"
               aria-label={`Use the ${a.role} sample account email`}
             >
-              {a.role.toLowerCase()}@…
+              {a.role}
             </button>
           </li>
         ))}

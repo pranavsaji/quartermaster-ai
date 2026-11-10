@@ -22,7 +22,8 @@ describe("ErrorNotice", () => {
     expect(screen.getByText(message)).toBeInTheDocument();
     expect(screen.queryByText("You don't have permission")).not.toBeInTheDocument();
     expect(screen.queryByText(/Ask the restaurant owner/)).not.toBeInTheDocument();
-    expect(screen.getByText(code)).toBeInTheDocument();
+    // Codes and correlation ids are only for server failures (5xx), not for a refusal that explains itself.
+    expect(screen.queryByText(code)).not.toBeInTheDocument();
   });
 
   it("shows other API errors with their code, correlation id and a retry", () => {

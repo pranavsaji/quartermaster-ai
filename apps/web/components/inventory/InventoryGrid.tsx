@@ -63,52 +63,60 @@ export function InventoryGrid({
         field: "name",
         headerName: "Item",
         pinned: "left",
-        minWidth: 220,
-        flex: 2,
+        minWidth: 190,
+        width: 220,
         cellRenderer: (p: CustomCellRendererProps<InventoryItemDto>) =>
           p.data ? (
             <div className="flex h-full flex-col justify-center leading-tight">
               <span className="font-medium text-ink">{p.data.name}</span>
-              <span className="font-mono text-[11px] text-ink-4">{p.data.sku}</span>
+              <span className="font-mono text-2xs text-ink-4">{p.data.sku}</span>
             </div>
           ) : null,
       },
       statusColumn<InventoryItemDto, InventoryItemDto["status"]>("status", "Status", STOCK_TONES, STOCK_LABELS, {
-        minWidth: 130,
+        minWidth: 104,
         comparator: (a: string, b: string) => stockSeverity(a) - stockSeverity(b),
       }),
       {
         field: "category",
         headerName: "Category",
-        minWidth: 150,
+        minWidth: 140,
+        hide: true,
+        context: { secondary: true },
         valueFormatter: (p) => categoryLabel(typeof p.value === "string" ? p.value : null),
       },
-      editableColumn("on_hand", { minWidth: 110 }),
-      numberColumn<InventoryItemDto>("inbound_confirmed", "Inbound"),
-      numberColumn<InventoryItemDto>("committed", "Committed"),
+      editableColumn("on_hand", { minWidth: 84 }),
+      numberColumn<InventoryItemDto>("inbound_confirmed", "Inbound", { minWidth: 84, hide: true, context: { secondary: true } }),
+      numberColumn<InventoryItemDto>("committed", "Committed", { minWidth: 96, hide: true, context: { secondary: true } }),
       numberColumn<InventoryItemDto>("available", "Available", {
         cellClass: rightCell("font-medium"),
         valueFormatter: (p) => (p.data ? `${num(p.data.available)} ${p.data.unit}` : ""),
-        minWidth: 120,
+        minWidth: 100,
       }),
       numberColumn<InventoryItemDto>("avg_daily_usage", "Daily use", {
+        minWidth: 80,
+        hide: true,
+        context: { secondary: true },
         valueFormatter: (p) => (typeof p.value === "number" ? num(p.value, 1) : "—"),
       }),
       numberColumn<InventoryItemDto>("days_of_cover", "Days of cover", {
         valueFormatter: (p) => (typeof p.value === "number" ? `${num(p.value, 1)} d` : "—"),
         sort: "asc",
-        minWidth: 130,
+        minWidth: 90,
       }),
-      numberColumn<InventoryItemDto>("reorder_point", "Reorder at"),
-      editableColumn("safety_stock", { minWidth: 120 }),
-      editableColumn("coverage_days", { minWidth: 150 }),
+      numberColumn<InventoryItemDto>("reorder_point", "Reorder at", { minWidth: 84, hide: true, context: { secondary: true } }),
+      editableColumn("safety_stock", { minWidth: 84, context: { secondary: true } }),
+      editableColumn("coverage_days", { minWidth: 90, context: { secondary: true } }),
       numberColumn<InventoryItemDto>("lead_time_days", "Lead time", {
+        minWidth: 80,
+        hide: true,
+        context: { secondary: true },
         valueFormatter: (p) => (typeof p.value === "number" ? `${p.value} d` : "—"),
       }),
     ];
     const editable = canEdit && onEdit;
     if (canAdjust || editable) {
-      const width = canAdjust && editable ? 170 : 100;
+      const width = canAdjust && editable ? 140 : 90;
       cols.push({
         colId: "actions",
         headerName: "",
@@ -142,7 +150,7 @@ export function InventoryGrid({
   return (
     <>
       {inlineEditing ? (
-        <p className="mb-2 text-[12.5px] text-ink-3">
+        <p className="mb-2 text-xs text-ink-3">
           Type over <strong className="font-medium text-ink-2">On hand</strong>,{" "}
           <strong className="font-medium text-ink-2">Safety stock</strong> or{" "}
           <strong className="font-medium text-ink-2">Cover target</strong> to change them; each edit is saved and audited at once. An
@@ -169,12 +177,14 @@ export function InventoryGrid({
         columns={columns}
         height={520}
         rowHeight={52}
-        emptyMessage="No inventory items yet."
+        emptyMessage="No inventory items yet"
+        emptyDescription="Add the products you keep in stock to forecast and restock them."
         // Few columns: render them all, so browser find (Ctrl/Cmd+F) sees every cell.
         suppressColumnVirtualisation
         stateKey="inventory"
         tools={{
           exportFileName: "inventory",
+          columns: true,
           actions: inlineEditing ? (
             <Button
               size="sm"

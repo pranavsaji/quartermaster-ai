@@ -6,12 +6,12 @@ import { DeliverySchedule, type DropRequest } from "@/components/deliveries/Deli
 import { DelayDialog, type DeliveryTarget } from "@/components/orders/DeliveryDialogs";
 import { useSession } from "@/components/session/SessionProvider";
 import { StatusBadge } from "@/components/ui/Badge";
-import { Button } from "@/components/ui/Button";
 import { ButtonLink } from "@/components/ui/ButtonLink";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Notice } from "@/components/ui/Notice";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { RefreshButton } from "@/components/ui/RefreshButton";
 import { ResourceView } from "@/components/ui/ResourceView";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import { api } from "@/lib/api";
@@ -107,17 +107,14 @@ export function DeliveriesPage() {
             : "Every delivery on one timeline, by supplier."
         }
         actions={
-          <Button
-            variant="secondary"
+          <RefreshButton
             onClick={() => {
               deliveries.reload();
               orders.reload();
               suppliers.reload();
             }}
             loading={deliveries.refreshing}
-          >
-            Refresh
-          </Button>
+          />
         }
       />
 
@@ -148,7 +145,7 @@ export function DeliveriesPage() {
           </ResourceView>
 
           {items.length > 0 ? (
-            <details className="mt-4 text-[13px]">
+            <details className="mt-4 text-sm">
               <summary className="cursor-pointer font-medium text-ink-2">Deliveries as a list</summary>
               <table className="mt-2 w-full text-left">
                 <caption className="sr-only">Deliveries</caption>

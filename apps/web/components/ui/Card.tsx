@@ -32,15 +32,10 @@ export function CardHeader({
     <header className={cn("flex flex-wrap items-start justify-between gap-x-4 gap-y-2 border-b border-line px-5 py-4", className)}>
       <div className="min-w-0">
         {eyebrow ? <div className="mb-1">{eyebrow}</div> : null}
-        <h2
-          ref={headingRef}
-          id={id}
-          tabIndex={headingRef ? -1 : undefined}
-          className="text-[15px] font-semibold tracking-[-0.01em] text-ink"
-        >
+        <h2 ref={headingRef} id={id} tabIndex={headingRef ? -1 : undefined} className="text-base font-semibold tracking-[-0.01em] text-ink">
           {title}
         </h2>
-        {description ? <p className="mt-0.5 text-[13px] text-ink-3">{description}</p> : null}
+        {description ? <p className="mt-0.5 text-sm text-ink-3">{description}</p> : null}
       </div>
       {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div> : null}
     </header>

@@ -20,7 +20,8 @@ export function RouteError({ error, retry }: { error: Error & { digest?: string 
   }, [error]);
 
   const apiError = error instanceof ApiRequestError ? error : null;
-  const reference = apiError?.correlationId ?? error.digest ?? null;
+  // A reference only helps support with a server failure or a crash, not with an API refusal that explains itself.
+  const reference = apiError ? (apiError.isAmbiguous ? apiError.correlationId : null) : (error.digest ?? null);
 
   return (
     <div className="mx-auto mt-16 max-w-lg px-4">
@@ -40,12 +41,12 @@ export function RouteError({ error, retry }: { error: Error & { digest?: string 
             : "Something went wrong while showing this page. Your data is safe; try again or go back to the overview."}
         </p>
         {reference ? (
-          <p className="mt-1 font-mono text-[11.5px] text-ink-3">
+          <p className="mt-1 font-mono text-2xs text-ink-3">
             reference <span className="select-all text-ink-2">{reference}</span>
           </p>
         ) : null}
       </Notice>
-      <p className="mt-4 text-center text-[13px]">
+      <p className="mt-4 text-center text-sm">
         <Link href="/" className="font-medium text-accent hover:underline">
           Back to the overview
         </Link>

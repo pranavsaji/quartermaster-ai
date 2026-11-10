@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SourceLabel } from "@/components/ui/SourceLabel";
-import { humanize, num } from "@/lib/format";
+import { humanize, money, num } from "@/lib/format";
 
 export type ComparisonRow = CandidateDto & {
   item_name: string;
@@ -135,13 +135,14 @@ export function CandidateTable({
           p.data ? (
             <div className="flex flex-col gap-1 py-2 leading-tight">
               <span className="font-medium text-ink">{p.data.supplier_name}</span>
-              <span className="flex flex-wrap gap-1">
-                <SourceLabel source={p.data.data_source}>
-                  {p.data.data_source === "SANDBOX_SUPPLIER" ? "Sandbox supplier" : undefined}
-                </SourceLabel>
-                {!p.data.supplier_approved ? <Badge tone="block">Not approved</Badge> : null}
-                {!p.data.checkout_eligible ? <Badge tone="review">No checkout</Badge> : null}
-              </span>
+              {/* The card's label already says these are sandbox suppliers; only other sources are called out per row. */}
+              {p.data.data_source !== "SANDBOX_SUPPLIER" || !p.data.supplier_approved || !p.data.checkout_eligible ? (
+                <span className="flex flex-wrap gap-1">
+                  {p.data.data_source !== "SANDBOX_SUPPLIER" ? <SourceLabel source={p.data.data_source} /> : null}
+                  {!p.data.supplier_approved ? <Badge tone="block">Not approved</Badge> : null}
+                  {!p.data.checkout_eligible ? <Badge tone="review">No checkout</Badge> : null}
+                </span>
+              ) : null}
             </div>
           ) : null,
       },
@@ -156,7 +157,7 @@ export function CandidateTable({
           p.data ? (
             <div className="py-2 leading-snug">
               <span className="text-ink-2">{p.data.title}</span>
-              <span className="block font-mono text-[11px] text-ink-4">{p.data.sku}</span>
+              <span className="block font-mono text-2xs text-ink-4">{p.data.sku}</span>
             </div>
           ) : null,
       },
@@ -234,17 +235,7 @@ export function CandidateTable({
                 )}
                 {c.quarantined ? <Badge tone="block">Quarantined</Badge> : null}
               </span>
-              {/* Written out rather than in a hover-only title, so keyboard and touch users get it too. */}
-              {c.quarantined ? (
-                <p className="text-[12px] text-ink-3">TrustRail quarantined this source&apos;s content (e.g. a prompt injection).</p>
-              ) : null}
-              {c.ineligible_reasons.length > 0 ? (
-                <ul className="text-[12px] text-ink-3">
-                  {c.ineligible_reasons.map((r) => (
-                    <li key={r}>• {/^[A-Z0-9_]+$/.test(r) ? humanize(r) : r}</li>
-                  ))}
-                </ul>
-              ) : null}
+              <EligibilityNotes candidate={c} />
             </div>
           );
         },
@@ -262,26 +253,101 @@ export function CandidateTable({
       />
       <div className="p-3">
         {rows.length === 0 ? (
-          <EmptyState compact title="No candidates yet" description="Supplier candidates appear after research." />
+          <EmptyState compact icon="suppliers" title="No suppliers compared yet" description="Offers appear here after research." />
         ) : (
-          <DataGrid<Row>
-            ariaLabel="Supplier comparison"
-            rows={rows}
-            columns={columns}
-            height={Math.min(620, 110 + rows.length * 76)}
-            tools={{ exportFileName: "supplier-comparison" }}
-            // Ineligible rows get a muted background rather than reduced opacity, which would drop
-            // their text below WCAG AA contrast. Quarantined sources are tinted as blocked, the best
-            // eligible offer per item as allowed, and each item's group starts with a heavier rule.
-            rowClassRules={{
-              "!bg-canvas": (p) => p.data?.eligible === false && !p.data.quarantined,
-              "!bg-block-soft": (p) => p.data?.quarantined === true,
-              "!bg-allow-soft": (p) => p.data?.best === true,
-              "!border-t-2 !border-t-line-strong": (p) => p.data?.group_start === true && (p.node.rowIndex ?? 0) > 0,
-            }}
-          />
+          <>
+            <CandidateCards rows={rows} currency={currency} />
+            <div className="hidden md:block">
+              <DataGrid<Row>
+                ariaLabel="Supplier comparison"
+                rows={rows}
+                columns={columns}
+                height={Math.min(620, 110 + rows.length * 76)}
+                tools={{ exportFileName: "supplier-comparison", columns: true }}
+                // Ineligible rows get a muted background rather than reduced opacity, which would drop
+                // their text below WCAG AA contrast. Quarantined sources are tinted as blocked, the best
+                // eligible offer per item as allowed, and each item's group starts with a heavier rule.
+                rowClassRules={{
+                  "!bg-canvas": (p) => p.data?.eligible === false && !p.data.quarantined,
+                  "!bg-block-soft": (p) => p.data?.quarantined === true,
+                  "!bg-allow-soft": (p) => p.data?.best === true,
+                  "!border-t-2 !border-t-line-strong": (p) => p.data?.group_start === true && (p.node.rowIndex ?? 0) > 0,
+                }}
+              />
+            </div>
+          </>
         )}
       </div>
     </Card>
+  );
+}
+
+/** Why an offer can't be bought, written out (not in a hover-only title) for keyboard and touch users. */
+function EligibilityNotes({ candidate: c }: { candidate: Row }) {
+  return (
+    <>
+      {c.quarantined ? (
+        <p className="text-xs text-ink-3">TrustRail quarantined this listing: it hid instructions aimed at AI agents.</p>
+      ) : null}
+      {c.ineligible_reasons.length > 0 ? (
+        <ul className="text-xs text-ink-3">
+          {c.ineligible_reasons.map((r) => (
+            <li key={r}>• {/^[A-Z0-9_]+$/.test(r) ? humanize(r) : r}</li>
+          ))}
+        </ul>
+      ) : null}
+    </>
+  );
+}
+
+/** The comparison on a phone: one stacked row per offer, grouped by item, cheapest delivered cost first. */
+function CandidateCards({ rows, currency }: { rows: Row[]; currency: string }) {
+  return (
+    <ul className="space-y-2 md:hidden" aria-label="Supplier offers">
+      {rows.map((r) => (
+        <li key={r.id}>
+          {r.group_start ? <p className="mt-3 mb-1.5 text-xs font-semibold text-ink first:mt-0">{r.item_name}</p> : null}
+          <div
+            className={
+              r.quarantined
+                ? "rounded-lg border border-block-line bg-block-soft/60 p-3"
+                : r.best
+                  ? "rounded-lg border border-allow-line bg-allow-soft/60 p-3"
+                  : "rounded-lg border border-line bg-surface p-3"
+            }
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-ink">{r.supplier_name}</p>
+                <p className="text-xs text-ink-3">{r.title}</p>
+              </div>
+              <div className="shrink-0 text-right">
+                <p className="tnum text-sm font-semibold text-ink">{money(r.delivered_unit_cost_minor, currency)}</p>
+                <p className="text-2xs text-ink-4">per unit delivered</p>
+              </div>
+            </div>
+            <p className="tnum mt-1.5 text-xs text-ink-3">
+              {num(r.packs)} × {num(r.pack_quantity)} = {num(r.units)} units · {money(r.delivered_total_minor, currency)} delivered
+              {r.fees_minor > 0 ? <span className="font-medium text-block"> · {money(r.fees_minor, currency)} fees</span> : null}
+            </p>
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {r.best ? (
+                <Badge tone="allow" dot>
+                  Best offer
+                </Badge>
+              ) : null}
+              {!r.eligible ? (
+                <Badge tone="block" dot>
+                  Ineligible
+                </Badge>
+              ) : null}
+              {r.quarantined ? <Badge tone="block">Quarantined</Badge> : null}
+              {!r.supplier_approved ? <Badge tone="block">Not approved</Badge> : null}
+            </div>
+            <EligibilityNotes candidate={r} />
+          </div>
+        </li>
+      ))}
+    </ul>
   );
 }

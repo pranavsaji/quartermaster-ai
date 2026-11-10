@@ -31,7 +31,7 @@ export function AccountPage() {
         <Card aria-labelledby="profile-title">
           <CardHeader id="profile-title" title="Profile" />
           <CardBody>
-            <dl className="space-y-3 text-[13px]">
+            <dl className="space-y-3 text-sm">
               {rows.map(([label, value]) => (
                 <div key={label} className="grid grid-cols-[110px_1fr] gap-3">
                   <dt className="text-ink-3">{label}</dt>

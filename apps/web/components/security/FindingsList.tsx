@@ -3,7 +3,8 @@ import type { SecurityFindingDto } from "@qm/contracts";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { relativeTime } from "@/lib/format";
-import { findingLabel, SEVERITY_TONES } from "@/lib/labels";
+import { findingLabel, lookup, SEVERITY_TONES } from "@/lib/labels";
+import { findingSourceLabel, severityLabel } from "@/lib/plain-language";
 
 /** Pulls a human-readable excerpt out of a finding's evidence, if one exists. */
 export function evidenceExcerpt(evidence: Record<string, unknown>): string | null {
@@ -33,7 +34,7 @@ export function evidenceExcerpt(evidence: Record<string, unknown>): string | nul
 
 export function Excerpt({ text }: { text: string }) {
   return (
-    <blockquote className="mt-1.5 rounded-md border-l-2 border-block-line bg-block-soft/60 px-2.5 py-1.5 font-mono text-[11.5px] leading-relaxed break-words whitespace-pre-wrap text-ink-2">
+    <blockquote className="mt-1.5 rounded-md border-l-2 border-block-line bg-block-soft/60 px-2.5 py-1.5 font-mono text-2xs leading-relaxed break-words whitespace-pre-wrap text-ink-2">
       <span className="sr-only">Evidence excerpt (untrusted content): </span>
       {text.length > 280 ? `${text.slice(0, 280)}…` : text}
     </blockquote>
@@ -52,7 +53,7 @@ export function FindingsList({
   emptyDescription?: string;
   linkRequests?: boolean;
 }) {
-  if (findings.length === 0) return <EmptyState compact title={emptyTitle} description={emptyDescription} />;
+  if (findings.length === 0) return <EmptyState compact icon="shield" title={emptyTitle} description={emptyDescription} />;
   return (
     <ul className="divide-y divide-line">
       {findings.map((f) => {
@@ -60,19 +61,19 @@ export function FindingsList({
         return (
           <li key={f.id} className="py-3 first:pt-0 last:pb-0">
             <div className="flex flex-wrap items-center gap-2">
-              <Badge tone={SEVERITY_TONES[f.severity]} dot label={`Severity: ${f.severity}`}>
-                {f.severity}
+              <Badge tone={lookup(SEVERITY_TONES, f.severity, "neutral")} dot label={`Severity: ${severityLabel(f.severity)}`}>
+                {severityLabel(f.severity)}
               </Badge>
-              <span className="text-[12px] font-medium text-ink-3">{findingLabel(f.type)}</span>
-              <span className="ml-auto text-[12px] text-ink-4" title={f.created_at}>
+              <span className="text-xs font-medium text-ink-3">{findingLabel(f.type)}</span>
+              <span className="ml-auto text-xs text-ink-4" title={f.created_at}>
                 {relativeTime(f.created_at)}
               </span>
             </div>
-            <p className="mt-1 text-[13.5px] font-medium text-ink">{f.title}</p>
-            {f.description ? <p className="mt-0.5 text-[13px] text-ink-3">{f.description}</p> : null}
+            <p className="mt-1 text-sm font-medium text-ink">{f.title}</p>
+            {f.description ? <p className="mt-0.5 text-sm text-ink-3">{f.description}</p> : null}
             {excerpt ? <Excerpt text={excerpt} /> : null}
-            <p className="mt-1.5 text-[12px] text-ink-4">
-              Source: <span className="font-mono">{f.source_kind}</span>
+            <p className="mt-1.5 text-xs text-ink-4">
+              Found in: {findingSourceLabel(f.source_kind)}
               {linkRequests && f.related_request_id ? (
                 <>
                   {" · "}

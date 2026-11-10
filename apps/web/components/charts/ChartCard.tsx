@@ -59,6 +59,7 @@ export function ChartCard<T>({
   table,
   height = 280,
   emptyTitle = "No data yet",
+  legend,
 }: {
   title: string;
   description?: string;
@@ -68,6 +69,8 @@ export function ChartCard<T>({
   table: TableColumn<T>[];
   height?: number;
   emptyTitle?: string;
+  /** A legend drawn in HTML above the chart, for charts whose colours carry meaning the chart legend can't show. */
+  legend?: ReactNode;
 }) {
   const colors = useChartColors();
   const resolved = useMemo(() => (colors ? { theme: chartTheme(colors), ...options(colors) } : null), [colors, options]);
@@ -76,15 +79,21 @@ export function ChartCard<T>({
       <CardHeader title={title} description={description} />
       <CardBody>
         {rows.length === 0 ? (
-          <EmptyState compact title={emptyTitle} />
+          <EmptyState
+            compact
+            icon="analytics"
+            title={emptyTitle}
+            description="This fills in as requests are researched, approved and paid."
+          />
         ) : (
           <>
+            {legend ? <div className="mb-2">{legend}</div> : null}
             <div style={{ height }}>
               {resolved ? <AgCharts options={resolved} style={{ height: "100%" }} /> : <Skeleton className="h-full w-full" />}
             </div>
             <Disclosure className="mt-3" summary="View as table">
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-[12.5px]">
+                <table className="w-full text-left text-xs">
                   <caption className="sr-only">{title}</caption>
                   <thead className="text-ink-3">
                     <tr>

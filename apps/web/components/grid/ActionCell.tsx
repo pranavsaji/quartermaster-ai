@@ -50,7 +50,7 @@ export function ActionCell({ eGridCell, className, children }: { eGridCell: HTML
   }, [eGridCell]);
 
   return (
-    <div ref={ref} className={cn("qm-actions flex h-full items-center gap-1.5", className)}>
+    <div ref={ref} className={cn("qm-actions flex h-full min-w-0 items-center gap-1.5 overflow-hidden", className)}>
       {children}
     </div>
   );
@@ -69,7 +69,7 @@ export const RowAction = forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTML
       ref={ref}
       type={type}
       className={cn(
-        "inline-flex h-7 items-center rounded-md px-2 text-[12.5px] font-medium text-accent-strong transition-colors",
+        "inline-flex h-7 shrink-0 items-center rounded-md px-2 text-xs font-medium text-accent-strong transition-colors pointer-coarse:px-3",
         "hover:bg-accent-soft focus-visible:ring-3 focus-visible:ring-accent/25 focus-visible:outline-none",
         "disabled:cursor-not-allowed disabled:text-ink-4 disabled:hover:bg-transparent",
         className,

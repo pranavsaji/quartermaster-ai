@@ -144,7 +144,8 @@ describe("PayPalCheckout", () => {
     // Let the SDK's later rejection land: it must not replace the API's reason or correlation id.
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(screen.getByText("The Intent Certificate has expired.")).toBeInTheDocument();
-    expect(screen.getByText("corr-42")).toBeInTheDocument();
+    // A 4xx refusal explains itself: no correlation id (those are shown for server failures only).
+    expect(screen.queryByText("corr-42")).not.toBeInTheDocument();
     expect(screen.queryByText("PayPal: createOrder failed")).not.toBeInTheDocument();
   });
 });

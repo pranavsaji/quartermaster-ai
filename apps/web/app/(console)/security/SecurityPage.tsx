@@ -6,11 +6,11 @@ import { AuditLog } from "@/components/security/AuditLog";
 import { DecisionsGrid } from "@/components/security/DecisionsGrid";
 import { FindingsGrid } from "@/components/security/FindingsGrid";
 import { PayPalNotificationsCard } from "@/components/security/PayPalNotificationsCard";
-import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Select } from "@/components/ui/Field";
 import { LoadMore } from "@/components/ui/LoadMore";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { RefreshButton } from "@/components/ui/RefreshButton";
 import { ResourceView } from "@/components/ui/ResourceView";
 import { StatTile } from "@/components/ui/StatTile";
 import { tabPanelProps, Tabs } from "@/components/ui/Tabs";
@@ -31,25 +31,29 @@ function loadedCount<T>(state: PagedState<T>): string | undefined {
 
 function SecurityTiles({ totals: s }: { totals: AnalyticsSummaryDto["security"] | undefined }) {
   return (
-    <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-      <StatTile label="Findings" loading={!s} value={s ? num(s.findings_total) : ""} />
+    // Stopped attacks are TrustRail doing its job: shown as protection, not as alarms. Only a
+    // duplicate capture (money taken twice) is a real problem, and zero stays neutral.
+    <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+      <StatTile label="Findings" loading={!s} value={s ? num(s.findings_total) : ""} sub="Everything TrustRail flagged" />
       <StatTile
         label="Blocked attempts"
         loading={!s}
         value={s ? num(s.blocked_attempts) : ""}
-        tone={s && s.blocked_attempts > 0 ? "block" : "neutral"}
+        tone={s && s.blocked_attempts > 0 ? "allow" : "neutral"}
+        sub="Unsafe carts stopped before payment"
       />
       <StatTile
-        label="Prompt injections detected"
+        label="Prompt injections caught"
         loading={!s}
         value={s ? num(s.prompt_injections_detected) : ""}
-        tone={s && s.prompt_injections_detected > 0 ? "review" : "neutral"}
+        tone={s && s.prompt_injections_detected > 0 ? "allow" : "neutral"}
+        sub="Hidden instructions quarantined"
       />
       <StatTile
         label="Duplicate captures"
         loading={!s}
         value={s ? num(s.duplicate_captures) : ""}
-        tone={s && s.duplicate_captures === 0 ? "allow" : "block"}
+        tone={s && s.duplicate_captures > 0 ? "block" : "neutral"}
         sub="Target: always 0"
       />
     </div>
@@ -91,13 +95,9 @@ export function SecurityPage() {
   return (
     <>
       <PageHeader
-        title="TrustRail Security Center"
-        description="Everything TrustRail detected, every policy decision it made and the tamper-evident audit trail behind them."
-        actions={
-          <Button variant="secondary" onClick={refreshAll} loading={refreshing}>
-            Refresh
-          </Button>
-        }
+        title="Security center"
+        description="Everything TrustRail caught, every decision it made and the tamper-evident audit trail behind them."
+        actions={<RefreshButton onClick={refreshAll} loading={refreshing} />}
       />
 
       <div className="mb-6">
@@ -143,7 +143,7 @@ export function SecurityPage() {
         <div {...tabPanelProps(idBase, tab)} className="px-5 py-4 focus-visible:outline-offset-[-2px]">
           {tab === "findings" ? (
             <div className="mb-3 flex flex-wrap items-center gap-2">
-              <label htmlFor="severity-filter" className="text-[13px] text-ink-3">
+              <label htmlFor="severity-filter" className="text-sm text-ink-3">
                 Severity
               </label>
               <div className="w-44">

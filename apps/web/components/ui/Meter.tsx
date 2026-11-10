@@ -32,7 +32,7 @@ export function BudgetMeter({ budget, className, compact = false }: { budget: Bu
         />
       </div>
       {!compact ? (
-        <dl className="tnum mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-[13px] sm:grid-cols-4">
+        <dl className="tnum mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4">
           <div>
             <dt className="flex items-center gap-1.5 text-ink-3">
               <span aria-hidden className="size-2 rounded-sm bg-accent" />

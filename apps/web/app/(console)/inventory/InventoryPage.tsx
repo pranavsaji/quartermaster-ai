@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Notice } from "@/components/ui/Notice";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { RefreshButton } from "@/components/ui/RefreshButton";
 import { ResourceView } from "@/components/ui/ResourceView";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import { api } from "@/lib/api";
@@ -79,14 +80,12 @@ export function InventoryPage() {
         meta={source ? <SourceLabel source={source} /> : null}
         actions={
           <>
-            <Button variant="secondary" onClick={inventory.reload} loading={inventory.refreshing}>
-              Refresh
-            </Button>
             {canEdit ? (
               <Button variant="primary" onClick={() => setEditing({ item: null })}>
                 Add item
               </Button>
             ) : null}
+            <RefreshButton onClick={inventory.reload} loading={inventory.refreshing} />
           </>
         }
       />

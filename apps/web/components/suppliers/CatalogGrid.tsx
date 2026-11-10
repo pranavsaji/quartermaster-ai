@@ -69,7 +69,7 @@ export function CatalogGrid({
           p.data ? (
             <div className="flex h-full flex-col justify-center leading-tight">
               <span className="font-medium text-ink">{p.data.title}</span>
-              <span className="font-mono text-[11px] text-ink-4">{p.data.sku}</span>
+              <span className="font-mono text-2xs text-ink-4">{p.data.sku}</span>
             </div>
           ) : null,
         getQuickFilterText: (p) => (p.data ? `${p.data.title} ${p.data.sku}` : ""),
@@ -78,12 +78,14 @@ export function CatalogGrid({
         field: "category",
         headerName: "Category",
         minWidth: 150,
+        context: { secondary: true },
         valueFormatter: (p) => categoryLabel(typeof p.value === "string" ? p.value : null),
       },
       {
         colId: "restocks",
         headerName: "Restocks",
         minWidth: 160,
+        context: { secondary: true },
         valueGetter: (p) => (p.data?.inventory_item_id ? (stockNames.get(p.data.inventory_item_id) ?? "Linked item") : "—"),
       },
       numberColumn<CatalogItemDto>("pack_quantity", EDITABLE_CATALOG_FIELDS.pack_quantity, {
@@ -182,7 +184,7 @@ export function CatalogGrid({
   return (
     <>
       {manage ? (
-        <p className="mb-2 text-[12.5px] text-ink-3">
+        <p className="mb-2 text-xs text-ink-3">
           Type over a price, pack size or availability to change it; quarantined listings can only be opened, not edited here.
         </p>
       ) : null}
@@ -206,7 +208,8 @@ export function CatalogGrid({
         columns={columns}
         height={480}
         rowHeight={52}
-        emptyMessage="No products yet."
+        emptyMessage="No products yet"
+        emptyDescription="Add what this supplier sells, with the price per pack."
         // Few columns: render them all, so browser find (Ctrl/Cmd+F) sees every cell.
         suppressColumnVirtualisation
         stateKey="supplier-catalog"

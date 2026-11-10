@@ -4,8 +4,9 @@ import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { cn } from "@/components/ui/cn";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Icons } from "@/components/shell/icons";
-import { dateTime, duration, humanize } from "@/lib/format";
+import { dateTime, duration, humanize, plural } from "@/lib/format";
 import { lookup } from "@/lib/labels";
+import { plainText, stepLabel } from "@/lib/plain-language";
 
 type StepStyle = { tone: "allow" | "block" | "neutral"; ring: string; icon: keyof typeof Icons };
 
@@ -23,12 +24,12 @@ export function AgentTimeline({ steps }: { steps: AgentStepDto[] }) {
     <Card aria-labelledby="timeline-title">
       <CardHeader
         id="timeline-title"
-        title="Agent steps"
-        description={ordered.length > 0 ? `${ordered.length} steps · ${duration(total)} total` : undefined}
+        title="What Quartermaster did"
+        description={ordered.length > 0 ? `${plural(ordered.length, "step")} · ${duration(total)} in all` : undefined}
       />
       <CardBody>
         {ordered.length === 0 ? (
-          <EmptyState compact title="No steps yet" description="Steps appear once research runs." />
+          <EmptyState compact icon="sparkle" title="No steps yet" description="Each step appears here once research runs." />
         ) : (
           <ol className="relative">
             {ordered.map((step, i) => {
@@ -42,18 +43,19 @@ export function AgentTimeline({ steps }: { steps: AgentStepDto[] }) {
                   </span>
                   <div className="min-w-0 flex-1 pt-0.5">
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                      <span className="text-[13.5px] font-medium text-ink">{humanize(step.tool)}</span>
-                      <code className="font-mono text-[11px] text-ink-4">{step.tool}</code>
+                      <span className="text-sm font-medium text-ink" title={step.tool}>
+                        {stepLabel(step.tool)}
+                      </span>
                       {step.status !== "SUCCEEDED" ? (
                         <Badge tone={s.tone} label={`Step ${humanize(step.status)}`}>
                           {humanize(step.status)}
                         </Badge>
                       ) : null}
-                      <span className="tnum ml-auto text-[12px] text-ink-4" title={dateTime(step.started_at)}>
+                      <span className="tnum ml-auto text-xs text-ink-4" title={dateTime(step.started_at)}>
                         {duration(step.duration_ms)}
                       </span>
                     </div>
-                    <p className="mt-0.5 text-[13px] leading-relaxed text-ink-3">{step.summary}</p>
+                    <p className="mt-0.5 text-xs leading-relaxed text-ink-3">{plainText(step.summary)}</p>
                   </div>
                 </li>
               );

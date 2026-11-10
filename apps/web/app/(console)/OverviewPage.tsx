@@ -40,14 +40,14 @@ export function OverviewPage() {
       />
 
       {!config.ai.enabled ? (
-        <Notice tone="review" title="Running in deterministic mode — no LLM configured" className="mb-6">
-          Requests are interpreted with deterministic rules instead of a language model. Policy enforcement is unaffected.
+        <Notice tone="review" title="Running without an AI model" className="mb-6">
+          Requests are read with fixed rules instead of a language model. TrustRail&apos;s checks are unaffected.
         </Notice>
       ) : null}
 
       <KpiRow summary={summary.data} resource={summary} />
 
-      <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-[1.4fr_1fr]">
+      <div className="mt-6 grid grid-cols-1 items-start gap-6 xl:grid-cols-[1.4fr_1fr]">
         <LowStockList items={inventory.data?.items} resource={inventory} />
         <div className="space-y-6">
           <UpcomingDeliveries deliveries={deliveries.data?.items} orders={orders.data?.items} resource={deliveries} />
@@ -56,7 +56,7 @@ export function OverviewPage() {
               id="findings-title"
               title="Recent TrustRail findings"
               actions={
-                <Link href="/security" className="text-[13px] font-medium text-accent hover:underline">
+                <Link href="/security" className="text-sm font-medium text-accent hover:underline">
                   Security center
                 </Link>
               }

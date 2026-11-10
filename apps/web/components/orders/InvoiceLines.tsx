@@ -75,107 +75,114 @@ export function InvoiceLines({
   }
 
   return (
-    <fieldset>
-      <legend className="mb-2 text-[13px] font-medium text-ink-2">Lines</legend>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[640px] text-left text-[13px]">
-          <thead className="text-[11.5px] text-ink-3">
-            <tr>
-              <th scope="col" className="pb-1.5 font-medium">
-                SKU
-              </th>
-              <th scope="col" className="pb-1.5 pl-2 font-medium">
-                Description
-              </th>
-              <th scope="col" className="w-20 pb-1.5 pl-2 font-medium">
-                Qty
-              </th>
-              <th scope="col" className="w-32 pb-1.5 pl-2 font-medium">
-                Unit price
-              </th>
-              <th scope="col" className="w-28 pb-1.5 pl-2 text-right font-medium">
-                Line total
-              </th>
-              <th scope="col" className="w-10 pb-1.5">
-                <span className="sr-only">Remove</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {lines.map((l, i) => {
-              const t = lineTotal(l, currency);
-              const lineErrors = errors[l.key] ?? {};
-              const errorProps = (field: keyof LineErrors) => ({
-                "aria-invalid": lineErrors[field] ? (true as const) : undefined,
-                "aria-describedby": lineErrors[field] ? `${idBase}-${l.key}-${field}` : undefined,
-              });
-              const errorText = (field: keyof LineErrors) =>
-                lineErrors[field] ? (
-                  <p id={`${idBase}-${l.key}-${field}`} className="mt-1 text-[12px] font-medium text-block">
-                    {lineErrors[field]}
-                  </p>
-                ) : null;
-              return (
-                <tr key={l.key} className="align-top">
-                  <td className="py-1">
-                    <Input
-                      aria-label={`Line ${i + 1} SKU`}
-                      value={l.sku}
-                      onChange={(e) => updateLine(l.key, { sku: e.target.value })}
-                      className="w-28 font-mono text-[12px]"
-                    />
-                  </td>
-                  <td className="py-1 pl-2">
-                    <Input
-                      aria-label={`Line ${i + 1} description`}
-                      aria-required
-                      {...errorProps("description")}
-                      value={l.description}
-                      onChange={(e) => updateLine(l.key, { description: e.target.value })}
-                    />
-                    {errorText("description")}
-                  </td>
-                  <td className="py-1 pl-2">
-                    <Input
-                      aria-label={`Line ${i + 1} quantity`}
-                      aria-required
-                      {...errorProps("quantity")}
-                      inputMode="numeric"
-                      value={l.quantity}
-                      onChange={(e) => updateLine(l.key, { quantity: e.target.value })}
-                      className="tnum"
-                    />
-                    {errorText("quantity")}
-                  </td>
-                  <td className="py-1 pl-2">
-                    <MoneyInput
-                      currency={currency}
-                      aria-label={`Line ${i + 1} unit price`}
-                      aria-required
-                      {...errorProps("unitPrice")}
-                      value={l.unitPrice}
-                      onChange={(e) => updateLine(l.key, { unitPrice: e.target.value })}
-                    />
-                    {errorText("unitPrice")}
-                  </td>
-                  <td className="tnum py-1 pl-2 text-right leading-9 text-ink-2">{t !== null ? money(t, currency) : "—"}</td>
-                  <td className="py-1 pl-1 text-right">
-                    <button
-                      type="button"
-                      onClick={() => onChange((ls) => (ls.length > 1 ? ls.filter((x) => x.key !== l.key) : ls))}
-                      className="rounded p-1.5 text-ink-3 hover:bg-ink/5 hover:text-block disabled:opacity-30"
-                      disabled={lines.length === 1}
-                      aria-label={`Remove line ${i + 1}`}
-                    >
-                      ×
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+    // min-w-0: a fieldset is as wide as its content by default, which pushed the page sideways on phones.
+    <fieldset className="min-w-0">
+      <legend className="mb-2 text-sm font-medium text-ink-2">Lines</legend>
+      {/* A table-like grid from sm up; on a phone each line stacks its fields under small captions. */}
+      <div
+        aria-hidden
+        className="hidden grid-cols-[7rem_minmax(0,1fr)_5rem_8rem_7rem_2.75rem] gap-x-2 pb-1.5 text-2xs font-medium text-ink-3 sm:grid"
+      >
+        <span>SKU</span>
+        <span>Description</span>
+        <span>Qty</span>
+        <span>Unit price</span>
+        <span className="text-right">Line total</span>
+        <span />
       </div>
+      <ul className="space-y-3 sm:space-y-1">
+        {lines.map((l, i) => {
+          const t = lineTotal(l, currency);
+          const lineErrors = errors[l.key] ?? {};
+          const errorProps = (field: keyof LineErrors) => ({
+            "aria-invalid": lineErrors[field] ? (true as const) : undefined,
+            "aria-describedby": lineErrors[field] ? `${idBase}-${l.key}-${field}` : undefined,
+          });
+          const errorText = (field: keyof LineErrors) =>
+            lineErrors[field] ? (
+              <p id={`${idBase}-${l.key}-${field}`} className="mt-1 text-xs font-medium text-block">
+                {lineErrors[field]}
+              </p>
+            ) : null;
+          const caption = (text: string) => (
+            <span aria-hidden className="mb-1 block text-2xs font-medium text-ink-3 sm:hidden">
+              {text}
+            </span>
+          );
+          return (
+            <li
+              key={l.key}
+              className="grid grid-cols-2 gap-x-2 gap-y-2 rounded-lg border border-line p-3 sm:grid-cols-[7rem_minmax(0,1fr)_5rem_8rem_7rem_2.75rem] sm:items-start sm:gap-y-0 sm:rounded-none sm:border-0 sm:p-0"
+            >
+              <div className="col-span-2 flex items-center justify-between sm:hidden">
+                <span className="text-xs font-semibold text-ink-2">Line {i + 1}</span>
+              </div>
+              <div className="col-span-2 sm:col-span-1">
+                {caption("SKU")}
+                <Input
+                  aria-label={`Line ${i + 1} SKU`}
+                  value={l.sku}
+                  onChange={(e) => updateLine(l.key, { sku: e.target.value })}
+                  className="font-mono text-xs"
+                />
+              </div>
+              <div className="col-span-2 sm:col-span-1">
+                {caption("Description")}
+                <Input
+                  aria-label={`Line ${i + 1} description`}
+                  aria-required
+                  {...errorProps("description")}
+                  value={l.description}
+                  onChange={(e) => updateLine(l.key, { description: e.target.value })}
+                />
+                {errorText("description")}
+              </div>
+              <div>
+                {caption("Qty")}
+                <Input
+                  aria-label={`Line ${i + 1} quantity`}
+                  aria-required
+                  {...errorProps("quantity")}
+                  inputMode="numeric"
+                  value={l.quantity}
+                  onChange={(e) => updateLine(l.key, { quantity: e.target.value })}
+                  className="tnum"
+                />
+                {errorText("quantity")}
+              </div>
+              <div>
+                {caption("Unit price")}
+                <MoneyInput
+                  currency={currency}
+                  aria-label={`Line ${i + 1} unit price`}
+                  aria-required
+                  {...errorProps("unitPrice")}
+                  value={l.unitPrice}
+                  onChange={(e) => updateLine(l.key, { unitPrice: e.target.value })}
+                />
+                {errorText("unitPrice")}
+              </div>
+              <p className="tnum flex items-center justify-between text-sm text-ink-2 sm:block sm:text-right sm:leading-9">
+                <span aria-hidden className="text-2xs font-medium text-ink-3 sm:hidden">
+                  Line total
+                </span>
+                {t !== null ? money(t, currency) : "—"}
+              </p>
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => onChange((ls) => (ls.length > 1 ? ls.filter((x) => x.key !== l.key) : ls))}
+                  className="grid size-9 place-items-center rounded-md text-base text-ink-3 hover:bg-ink/5 hover:text-block disabled:text-ink-4 disabled:hover:bg-transparent pointer-coarse:size-11"
+                  disabled={lines.length === 1}
+                  aria-label={`Remove line ${i + 1}`}
+                >
+                  ×
+                </button>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
       <Button size="sm" variant="ghost" className="mt-1" onClick={() => onChange((ls) => [...ls, blankLine(nextLineKey(ls))])}>
         + Add line
       </Button>

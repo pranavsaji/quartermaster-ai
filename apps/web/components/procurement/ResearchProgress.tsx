@@ -11,12 +11,12 @@ import { useNow } from "@/lib/hooks";
  * typical schedule and is explicit that the real result is what counts.
  */
 const STAGES: { label: string; detail: string; at: number }[] = [
-  { label: "Interpreting the instruction", detail: "Structured intent with schema validation", at: 0 },
+  { label: "Reading your request", detail: "Items, budget and timing", at: 0 },
   { label: "Forecasting demand", detail: "Reorder point, lead time and safety stock", at: 1.5 },
-  { label: "Researching the market", detail: "Channel3 reference prices (not purchasable here)", at: 3.5 },
-  { label: "Comparing sandbox suppliers", detail: "Delivered unit cost incl. shipping, tax and fees", at: 7 },
-  { label: "Planning carts", detail: "One proposal per supplier", at: 11 },
-  { label: "TrustRail policy evaluation", detail: "Deterministic checks against your spend mandate", at: 14 },
+  { label: "Checking market prices", detail: "Public listings, for reference only", at: 3.5 },
+  { label: "Comparing suppliers", detail: "Delivered cost with shipping, tax and fees", at: 7 },
+  { label: "Planning carts", detail: "One cart per supplier", at: 11 },
+  { label: "TrustRail check", detail: "Every cart against your spend mandate", at: 14 },
 ];
 
 export function ResearchProgress({ startedAt }: { startedAt: number }) {
@@ -33,12 +33,12 @@ export function ResearchProgress({ startedAt }: { startedAt: number }) {
               <Spinner className="size-4" />
             </span>
             <div>
-              <p className="text-[15px] font-semibold text-ink">Quartermaster is researching this request…</p>
-              <p className="text-[13px] text-ink-3">This usually takes 5–25 seconds. You can leave this page; it keeps running.</p>
+              <p className="text-base font-semibold text-ink">Researching this request…</p>
+              <p className="text-sm text-ink-3">Usually 5–25 seconds. You can leave this page; it keeps running.</p>
             </div>
           </div>
           {/* Not announced: a counter ticking 4x a second would flood a live region. */}
-          <span className="tnum rounded-md bg-canvas px-2 py-1 font-mono text-[12px] text-ink-3">{elapsed.toFixed(1)} s</span>
+          <span className="tnum rounded-md bg-canvas px-2 py-1 font-mono text-xs text-ink-3">{elapsed.toFixed(1)} s</span>
         </div>
         <p className="sr-only" role="status">
           {STAGES[activeIndex]?.label}
@@ -57,7 +57,7 @@ export function ResearchProgress({ startedAt }: { startedAt: number }) {
                   state === "todo" && "border-dashed border-line bg-canvas",
                 )}
               >
-                <p className="flex items-center gap-2 text-[13px] font-medium text-ink">
+                <p className="flex items-center gap-2 text-sm font-medium text-ink">
                   <span
                     aria-hidden
                     className={cn(
@@ -70,12 +70,12 @@ export function ResearchProgress({ startedAt }: { startedAt: number }) {
                   {stage.label}
                   <span className="sr-only">{state === "done" ? " (typically complete)" : state === "active" ? " (in progress)" : ""}</span>
                 </p>
-                <p className="mt-0.5 pl-4 text-[12px] text-ink-3">{stage.detail}</p>
+                <p className="mt-0.5 pl-4 text-xs text-ink-3">{stage.detail}</p>
               </li>
             );
           })}
         </ol>
-        <p className="mt-3 text-[11.5px] text-ink-4">Stage timing is indicative; the step log below is the authoritative record.</p>
+        <p className="mt-3 text-2xs text-ink-4">Stage timing is approximate; the step log is the exact record.</p>
       </CardBody>
     </Card>
   );

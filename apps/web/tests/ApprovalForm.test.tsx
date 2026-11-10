@@ -22,13 +22,13 @@ describe("ApprovalForm acknowledgements", () => {
     const before = purchaseOrder({ policy_decision: policyDecision({ id: "dec-1", violations: [premium12] }) });
     const { rerender } = renderWithSession(card(before));
 
-    fireEvent.click(screen.getByRole("checkbox", { name: /I have reviewed MARKET_PRICE_PREMIUM_EXCEEDED/ }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /I have reviewed: priced above the market/ }));
     expect(approveButton()).toBeEnabled();
 
     // Re-evaluated: same code, but the premium is now 40%. The owner has not reviewed that.
     rerender(card({ ...before, policy_decision: policyDecision({ id: "dec-2", violations: [premium40] }) }));
 
-    const box = screen.getByRole("checkbox", { name: /I have reviewed MARKET_PRICE_PREMIUM_EXCEEDED/ });
+    const box = screen.getByRole("checkbox", { name: /I have reviewed: priced above the market/ });
     expect(box).not.toBeChecked();
     expect(box).toHaveAccessibleDescription("Unit price is 40% above market.");
     expect(approveButton()).toBeDisabled();
@@ -39,11 +39,11 @@ describe("ApprovalForm acknowledgements", () => {
     const props = { requestId: "req-1", onApproved: vi.fn(), onReject: vi.fn(), onConflict: vi.fn() };
     const { rerender } = renderWithSession(<ApprovalForm {...props} po={po} />);
     for (const box of screen.getAllByRole("checkbox")) fireEvent.click(box);
-    expect(screen.getByText(/Acknowledge each review item to continue \(2\/2\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Confirm each point TrustRail raised \(2 of 2\)/)).toBeInTheDocument();
 
     // Without a remount, a stale tick for DUPLICATE_ORDER must not count towards QUANTITY_EXCEEDS_NEED.
     rerender(<ApprovalForm {...props} po={{ ...po, policy_decision: policyDecision({ violations: [premium12, quantity] }) }} />);
-    expect(screen.getByText(/Acknowledge each review item to continue \(1\/2\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Confirm each point TrustRail raised \(1 of 2\)/)).toBeInTheDocument();
     expect(approveButton()).toBeDisabled();
   });
 

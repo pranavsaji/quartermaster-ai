@@ -31,7 +31,7 @@ export function Badge({ tone = "neutral", children, dot = false, size = "sm", cl
       title={title}
       className={cn(
         "inline-flex items-center gap-1.5 rounded-full font-medium whitespace-nowrap ring-1 ring-inset",
-        size === "sm" ? "px-2 py-0.5 text-[11.5px] leading-4" : "px-2.5 py-1 text-xs",
+        size === "sm" ? "px-2 py-0.5 text-2xs leading-4" : "px-2.5 py-1 text-xs",
         t.box,
         className,
       )}

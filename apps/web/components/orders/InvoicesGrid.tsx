@@ -54,7 +54,7 @@ export function InvoicesGrid({
         field: "invoice_number",
         headerName: "Invoice",
         minWidth: 150,
-        cellClass: (p) => (p.node.rowPinned ? "text-[12.5px]" : "font-mono text-[12.5px]"),
+        cellClass: (p) => (p.node.rowPinned ? "text-xs" : "font-mono text-xs"),
       },
       {
         field: "supplier_id",
@@ -68,7 +68,8 @@ export function InvoicesGrid({
         field: "purchase_order_id",
         headerName: "PO",
         minWidth: 130,
-        cellClass: "font-mono text-[12.5px]",
+        context: { secondary: true },
+        cellClass: "font-mono text-xs",
         valueFormatter: (p) =>
           p.node?.rowPinned ? "" : typeof p.value === "string" ? (poNumbers.get(p.value) ?? p.value.slice(0, 8)) : "—",
       },
@@ -76,6 +77,7 @@ export function InvoicesGrid({
         field: "invoice_date",
         headerName: "Date",
         minWidth: 120,
+        context: { secondary: true },
         cellClass: "tnum",
         valueFormatter: (p) => (typeof p.value === "string" ? date(p.value) : ""),
       },
@@ -96,6 +98,7 @@ export function InvoicesGrid({
         colId: "failed",
         headerName: "Failed checks",
         minWidth: 200,
+        context: { secondary: true },
         flex: 1,
         valueGetter: (p) =>
           p.data && !p.node?.rowPinned
@@ -126,7 +129,8 @@ export function InvoicesGrid({
       rows={invoices}
       columns={columns}
       height={380}
-      emptyMessage="No invoices analyzed yet."
+      emptyMessage="No invoices yet"
+      emptyDescription="Invoices you analyze are listed here with their match result."
       tools={{ exportFileName: "invoices" }}
       stateKey="invoices"
       pinnedBottomRowData={pinned}

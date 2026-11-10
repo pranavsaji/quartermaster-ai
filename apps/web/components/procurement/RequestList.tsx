@@ -9,6 +9,7 @@ import { useMemo } from "react";
 import { ActionCell, controlColumn } from "@/components/grid/ActionCell";
 import { DataGrid } from "@/components/grid/DataGrid";
 import { dateTimeColumn, moneyColumn, statusColumn } from "@/components/grid/columns";
+import { dateTime, money } from "@/lib/format";
 import { REQUEST_STATUS_TONES } from "@/lib/labels";
 
 export function RequestList({ requests }: { requests: ProcurementRequestSummaryDto[] | undefined }) {
@@ -19,18 +20,24 @@ export function RequestList({ requests }: { requests: ProcurementRequestSummaryD
         field: "instruction",
         headerName: "Request",
         flex: 3,
-        minWidth: 280,
+        minWidth: 180,
         ...controlColumn<ProcurementRequestSummaryDto>(),
         cellRenderer: (p: CustomCellRendererProps<ProcurementRequestSummaryDto>) =>
           p.data ? (
-            <ActionCell eGridCell={p.eGridCell} className="min-w-0">
-              <Link
-                href={`/procurement/${p.data.id}`}
-                className="block truncate font-medium text-ink hover:text-accent hover:underline"
-                title={p.data.instruction}
-              >
-                {p.data.instruction}
-              </Link>
+            <ActionCell eGridCell={p.eGridCell} className="w-full">
+              <span className="flex min-w-0 flex-col leading-tight">
+                <Link
+                  href={`/procurement/${p.data.id}`}
+                  className="block min-w-0 truncate font-medium text-ink hover:text-accent hover:underline"
+                  title={p.data.instruction}
+                >
+                  {p.data.instruction}
+                </Link>
+                {/* On a phone the total and date columns are hidden: they ride along under the request. */}
+                <span className="mt-0.5 truncate text-2xs text-ink-4 sm:hidden">
+                  {money(p.data.total_minor, p.data.currency)} · {dateTime(p.data.created_at)}
+                </span>
+              </span>
             </ActionCell>
           ) : null,
       },
@@ -39,10 +46,13 @@ export function RequestList({ requests }: { requests: ProcurementRequestSummaryD
         "Status",
         REQUEST_STATUS_TONES,
         undefined,
-        { minWidth: 150 },
+        { minWidth: 130, maxWidth: 190 },
       ),
-      moneyColumn<ProcurementRequestSummaryDto>("total_minor", "Proposed total", (r) => r.currency, { minWidth: 140 }),
-      dateTimeColumn<ProcurementRequestSummaryDto>("created_at", "Created", { sort: "desc", minWidth: 150 }),
+      moneyColumn<ProcurementRequestSummaryDto>("total_minor", "Proposed total", (r) => r.currency, {
+        minWidth: 120,
+        context: { secondary: true },
+      }),
+      dateTimeColumn<ProcurementRequestSummaryDto>("created_at", "Created", { sort: "desc", minWidth: 140, context: { secondary: true } }),
     ],
     [],
   );
@@ -54,7 +64,9 @@ export function RequestList({ requests }: { requests: ProcurementRequestSummaryD
       tools={{ exportFileName: "procurement-requests" }}
       stateKey="procurement-requests"
       columns={columns}
-      emptyMessage="No requests yet. Create one to get started."
+      rowHeight={52}
+      emptyMessage="No requests yet"
+      emptyDescription="Describe what you need in plain words with New request; Quartermaster researches it for you."
       onRowDoubleClicked={(e) => e.data && router.push(`/procurement/${e.data.id}`)}
     />
   );

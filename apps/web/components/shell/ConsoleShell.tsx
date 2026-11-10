@@ -72,12 +72,12 @@ export function ConsoleShell({ initialSession, children }: { initialSession?: In
         Skip to content
       </a>
       <div className="flex min-h-dvh">
-        <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col border-r border-line bg-canvas px-3 py-4 lg:flex">
+        {/* Tablet: an icon rail; desktop: the full sidebar; phone: the drawer behind the menu button. */}
+        <aside className="sticky top-0 hidden h-dvh w-16 shrink-0 flex-col border-r border-line bg-canvas px-2 py-4 md:flex lg:w-64 lg:px-3">
           <div className="mb-7 px-1">
-            <Brand />
+            <Brand compact />
           </div>
-          <SidebarNav />
-          <SidebarFooter />
+          <SidebarNav rail />
         </aside>
 
         <NavDrawer open={menuOpen} onClose={() => setMenuOpen(false)} />
@@ -107,8 +107,8 @@ function NavDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
     if (!el || !open) return;
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     if (!el.open) el.showModal();
-    // At lg the drawer is hidden by CSS; don't leave an invisible modal making the page inert.
-    const desktop = window.matchMedia("(min-width: 64rem)");
+    // From md the drawer is hidden by CSS (the rail takes over); don't leave an invisible modal making the page inert.
+    const desktop = window.matchMedia("(min-width: 48rem)");
     const onResize = () => desktop.matches && onCloseEvent();
     desktop.addEventListener("change", onResize);
     // A click on the dialog element itself is a click on the backdrop (Escape covers keyboards).
@@ -131,13 +131,18 @@ function NavDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
         e.preventDefault();
         onClose();
       }}
-      className="m-0 h-dvh max-h-dvh w-72 max-w-[85vw] bg-canvas p-0 shadow-[var(--shadow-pop)] lg:hidden"
+      className="m-0 h-dvh max-h-dvh w-72 max-w-[85vw] bg-canvas p-0 shadow-[var(--shadow-pop)] md:hidden"
     >
       {open ? (
         <div className="flex h-full flex-col px-3 py-4">
           <div className="mb-7 flex items-center justify-between px-1">
             <Brand />
-            <button type="button" onClick={onClose} className="rounded-md p-1.5 text-ink-2 hover:bg-ink/5" aria-label="Close navigation">
+            <button
+              type="button"
+              onClick={onClose}
+              className="grid size-9 place-items-center rounded-md text-ink-2 hover:bg-ink/5 pointer-coarse:size-11"
+              aria-label="Close navigation"
+            >
               <Icons.close />
             </button>
           </div>
@@ -149,11 +154,12 @@ function NavDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
   );
 }
 
+/** On a phone the header has no room for the environment chip, so the drawer says it once. */
 function SidebarFooter() {
   return (
-    <div className="mt-auto rounded-lg border border-line bg-surface px-3 py-2.5 text-[11.5px] leading-relaxed text-ink-3">
-      Payments run in <span className="font-medium text-ink-2">PayPal sandbox</span>. Suppliers are sandbox merchants; deliveries are
-      synthetic.
+    <div className="mt-auto rounded-lg border border-line bg-surface px-3 py-2.5 text-2xs leading-relaxed text-ink-3">
+      <span className="font-medium text-ink-2">Sandbox:</span> payments use PayPal sandbox, suppliers are sandbox merchants and deliveries
+      are simulated.
     </div>
   );
 }

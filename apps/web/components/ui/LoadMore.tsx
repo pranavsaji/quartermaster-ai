@@ -15,7 +15,7 @@ export function LoadMore<T>({ state, noun = "rows", className }: { state: PagedS
       {state.moreError ? <ErrorNotice error={state.moreError} title="Couldn't load more" className="w-full" /> : null}
       {state.hasMore ? (
         <>
-          <p className="text-[12.5px] text-ink-3" role="status">
+          <p className="text-xs text-ink-3" role="status">
             Showing the first {num(state.items.length)} {noun}. More are available.
           </p>
           <Button variant="secondary" size="sm" onClick={state.loadMore} loading={state.loadingMore}>

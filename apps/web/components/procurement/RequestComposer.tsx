@@ -13,8 +13,8 @@ import { api } from "@/lib/api";
 import { inputToMinor, todayIso } from "@/lib/format";
 import { useAction } from "@/lib/hooks";
 
-/** An example, shown as a placeholder: the owner's request starts empty rather than pre-written. */
-const EXAMPLE_INSTRUCTION = "e.g. We're expecting a busy weekend. Restock takeaway containers and cooking oil without exceeding $300.";
+/** A shape to follow, shown as a placeholder (not the sample scenario): the request starts empty. */
+const EXAMPLE_INSTRUCTION = "e.g. Order napkins and paper towels for next week, under $150, delivered by Friday.";
 
 export function RequestComposer({
   currency,
@@ -97,7 +97,7 @@ export function RequestComposer({
                 placeholder={EXAMPLE_INSTRUCTION}
                 maxLength={2000}
                 rows={3}
-                className="text-[14px] leading-relaxed"
+                className="text-sm leading-relaxed"
               />
             )}
           </Field>

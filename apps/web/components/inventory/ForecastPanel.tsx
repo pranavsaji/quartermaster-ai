@@ -40,7 +40,7 @@ export function ForecastPanel({ canRun }: { canRun: boolean }) {
           <Button variant="primary" onClick={() => void forecast.run(multiplier)} loading={forecast.pending} disabled={!canRun}>
             {run ? "Re-run forecast" : "Run forecast"}
           </Button>
-          {!canRun ? <span className="text-[12.5px] text-ink-3">Managers and owners can run forecasts.</span> : null}
+          {!canRun ? <span className="text-xs text-ink-3">Managers and owners can run forecasts.</span> : null}
         </div>
 
         <ErrorNotice error={forecast.error} onRetry={() => void forecast.run(multiplier)} />
@@ -51,16 +51,16 @@ export function ForecastPanel({ canRun }: { canRun: boolean }) {
           <div className="space-y-3 border-t border-line pt-4" aria-busy={forecast.pending}>
             <div className="flex flex-wrap items-center gap-2">
               <Badge tone="accent">{run.method}</Badge>
-              <span className="tnum text-[12.5px] text-ink-3">
+              <span className="tnum text-xs text-ink-3">
                 {num(run.demand_multiplier, 2)}× · {dateTime(run.created_at)}
               </span>
-              <span className="text-[12.5px] font-medium text-ink-2">
+              <span className="text-xs font-medium text-ink-2">
                 {reorderCount} of {run.lines.length} items need reordering
               </span>
             </div>
-            <p className="text-[12.5px] text-ink-3">{describeDemandMultiplier(run.demand_multiplier)}.</p>
+            <p className="text-xs text-ink-3">{describeDemandMultiplier(run.demand_multiplier)}.</p>
             {stale ? (
-              <p className="text-[12.5px] font-medium text-review" role="status">
+              <p className="text-xs font-medium text-review" role="status">
                 The slider changed since this run — re-run to update.
               </p>
             ) : null}
