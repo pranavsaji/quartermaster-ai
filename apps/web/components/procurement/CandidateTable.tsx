@@ -92,8 +92,8 @@ export function CandidateTable({
       {
         field: "item_name",
         headerName: "Item",
-        width: 180,
-        minWidth: 160,
+        width: 170,
+        minWidth: 150,
         pinned: "left",
         autoHeight: true,
         wrapText: true,
@@ -161,29 +161,40 @@ export function CandidateTable({
           ) : null,
       },
       numberColumn<Row>("packs", "Packs", {
+        suppressHeaderFilterButton: true,
         width: 110,
         headerTooltip: "Packs ordered × units per pack.",
         valueFormatter: (p) => (p.data ? `${num(p.data.packs)} × ${num(p.data.pack_quantity)}` : "—"),
       }),
-      numberColumn<Row>("units", "Units", { width: 90 }),
-      moneyColumn<Row>("item_subtotal_minor", "Items", cur, { width: 105, minWidth: 95 }),
-      moneyColumn<Row>("shipping_minor", "Shipping", cur, { width: 105, minWidth: 95 }),
-      moneyColumn<Row>("tax_minor", "Tax", cur, { width: 105, minWidth: 90 }),
+      numberColumn<Row>("units", "Units", { suppressHeaderFilterButton: true, width: 90 }),
+      moneyColumn<Row>("item_subtotal_minor", "Items", cur, { suppressHeaderFilterButton: true, width: 88, minWidth: 80 }),
+      moneyColumn<Row>("shipping_minor", "Shipping", cur, { suppressHeaderFilterButton: true, width: 88, minWidth: 80 }),
+      moneyColumn<Row>("tax_minor", "Tax", cur, { suppressHeaderFilterButton: true, width: 88, minWidth: 80 }),
       moneyColumn<Row>("fees_minor", "Fees", cur, {
-        width: 105,
-        minWidth: 90,
+        suppressHeaderFilterButton: true,
+        width: 88,
+        minWidth: 80,
         cellClassRules: { "text-block font-medium": (p) => typeof p.value === "number" && p.value > 0 },
       }),
-      moneyColumn<Row>("delivered_total_minor", "Delivered total", cur, { cellClass: rightCell("font-medium"), width: 130, minWidth: 120 }),
-      moneyColumn<Row>("delivered_unit_cost_minor", "Delivered / unit", cur, {
+      moneyColumn<Row>("delivered_total_minor", "Delivered", cur, {
+        suppressHeaderFilterButton: true,
+        cellClass: rightCell("font-medium"),
+        headerTooltip: "Delivered total: items, shipping, tax and fees.",
+        width: 100,
+        minWidth: 96,
+      }),
+      moneyColumn<Row>("delivered_unit_cost_minor", "Per unit", cur, {
+        suppressHeaderFilterButton: true,
         cellClass: rightCell("font-semibold text-ink"),
-        width: 135,
-        minWidth: 125,
+        headerTooltip: "Delivered cost per usable unit: what the comparison is sorted by.",
+        width: 96,
+        minWidth: 90,
       }),
       ...(hasMarket
         ? [
             numberColumn<Row>("market_premium_pct", "vs market", {
-              width: 110,
+              suppressHeaderFilterButton: true,
+              width: 116,
               headerTooltip: "Item price per unit compared with the Channel3 market reference for this item.",
               valueFormatter: (p) => (typeof p.value === "number" ? `${p.value > 0 ? "+" : ""}${p.value.toFixed(1)}%` : "No reference"),
               cellClassRules: {
@@ -194,8 +205,9 @@ export function CandidateTable({
           ]
         : []),
       numberColumn<Row>("lead_time_days", "Lead", {
-        width: 72,
-        minWidth: 72,
+        suppressHeaderFilterButton: true,
+        width: 80,
+        minWidth: 80,
         valueFormatter: (p) => (typeof p.value === "number" ? `${p.value} d` : "—"),
       }),
       {
