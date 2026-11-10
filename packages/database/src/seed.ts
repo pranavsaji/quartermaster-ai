@@ -119,7 +119,7 @@ export async function seedSampleWorkspace(tx: DbOrTx, args: { organizationId: st
         leadTimeDays: 2,
         taxRateBps: 825,
         feeTerms: [{ code: "SHIP_STD", label: "Standard delivery", kind: "SHIPPING", amount_minor: 899, waived_over_minor: 15000 }],
-        website: "https://sandbox-suppliers.quartermaster.dev/harbor",
+        website: "https://sandbox-suppliers.example/harbor",
         description: "Sandbox demo supplier. Payments settle to the Quartermaster sandbox merchant.",
       },
       {
@@ -129,7 +129,7 @@ export async function seedSampleWorkspace(tx: DbOrTx, args: { organizationId: st
         leadTimeDays: 3,
         taxRateBps: 825,
         feeTerms: [{ code: "SHIP_STD", label: "Ground shipping", kind: "SHIPPING", amount_minor: 699, waived_over_minor: 10000 }],
-        website: "https://sandbox-suppliers.quartermaster.dev/packright",
+        website: "https://sandbox-suppliers.example/packright",
         description: "Sandbox demo supplier, not yet on the approved list.",
       },
       {
@@ -140,7 +140,7 @@ export async function seedSampleWorkspace(tx: DbOrTx, args: { organizationId: st
         taxRateBps: 825,
         feeTerms: [{ code: "SHIP_EXP", label: "Express delivery", kind: "SHIPPING", amount_minor: 1499, waived_over_minor: null }],
         storefrontQuoteLines: [{ kind: "FEE", code: "PRIORITY_SVC", description: "Priority service charge", amount_minor: 2450 }],
-        website: "https://sandbox-suppliers.quartermaster.dev/quickserve",
+        website: "https://sandbox-suppliers.example/quickserve",
         description: "Adversarial sandbox fixture used to demonstrate TrustRail.",
       },
       {
@@ -150,7 +150,7 @@ export async function seedSampleWorkspace(tx: DbOrTx, args: { organizationId: st
         leadTimeDays: 2,
         taxRateBps: 0,
         feeTerms: [{ code: "SHIP_COLD", label: "Food-grade delivery", kind: "SHIPPING", amount_minor: 1200, waived_over_minor: 12000 }],
-        website: "https://sandbox-suppliers.quartermaster.dev/coastal",
+        website: "https://sandbox-suppliers.example/coastal",
         description: "Sandbox demo supplier for cooking ingredients (tax-exempt food items).",
       },
     ])
