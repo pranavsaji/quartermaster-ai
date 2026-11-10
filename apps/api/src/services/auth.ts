@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import type { Role, SessionUser } from "@qm/contracts";
-import { dummyPasswordHash, memberships, organizations, sessions, users, verifyPassword } from "@qm/database";
+import { dummyPasswordHash, memberships, organizations, sessions, users, verifyPassword, type DbOrTx } from "@qm/database";
 import type { AppContext } from "../context";
 import { AppError } from "../errors";
 import { appendAudit } from "./audit";
@@ -34,7 +34,7 @@ export function hashToken(token: string): string {
  * refuses even the correct password until the lock expires; the message says so generically.)
  * MAX_FAILED_LOGINS consecutive failures lock the account for LOCKOUT_MINUTES.
  */
-export async function login(ctx: AppContext, email: string, password: string, meta: { ip?: string; userAgent?: string }) {
+export async function login(ctx: AppContext, email: string, password: string, meta: SessionMeta) {
   const now = ctx.now();
   const [user] = await ctx.db
     .select()
@@ -74,21 +74,9 @@ export async function login(ctx: AppContext, email: string, password: string, me
     .limit(1);
   if (!membership) throw invalid;
 
-  const token = randomBytes(32).toString("base64url");
-  const expiresAt = new Date(now.getTime() + ctx.config.session.ttlHours * 3_600_000);
-  await ctx.db.transaction(async (tx) => {
+  const session = await ctx.db.transaction(async (tx) => {
     await tx.update(users).set({ failedLogins: 0, lockedUntil: null }).where(eq(users.id, user.id));
-    await tx.insert(sessions).values({
-      tokenHash: hashToken(token),
-      userId: user.id,
-      organizationId: membership.organizationId,
-      expiresAt,
-      // Timestamps come from the application clock, the same clock the session checks use.
-      createdAt: now,
-      lastSeenAt: now,
-      userAgent: meta.userAgent?.slice(0, 300) ?? null,
-      ip: meta.ip ?? null,
-    });
+    const opened = await openSession(ctx, tx, { userId: user.id, organizationId: membership.organizationId, meta });
     await appendAudit(tx, {
       organizationId: membership.organizationId,
       action: "auth.login",
@@ -98,8 +86,42 @@ export async function login(ctx: AppContext, email: string, password: string, me
       entityId: user.id,
       data: { ip: meta.ip ?? null },
     });
+    return opened;
   });
-  return { token, expiresAt, user: await sessionUser(ctx, user.id, membership.organizationId) };
+  return { ...session, user: await sessionUser(ctx, user.id, membership.organizationId) };
+}
+
+export interface SessionMeta {
+  ip?: string;
+  userAgent?: string;
+}
+
+/** A new random token for a one-time link or a session. Only its SHA-256 is ever stored. */
+export function newToken(): string {
+  return randomBytes(32).toString("base64url");
+}
+
+/** Creates a session row inside the caller's transaction and returns the cookie token. */
+export async function openSession(
+  ctx: AppContext,
+  tx: DbOrTx,
+  args: { userId: string; organizationId: string; meta: SessionMeta },
+): Promise<{ token: string; expiresAt: Date }> {
+  const now = ctx.now();
+  const token = newToken();
+  const expiresAt = new Date(now.getTime() + ctx.config.session.ttlHours * 3_600_000);
+  await tx.insert(sessions).values({
+    tokenHash: hashToken(token),
+    userId: args.userId,
+    organizationId: args.organizationId,
+    expiresAt,
+    // Timestamps come from the application clock, the same clock the session checks use.
+    createdAt: now,
+    lastSeenAt: now,
+    userAgent: args.meta.userAgent?.slice(0, 300) ?? null,
+    ip: args.meta.ip ?? null,
+  });
+  return { token, expiresAt };
 }
 
 export async function sessionUser(ctx: AppContext, userId: string, organizationId: string): Promise<SessionUser> {
@@ -116,7 +138,13 @@ export async function sessionUser(ctx: AppContext, userId: string, organizationI
     name: row.user.name,
     role: row.role,
     organization: { id: row.org.id, name: row.org.name, timezone: row.org.timezone, currency: row.org.currency },
+    operator: isOperator(ctx, row.user.email),
   };
+}
+
+/** Platform operators are named by email in OPERATOR_EMAILS. */
+export function isOperator(ctx: AppContext, email: string): boolean {
+  return ctx.config.monitoring.operatorEmails.includes(email.toLowerCase());
 }
 
 /** Resolves a session token to the user and their role in the session's organization. */
