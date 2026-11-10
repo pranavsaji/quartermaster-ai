@@ -59,10 +59,15 @@ export function supplierRoutes(ctx: AppContext): Router {
       const input = parse(SupplierInput, req.body);
       const orgId = req.user!.organizationId;
       const id = param(req, "id");
-      const mandate = await mandateOf(orgId);
-      await ctx.db.transaction((tx) =>
-        updateSupplier(tx, { id: req.user!.id, organizationId: orgId, role: req.user!.role }, id, input, mandate),
-      );
+      await ctx.db.transaction(async (tx) => {
+        // Locks the active mandate, which updateMandate also locks: an approval and a terms edit
+        // are serialised, so an edit cannot slip past an approval made at the same moment.
+        // If an approval superseded the row while we waited, the first read finds no ACTIVE row
+        // (READ COMMITTED re-checks the condition); the second sees the new version.
+        const row = (await getActiveMandateRow(tx, orgId, true)) ?? (await getActiveMandateRow(tx, orgId, true));
+        const actor = { id: req.user!.id, organizationId: orgId, role: req.user!.role };
+        await updateSupplier(tx, actor, id, input, row ? rowToMandate(row) : null);
+      });
       res.json({ supplier: await supplierDetail(ctx.db, orgId, id, await mandateOf(orgId)) });
     }),
   );
