@@ -24,6 +24,7 @@
     "db:reset": "pnpm --filter @qm/database reset",
     "keys:generate": "tsx scripts/generate-signing-key.ts",
     "docs:api": "tsx scripts/generate-api-docs.ts",
+    "bench:hijack": "tsx scripts/hijack-benchmark.ts",
     "test:coverage": "vitest run --coverage",
     "lint": "eslint . && pnpm --filter @qm/web lint",
     "format": "prettier --write .",
