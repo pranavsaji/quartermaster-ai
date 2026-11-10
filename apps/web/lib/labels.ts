@@ -8,6 +8,7 @@ import type {
   DataSource,
   DeliveryStatus,
   FindingType,
+  InvitationStatus,
   InvoiceStatus,
   PaymentStatus,
   PolicyDecisionKind,
@@ -48,6 +49,7 @@ export const DATA_SOURCE_LABELS: Record<DataSource, string> = {
   CHANNEL3_MARKET: "Channel3 market data",
   SANDBOX_SUPPLIER: "Sandbox supplier",
   SYNTHETIC: "Synthetic data",
+  USER_ENTERED: "Entered by your team",
 };
 
 export const DECISION_LABELS: Record<PolicyDecisionKind, string> = {
@@ -184,3 +186,16 @@ export const FINDING_LABELS: Record<FindingType, string> = {
 export function findingLabel(type: string): string {
   return lookup(FINDING_LABELS, type, type);
 }
+
+export const INVITATION_STATUS_TONES: Record<InvitationStatus, Tone> = {
+  PENDING: "info",
+  ACCEPTED: "allow",
+  REVOKED: "neutral",
+  EXPIRED: "neutral",
+};
+
+export const ERROR_LEVEL_TONES: Record<"warning" | "error" | "fatal", Tone> = {
+  warning: "review",
+  error: "block",
+  fatal: "block",
+};

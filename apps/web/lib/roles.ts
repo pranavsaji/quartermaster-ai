@@ -2,10 +2,10 @@
  * Client-side role gating. This only decides what to *show*; the API enforces
  * every permission independently and answers 403 if the UI is bypassed.
  *
- *  OWNER   — everything, and the only role that can approve, reject, pay, refund
- *            or edit the spend mandate.
- *  MANAGER — operational work: requests, research, inventory, deliveries, invoices,
- *            audit-chain verification.
+ *  OWNER   — everything, and the only role that can approve, reject, pay, refund,
+ *            edit the spend mandate or manage the team (invitations, roles, reset links).
+ *  MANAGER — operational work: requests, research, inventory, suppliers and their catalogs,
+ *            deliveries, invoices, audit-chain verification.
  *  VIEWER  — read-only.
  */
 import type { Role, SessionUser } from "@qm/contracts";
@@ -19,13 +19,19 @@ export type Capability =
   | "createRequest"
   | "runResearch"
   | "adjustInventory"
+  /** Add stock items and edit their details (POST/PUT /inventory). */
+  | "editInventory"
+  /** Add and edit suppliers and their catalogs. Approving a supplier is part of the mandate (owner). */
+  | "manageSuppliers"
+  /** Invite people, change roles, remove members, issue reset links. */
+  | "manageTeam"
   | "runForecast"
   | "manageDeliveries"
   | "analyzeInvoices"
   /** Re-verify the audit hash chain (GET /security/audit/verify is MANAGER+). */
   | "verifyAudit";
 
-const OWNER_ONLY: ReadonlySet<Capability> = new Set(["approve", "reject", "pay", "refund", "editMandate"]);
+const OWNER_ONLY: ReadonlySet<Capability> = new Set(["approve", "reject", "pay", "refund", "editMandate", "manageTeam"]);
 
 export function roleCan(role: Role | null | undefined, capability: Capability): boolean {
   if (!role) return false;

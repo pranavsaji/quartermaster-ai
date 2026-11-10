@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect } from "react";
+import { errorReporter } from "@/lib/error-reporting";
 import { ApiRequestError } from "@/lib/http";
 import { Button } from "./Button";
 import { Notice } from "./Notice";
@@ -9,11 +10,13 @@ import { Notice } from "./Notice";
 /**
  * Fallback for a route segment that threw while rendering. Shows an API
  * failure's own message and correlation id, but never a raw exception message
- * (which can contain internals); the server digest is shown for support.
+ * (which can contain internals); the server digest is shown for support. The error is reported
+ * to the API's error tracking (API failures are already recorded server-side, so they are not).
  */
 export function RouteError({ error, retry }: { error: Error & { digest?: string }; retry: () => void }) {
   useEffect(() => {
     console.error(error);
+    if (!(error instanceof ApiRequestError)) errorReporter.report(error, "render", { digest: error.digest });
   }, [error]);
 
   const apiError = error instanceof ApiRequestError ? error : null;

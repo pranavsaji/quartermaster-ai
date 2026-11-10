@@ -16,7 +16,8 @@ export const PATH_HEADER = "x-qm-path";
 /** Cookie names set by the API: `__Host-` prefixed in production, plain in development. */
 export const SESSION_COOKIE_NAMES = ["__Host-qm_session", "qm_session"] as const;
 
-const PUBLIC_PATHS = ["/login"];
+/** Pages for signed-out visitors: sign-in, sign-up, password reset and invitation links. */
+export const PUBLIC_PATHS = ["/login", "/signup", "/forgot-password", "/reset-password", "/invite"];
 
 function isPublic(pathname: string): boolean {
   return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));

@@ -6,6 +6,7 @@ const STYLES: Record<DataSource, string> = {
   CHANNEL3_MARKET: "text-info border-info-line bg-info-soft",
   SANDBOX_SUPPLIER: "text-accent-strong border-accent-line bg-accent-soft",
   SYNTHETIC: "text-ink-3 border-line-strong bg-canvas",
+  USER_ENTERED: "text-allow border-allow-line bg-allow-soft",
 };
 
 /**

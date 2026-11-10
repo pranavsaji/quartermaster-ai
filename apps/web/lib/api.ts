@@ -6,12 +6,18 @@
  * attaches an `Idempotency-Key` per user action and reuses it on retries.
  */
 import type {
+  AcceptInvitationRequest,
   AnalyticsSummaryDto,
   AnalyzeInvoiceRequest,
   ApproveRequest,
   AuditChainVerificationDto,
   AuditEventDto,
+  CatalogItemDto,
+  CatalogItemInput,
   CertificateVerificationDto,
+  ChangePasswordRequest,
+  CreateInventoryItemRequest,
+  CreateInvitationRequest,
   CreateProcurementRequest,
   DelayDeliveryRequest,
   DeliveryDto,
@@ -20,11 +26,18 @@ import type {
   InventoryAdjustmentRequest,
   InventoryAdjustmentResponse,
   InventoryItemDto,
+  InventoryItemInput,
+  InvitationDto,
+  InvitationPreviewDto,
   InvoiceDto,
   ItemsResponse,
   MandateResponse,
   MandateUpdateResponse,
+  MemberDto,
+  MembersResponse,
+  OpsHealthDto,
   Page,
+  PayPalNotificationStatusDto,
   PolicyDecisionDto,
   ProcurementRequestDto,
   ProcurementRequestSummaryDto,
@@ -36,12 +49,25 @@ import type {
   RejectRequest,
   SecurityFindingDto,
   SessionResponse,
+  SignupRequest,
   SpendMandateInput,
+  SupplierDetailDto,
   SupplierDto,
+  SupplierInput,
+  SystemErrorDto,
 } from "@qm/contracts";
 import { request, type RequestOptions } from "./http";
 import { withIdempotency } from "./idempotency";
-import { ensureShape, isApprovalResponse, isCaptureResponse, isPayment, isPayPalOrderResponse, isRefundResponse } from "./response-guards";
+import {
+  ensureShape,
+  isApprovalResponse,
+  isCaptureResponse,
+  isInvitationCreated,
+  isPayment,
+  isPayPalOrderResponse,
+  isRefundResponse,
+  isResetLink,
+} from "./response-guards";
 import { sharedRequest } from "./shared-cache";
 
 type Signal = { signal?: AbortSignal };
@@ -77,8 +103,23 @@ export interface ForecastInput {
   horizon_days?: number;
 }
 
+export interface ErrorsFilter extends PageQuery {
+  status?: "OPEN" | "RESOLVED" | "ALL";
+}
+
+/** `POST /ops/alerts/test`: where the test alert went. */
+export interface TestAlertResult {
+  email_recipients: number;
+  emails_sent: number;
+  webhook_sent: boolean;
+}
+
+/** Public (signed-out) pages handle a 401 themselves: there is no session to restore. */
+const PUBLIC = { redirectOnUnauthorized: false } as const;
+
 const get = <T>(path: string, options?: RequestOptions) => request<T>("GET", path, options);
 const post = <T>(path: string, body?: unknown, options?: RequestOptions) => request<T>("POST", path, { ...options, body: body ?? {} });
+const put = <T>(path: string, body: unknown, options?: RequestOptions) => request<T>("PUT", path, { ...options, body });
 
 /**
  * POST/PUT to an (I) endpoint with a per-action idempotency key. With `check`, the response's shape
@@ -109,6 +150,30 @@ export const api = {
     login: (body: { email: string; password: string }) => post<SessionResponse>("/auth/login", body, { redirectOnUnauthorized: false }),
     logout: () => post<unknown>("/auth/logout", {}, { redirectOnUnauthorized: false }),
     me: (o?: Signal & { redirectOnUnauthorized?: boolean }) => get<SessionResponse>("/auth/me", o),
+    /** Creates a workspace and its owner, and signs them in. */
+    signup: (body: SignupRequest) => post<SessionResponse>("/auth/signup", body, PUBLIC),
+    /** Always answers 202, whether or not the address has an account. */
+    forgotPassword: (body: { email: string }) => post<{ status: string }>("/auth/password/forgot", body, PUBLIC),
+    resetPassword: (body: { token: string; password: string }) => post<{ status: string }>("/auth/password/reset", body, PUBLIC),
+    /** A wrong current password is a 400, not a 401, so it never signs the user out. */
+    changePassword: (body: ChangePasswordRequest) => post<{ status: string }>("/auth/password/change", body),
+  },
+
+  invitations: {
+    lookup: (body: { token: string }, o?: Signal) =>
+      post<{ invitation: InvitationPreviewDto }>("/invitations/lookup", body, { ...PUBLIC, signal: o?.signal }),
+    accept: (body: AcceptInvitationRequest) => post<SessionResponse>("/invitations/accept", body, PUBLIC),
+  },
+
+  members: {
+    list: (o?: Signal) => get<MembersResponse>("/members", o),
+    invite: async (body: CreateInvitationRequest) =>
+      ensureShape(await post<unknown>("/members/invitations", body), isInvitationCreated, "an invitation"),
+    revokeInvitation: (invitationId: string) => post<{ invitation: InvitationDto }>(`/members/invitations/${id(invitationId)}/revoke`),
+    setRole: (userId: string, role: MemberDto["role"]) => put<{ member: MemberDto }>(`/members/${id(userId)}/role`, { role }),
+    remove: (userId: string) => post<unknown>(`/members/${id(userId)}/remove`),
+    resetLink: async (userId: string) =>
+      ensureShape(await post<unknown>(`/members/${id(userId)}/password-reset`), isResetLink, "a reset link"),
   },
 
   inventory: {
@@ -116,10 +181,19 @@ export const api = {
     adjust: (itemId: string, body: InventoryAdjustmentInput) =>
       idempotent<InventoryAdjustmentResponse>("POST", `/inventory/${id(itemId)}/adjustments`, body),
     forecast: (body: ForecastInput) => post<ForecastRunDto>("/inventory/forecast", body),
+    create: (body: CreateInventoryItemRequest) => post<{ item: InventoryItemDto }>("/inventory", body),
+    update: (itemId: string, body: InventoryItemInput) => put<{ item: InventoryItemDto }>(`/inventory/${id(itemId)}`, body),
   },
 
   suppliers: {
     list: (o?: Signal) => get<ItemsResponse<SupplierDto>>("/suppliers", o),
+    get: (supplierId: string, o?: Signal) => get<{ supplier: SupplierDetailDto }>(`/suppliers/${id(supplierId)}`, o),
+    create: (body: SupplierInput) => post<{ supplier: SupplierDetailDto }>("/suppliers", body),
+    update: (supplierId: string, body: SupplierInput) => put<{ supplier: SupplierDetailDto }>(`/suppliers/${id(supplierId)}`, body),
+    addCatalogItem: (supplierId: string, body: CatalogItemInput) =>
+      post<{ item: CatalogItemDto }>(`/suppliers/${id(supplierId)}/catalog`, body),
+    updateCatalogItem: (supplierId: string, itemId: string, body: CatalogItemInput) =>
+      put<{ item: CatalogItemDto }>(`/suppliers/${id(supplierId)}/catalog/${id(itemId)}`, body),
   },
 
   procurement: {
@@ -185,6 +259,16 @@ export const api = {
     decisions: (q?: PageQuery, o?: Signal) => get<Page<PolicyDecisionDto>>("/security/decisions", { ...o, query: pageQuery(q) }),
     audit: (q?: PageQuery, o?: Signal) => get<Page<AuditEventDto>>("/security/audit", { ...o, query: pageQuery(q) }),
     verifyAudit: (o?: Signal) => get<AuditChainVerificationDto>("/security/audit/verify", o),
+    paypalNotifications: (o?: Signal) => get<{ status: PayPalNotificationStatusDto }>("/security/paypal-notifications", o),
+  },
+
+  /** Platform operators only (SessionUser.operator); everyone else gets 403. */
+  ops: {
+    health: (o?: Signal) => get<OpsHealthDto>("/ops/health", o),
+    errors: (q?: ErrorsFilter, o?: Signal) =>
+      get<Page<SystemErrorDto>>("/ops/errors", { ...o, query: { ...pageQuery(q), status: q?.status } }),
+    resolveError: (errorId: string) => post<{ error: SystemErrorDto }>(`/ops/errors/${id(errorId)}/resolve`),
+    testAlert: () => post<TestAlertResult>("/ops/alerts/test"),
   },
 
   analytics: {
