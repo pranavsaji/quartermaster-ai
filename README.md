@@ -9,19 +9,19 @@ Quartermaster is an AI procurement assistant for restaurants and cafés. It watc
 > A restaurant owner says: _"We're expecting a busy weekend. Restock takeaway containers and cooking oil without exceeding $300."_
 > Quartermaster forecasts 25% higher demand, finds that the cheapest supplier's listing contains a hidden prompt injection and an undisclosed $24.50 "priority service charge", watches TrustRail block that cart, re-plans to compliant suppliers ($278.20 total), and — after the owner approves — completes a PayPal sandbox checkout bound to an Ed25519-signed Intent Certificate.
 
-|                             |                                                                                                                                                 |
-| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Customer product**        | Quartermaster — inventory, forecasting, supplier comparison, approvals, payments, deliveries, invoices, analytics                               |
-| **Security infrastructure** | TrustRail — Spend Mandates, deterministic policy engine, prompt-injection defense, Intent Certificates, capture guard, tamper-evident audit log |
-| **Payments**                | PayPal Orders v2 (server) + JavaScript SDK v6 (browser), sandbox                                                                                |
-| **Market evidence**         | Channel3 product search (reference prices only)                                                                                                 |
-| **AI**                      | OpenAI strict structured outputs, with a labelled deterministic fallback                                                                        |
-| **Data grids and charts**   | AG Grid (inventory, supplier comparison, orders, invoices, security findings, audit log) and AG Charts (analytics)                              |
-| **Hosting**                 | Render (web, API, Postgres)                                                                                                                     |
-| **Notifications**           | Zapier webhook on completed payments; operator alerts by email and webhook                                                                      |
-| **Accounts and teams**      | Self-service sign-up, invitations with roles, password reset by email or owner-issued link                                                      |
-| **Error tracking**          | Built-in grouped error tracking with alert throttling, health monitors, optional Sentry forwarding                                              |
-| **API tooling**             | OpenAPI 3.1 spec and Postman collection, generated from the route table                                                                         |
+|                             |                                                                                                                                                             |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Customer product**        | Quartermaster — inventory, forecasting, supplier comparison, approvals, payments, deliveries, invoices, analytics                                           |
+| **Security infrastructure** | TrustRail — Spend Mandates, deterministic policy engine, prompt-injection defense, Intent Certificates, capture guard, tamper-evident audit log             |
+| **Payments**                | PayPal Orders v2 (server) + JavaScript SDK v6 (browser), sandbox                                                                                            |
+| **Market evidence**         | Channel3 product search (reference prices only)                                                                                                             |
+| **AI**                      | OpenAI strict structured outputs, with a labelled deterministic fallback                                                                                    |
+| **Data grids and charts**   | 11 AG Grid grids on 8 screens, with in-grid editing of stock and catalog prices, and AG Charts for analytics. See [How we use AG Grid](#how-we-use-ag-grid) |
+| **Hosting**                 | Render (web, API, Postgres)                                                                                                                                 |
+| **Notifications**           | Zapier webhook on completed payments; operator alerts by email and webhook                                                                                  |
+| **Accounts and teams**      | Self-service sign-up, invitations with roles, password reset by email or owner-issued link                                                                  |
+| **Error tracking**          | Built-in grouped error tracking with alert throttling, health monitors, optional Sentry forwarding                                                          |
+| **API tooling**             | OpenAPI 3.1 spec and Postman collection, generated from the route table                                                                                     |
 
 ## For judges
 
@@ -52,6 +52,29 @@ The shared workspace is persistent: other judges' orders stay, and its weekly bu
 To run it locally instead, follow [Quick start](#quick-start-local-no-external-accounts): it needs no external accounts.
 
 ---
+
+## How we use AG Grid
+
+AG Grid (Community, v36) is where the restaurant's operational data lives and where people act on
+it, not just a way to display rows. Every grid shares one wrapper (`apps/web/components/grid/DataGrid.tsx`)
+that registers only the Community modules we use, applies a Theming API theme built from the app's
+design tokens, and adds a toolbar.
+
+| Where                                         | What AG Grid does                                                                                                                                                                                                                                                                                  |
+| --------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Inventory**                                 | A spreadsheet for stock. Managers type over **On hand**, **Safety stock** and **Cover target**. Each edit is validated, saved through the API (a stock count becomes an audited adjustment that refuses stale values) and flashed when saved. An edit that fails reverts, and edits can be undone. |
+| **Supplier catalog**                          | Price per pack, units per pack and availability edited in place, typed in dollars and stored as integer cents. Quarantined listings (prompt injection found) are locked and show why.                                                                                                              |
+| **Supplier comparison** (procurement request) | The agent's candidate offers, grouped by item, eligible offers first, sorted by delivered unit cost. The best offer per item is highlighted, quarantined and blocked offers are marked, and a **vs market** column compares each price with Channel3.                                              |
+| **Orders and invoices**                       | Pinned totals rows (paid spend, invoice totals, blocked settlements) that recompute for whatever the search and filters leave visible.                                                                                                                                                             |
+| **Security**                                  | Findings, TrustRail policy decisions (with violation codes searchable) and the hash-chained audit log.                                                                                                                                                                                             |
+| **Suppliers, Team, Procurement requests**     | List views with row actions (role changes, reset links, removal) inside the grid.                                                                                                                                                                                                                  |
+
+Every grid toolbar has a search across all columns, a live "N of M" count and column filters.
+**Export CSV** exports the formatted values, with spreadsheet formulas neutralised. Sort, filters
+and column widths are remembered per browser through the grid state API. **AG Charts** draws the
+analytics charts: spend against budget, spend by supplier and category, a donut of TrustRail
+decisions, findings by type, and days of stock cover per item against its target. Each chart has a
+table view and an empty state.
 
 ## Why this is safe to delegate
 

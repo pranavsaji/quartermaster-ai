@@ -23,6 +23,9 @@ The rules cap the video at three minutes, and judges may score on the video alon
 
 ## If you have spare seconds
 
+- **AG Grid as the workspace:** on Inventory, type a new On hand count into the grid. It saves, flashes, and the
+  status recalculates. Then search "gloves" in the toolbar and click **Export CSV**.
+
 - Lower the per-order limit on the Spend Mandate while an approval is outstanding: the certificate
   shows **MANDATE_CHANGED** and payment is refused.
 - A few seconds of the test suite or CI badge (over 1,200 tests, including adversarial prompt-injection suites).
