@@ -30,8 +30,8 @@ The sweeper also fails research runs abandoned by a crashed or redeployed proces
    keys and `DEMO_USER_PASSWORD`. Use the **same** signing key on the API and the sweeper.
 3. In the PayPal developer dashboard add a webhook to `https://<api-host>/api/v1/webhooks/paypal`
    for `CHECKOUT.ORDER.APPROVED`, `PAYMENT.CAPTURE.COMPLETED`, `PAYMENT.CAPTURE.PENDING`,
-   `PAYMENT.CAPTURE.DENIED`, `PAYMENT.CAPTURE.DECLINED`, `PAYMENT.CAPTURE.REFUNDED`; copy its id to
-   `PAYPAL_WEBHOOK_ID`.
+   `PAYMENT.CAPTURE.DENIED`, `PAYMENT.CAPTURE.DECLINED`, `PAYMENT.CAPTURE.REFUNDED`,
+   `PAYMENT.CAPTURE.REVERSED`; copy its id to `PAYPAL_WEBHOOK_ID`.
 4. Open a shell on the API service and run the seed command once.
 5. Check `GET /readyz` returns `ready`, sign in as the demo owner, and confirm the header shows PayPal as
    enabled (`GET /api/v1/config/public`).
@@ -42,6 +42,22 @@ for a private network). Synthetic delivery actions default to off in production.
 after CI passes (`autoDeployTrigger: checksPass`). A Dockerfile builds the same API for other hosts.
 
 Choose a paid Postgres plan: the judging window extends beyond a free database's lifetime.
+
+### Free-plan variant
+
+Render's free instances have no pre-deploy command, shell or cron jobs, and cannot receive
+private-network traffic, so a free deployment differs from `render.yaml`:
+
+- **Database:** `plan: free` Postgres (one per workspace; expires 30 days after creation, deleted 14
+  days later unless upgraded).
+- **API:** start command `node apps/api/dist/seed.js && node apps/api/dist/server.js`. The seed migrates
+  and is idempotent, so it is safe on every boot. Set `SWEEPER_INTERVAL_SECONDS=120` so the API runs
+  the sweeper itself (no cron).
+- **Web:** set `API_URL=https://<api-host>` (public URL) instead of `API_HOSTPORT`. It is read at build
+  time, so redeploy the web service after changing it. The API then sits behind two edge hops:
+  `TRUST_PROXY=3`.
+- Free services sleep after 15 idle minutes; the first request after that takes about a minute, and
+  the sweeper only runs while the API is awake.
 
 ## Routine checks
 

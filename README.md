@@ -4,6 +4,8 @@
 
 Quartermaster is an AI procurement assistant for restaurants and cafés. It watches inventory, forecasts what to reorder, compares suppliers on true delivered cost, and prepares purchases — then pays through **PayPal** only after **TrustRail** has proven the purchase is within the owner's rules and the owner has approved the exact cart.
 
+**Live demo (PayPal sandbox, Render free plan):** <https://quartermaster-web-o0df.onrender.com>. The first visit after 15 idle minutes takes about a minute while the services wake up. API health: <https://quartermaster-api-sziv.onrender.com/readyz>.
+
 > A restaurant owner says: _"We're expecting a busy weekend. Restock takeaway containers and cooking oil without exceeding $300."_
 > Quartermaster forecasts 25% higher demand, finds that the cheapest supplier's listing contains a hidden prompt injection and an undisclosed $24.50 "priority service charge", watches TrustRail block that cart, re-plans to compliant suppliers ($278.20 total), and — after the owner approves — completes a PayPal sandbox checkout bound to an Ed25519-signed Intent Certificate.
 
@@ -127,7 +129,7 @@ What the suites prove (all reproducible from this repository):
 
 ## Deployment
 
-`render.yaml` deploys the web app, the API (pre-deploy migrations, `/readyz` health check), a 5-minute sweeper cron (PayPal reconciliation, certificate expiry, purges) and Postgres 17. Set the `sync: false` secrets in the Render dashboard, then seed once with `node apps/api/dist/seed.js` from a Render shell. See [docs/operations.md](docs/operations.md).
+`render.yaml` deploys the web app, the API (pre-deploy migrations, `/readyz` health check), a 5-minute sweeper cron (PayPal reconciliation, certificate expiry, purges) and Postgres 17. Set the `sync: false` secrets in the Render dashboard, then seed once with `node apps/api/dist/seed.js` from a Render shell. The live demo runs on Render's free plan instead (no cron, shell or pre-deploy step); [docs/operations.md](docs/operations.md) describes both.
 
 ---
 
