@@ -1,0 +1,46 @@
+# External uptime check for the live deployment. Runs from GitHub, outside Render, so it still fires when the API
+# process (and with it the in-app health monitors) is down. A failed run emails the repository's notification
+# recipients; the run log says which check failed. Also runnable by hand (workflow_dispatch).
+name: Uptime
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: uptime
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      API: https://quartermaster-api-sziv.onrender.com
+      WEB: https://quartermaster-web-o0df.onrender.com
+    steps:
+      - name: API readiness (database reachable, not draining)
+        run: |
+          for attempt in 1 2 3; do
+            code=$(curl -s -o body.json -w '%{http_code}' --max-time 20 "$API/readyz") || code=000
+            if [ "$code" = "200" ] && grep -q '"status":"ready"' body.json; then echo "API ready"; exit 0; fi
+            echo "attempt $attempt: HTTP $code $(head -c 300 body.json 2>/dev/null)"; sleep 20
+          done
+          echo "::error::API /readyz failed three times"; exit 1
+      - name: Web sign-in page
+        run: |
+          for attempt in 1 2 3; do
+            code=$(curl -s -o page.html -w '%{http_code}' --max-time 20 "$WEB/login") || code=000
+            if [ "$code" = "200" ] && grep -qi 'quartermaster' page.html; then echo "web up"; exit 0; fi
+            echo "attempt $attempt: HTTP $code"; sleep 20
+          done
+          echo "::error::web /login failed three times"; exit 1
+      - name: API through the web proxy (what judges' browsers use)
+        run: |
+          code=$(curl -s -o cfg.json -w '%{http_code}' --max-time 20 "$WEB/api/v1/config/public") || code=000
+          if [ "$code" = "200" ]; then echo "proxy ok"; exit 0; fi
+          echo "::error::web → API proxy returned HTTP $code"; exit 1
