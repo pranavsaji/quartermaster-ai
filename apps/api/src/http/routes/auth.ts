@@ -15,11 +15,14 @@ import { PAYPAL_SDK_URL } from "@qm/payments";
 import type { AppContext } from "../../context";
 import { changePassword, requestPasswordReset, resetPassword, signup } from "../../services/accounts/accounts";
 import { acceptInvitation, previewInvitation } from "../../services/accounts/members";
-import { login, logout, sessionUser } from "../../services/auth";
+import { authenticate, login, logout, sessionUser } from "../../services/auth";
 import { normalizePath } from "../../services/monitoring/tracker";
 import { sessionAuth } from "../middleware/auth";
 import { asyncHandler, parse } from "../middleware/errors";
 import { limiterStore } from "../rate-limit-store";
+
+/** Open browser-error groups from anonymous reports before new ones share one overflow group. */
+const MAX_ANONYMOUS_WEB_GROUPS = 100;
 
 /** Normalised email for rate-limit keys; malformed bodies share one bucket per IP. */
 export function loginEmailKey(body: unknown): string {
@@ -171,20 +174,27 @@ export function authRoutes(ctx: AppContext): Router {
     }),
   );
 
-  // Browser errors for error tracking. No session needed (the sign-in page can fail too).
+  // Browser errors for error tracking. No session needed (the sign-in page can fail too), but
+  // anonymous reports are untrusted: they are recorded as warnings (never alert) and grouped by
+  // page only. Once many anonymous groups are open, further ones share a single overflow group.
   r.post(
     "/client-errors",
     clientErrorLimiter,
     asyncHandler(async (req, res) => {
       const report = parse(ClientErrorReport, req.body);
+      const token = req.cookies?.[cookie.cookieName] as string | undefined;
+      const user = token && token.length <= 200 ? await authenticate(ctx, token) : null;
+      const route = user || (await ctx.errors.openGroups("web")) < MAX_ANONYMOUS_WEB_GROUPS ? normalizePath(report.path) : "(overflow)";
       await ctx.errors.capture({
         source: "web",
-        level: "error",
+        level: user ? "error" : "warning",
         code: `web.${report.kind}`,
         message: report.message || "Unknown browser error",
-        route: normalizePath(report.path),
+        route,
+        // Group by page, not by free text, so reports cannot mint unbounded groups.
+        key: user ? undefined : route,
         correlationId: req.correlationId ?? null,
-        context: { digest: report.digest ?? null, stack: report.stack?.slice(0, 2000) ?? null },
+        context: { digest: report.digest ?? null, signed_in: Boolean(user), stack: report.stack?.slice(0, 2000) ?? null },
       });
       res.status(202).json({ status: "recorded" });
     }),

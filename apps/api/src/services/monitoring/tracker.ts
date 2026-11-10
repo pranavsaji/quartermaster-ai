@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { and, eq, gt, isNull, lt, or, sql } from "drizzle-orm";
 import type { SystemErrorDto } from "@qm/contracts";
 import { systemErrors, type Database } from "@qm/database";
-import { escapeHtml, type Mailer, type SentryForwarder } from "@qm/integrations";
+import { escapeHtml, redactSecrets, type Mailer, type SentryForwarder } from "@qm/integrations";
 import type { Logger } from "../../logger";
 
 export type ErrorSource = "api" | "web" | "job" | "monitor";
@@ -54,9 +54,31 @@ export function normalizeMessage(message: string): string {
     .slice(0, 300);
 }
 
-/** Path with uuids and long ids replaced, for grouping browser errors by page. */
+/**
+ * Page path for grouping browser errors: query and fragment dropped, at most four segments, and any
+ * segment that is not a plain lower-case word becomes `:id`. Reports are unauthenticated input, so
+ * this keeps the number of distinct groups small.
+ */
 export function normalizePath(path: string): string {
-  return path.split(/[?#]/)[0]!.replace(UUID_RE, ":id").slice(0, 200);
+  const segments = path
+    .split(/[?#]/)[0]!
+    .split("/")
+    .filter(Boolean)
+    .slice(0, 4)
+    .map((seg) => (/^[a-z][a-z-]{0,30}$/.test(seg) ? seg : ":id"));
+  return `/${segments.join("/")}`;
+}
+
+/**
+ * Exception text can quote request data. Before it is stored, alerted or sent to Sentry, quoted
+ * literals, email addresses, URLs' query strings and secret-shaped tokens are replaced.
+ */
+export function redactMessage(text: string, max = 500): string {
+  const scrubbed = text
+    .replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, "[email]")
+    .replace(/(https?:\/\/[^\s?#"']+)[?#][^\s"']*/g, "$1?…")
+    .replace(/"[^"\n]{1,200}"|'[^'\n]{1,200}'/g, "'…'");
+  return redactSecrets(scrubbed, max);
 }
 
 export function fingerprintOf(e: Pick<CapturedError, "source" | "code" | "route" | "message" | "key">): string {
@@ -71,7 +93,9 @@ function errorType(err: unknown): string {
 
 function trimmedStack(err: unknown): string | undefined {
   if (!(err instanceof Error) || !err.stack) return undefined;
-  return err.stack.split("\n").slice(0, 15).join("\n").slice(0, 3000);
+  // The first line repeats the message; frames are file paths and line numbers.
+  const [head = "", ...frames] = err.stack.split("\n");
+  return [redactMessage(head, 300), ...frames.slice(0, 14)].join("\n").slice(0, 3000);
 }
 
 export function toSystemErrorDto(r: SystemErrorRow): SystemErrorDto {
@@ -127,7 +151,8 @@ export class ErrorTracker {
     };
   }
 
-  async capture(e: CapturedError): Promise<SystemErrorRow | null> {
+  async capture(raw: CapturedError): Promise<SystemErrorRow | null> {
+    const e = { ...raw, message: redactMessage(raw.message) };
     try {
       const row = await this.record(e);
       if (row && row.level !== "warning") {
@@ -135,7 +160,7 @@ export class ErrorTracker {
           level: row.level,
           fingerprint: row.fingerprint,
           type: e.err ? errorType(e.err) : e.code,
-          message: e.message.slice(0, 500),
+          message: e.message,
           tags: { source: e.source, code: e.code, ...(e.route ? { route: e.route } : {}) },
           extra: { correlation_id: e.correlationId ?? null, ...e.context },
           stack: trimmedStack(e.err),
@@ -232,8 +257,17 @@ export class ErrorTracker {
         const res = await this.fetchImpl(this.deps.alertWebhookUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          // `text` is what Slack, Mattermost and Discord-compatible hooks render; Zapier takes all fields.
-          body: JSON.stringify({ text, title: alert.title, level: alert.level, link, environment: env }),
+          // `text` is what Slack and Mattermost hooks render; `title`/`summary`/`link` mirror the Zapier
+          // notification payload, so the same Catch Hook can email alerts.
+          body: JSON.stringify({
+            text,
+            title: alert.title,
+            summary: alert.lines.join("\n"),
+            level: alert.level,
+            link,
+            environment: env,
+            kind: "ALERT",
+          }),
           signal: controller.signal,
         });
         result.webhook_sent = res.ok;
@@ -288,6 +322,15 @@ export class ErrorTracker {
   /** Records a monitor condition under a fixed key, so it stays one row while it persists. */
   async monitor(code: string, level: ErrorLevel, message: string, context?: CapturedError["context"]): Promise<void> {
     await this.capture({ source: "monitor", level, code, message, key: code, route: null, context });
+  }
+
+  /** Unresolved groups from one source (bounds groups created by untrusted reports). */
+  async openGroups(source: ErrorSource): Promise<number> {
+    const [row] = await this.deps.db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(systemErrors)
+      .where(and(eq(systemErrors.source, source), isNull(systemErrors.resolvedAt)));
+    return row?.n ?? 0;
   }
 
   async openCount(): Promise<number> {
