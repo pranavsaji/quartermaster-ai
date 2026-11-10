@@ -60,7 +60,12 @@ describe("error tracking, alerting and PayPal notification health", () => {
 
   /** Drives the real error handler as Express would for `GET /boom/:id` throwing an unexpected error. */
   async function failRequest(): Promise<{ status: number; body: { error: { message: string } } }> {
-    const handler = errorHandler(h.ctx.log, (e) => void h.ctx.errors.capture({ source: "api", ...e }));
+    // The handler fires the capture without awaiting it (tracking must never delay or fail the response); keep
+    // its promise so the test reads the grouped row only after the write has landed, on any database speed.
+    let captured: Promise<unknown> = Promise.resolve();
+    const handler = errorHandler(h.ctx.log, (e) => {
+      captured = h.ctx.errors.capture({ source: "api", ...e });
+    });
     const id = randomUUID();
     const req = { method: "GET", baseUrl: "/api/v1", path: `/boom/${id}`, route: { path: "/boom/:id" }, correlationId: "corr-123" };
     const out = { status: 0, body: undefined as unknown };
@@ -77,7 +82,7 @@ describe("error tracking, alerting and PayPal notification health", () => {
     };
     const err = new Error(`kaboom while loading ${id}`);
     (handler as unknown as (e: unknown, q: unknown, r: unknown, n: () => void) => void)(err, req, res, () => undefined);
-    await new Promise((r) => setTimeout(r, 50));
+    await captured;
     return out as { status: number; body: { error: { message: string } } };
   }
 
