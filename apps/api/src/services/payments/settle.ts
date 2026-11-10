@@ -1,4 +1,5 @@
 import { and, eq } from "drizzle-orm";
+import { formatDate, formatMoney } from "@qm/integrations";
 import { PAYABLE_PO_STATUSES, minorToDecimalString, type PaymentStatus } from "@qm/contracts";
 import { deliveries, intentCertificates, organizations, paymentAttempts, purchaseOrders, suppliers } from "@qm/database";
 import { captureAmountMinor, extractCapture, type PayPalOrder } from "@qm/payments";
@@ -224,10 +225,17 @@ export async function finalizeFromOrder(
           kind: "PAYMENT_COMPLETED",
           organization_id: p.organizationId,
           title: `Payment completed for ${po.number}`,
-          summary: `${supplier?.name ?? "Supplier"} · delivery expected ${expectedDate}`,
+          summary: `PayPal captured the payment after TrustRail re-checked the signed order, the amount and the payee. ${supplier?.name ?? "The supplier"} expects to deliver on ${formatDate(expectedDate)}.`,
           amount_minor: captured,
           currency: p.currency,
           link_path: `/orders`,
+          details: [
+            { label: "Order", value: po.number },
+            { label: "Supplier", value: supplier?.name ?? "Supplier" },
+            { label: "Amount paid", value: formatMoney(captured, p.currency) },
+            { label: "Delivery expected", value: formatDate(expectedDate) },
+            { label: "Paid with", value: "PayPal" },
+          ],
         }),
       );
       return "COMPLETED";

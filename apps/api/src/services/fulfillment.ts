@@ -1,4 +1,5 @@
 import { and, desc, eq, sql } from "drizzle-orm";
+import { formatDate } from "@qm/integrations";
 import type { DelayDeliveryRequest, DeliveryDto, ReceiveDeliveryRequest } from "@qm/contracts";
 import { deliveries, goodsReceipts, inventoryItems, purchaseOrderItems, stockMovements, type DbOrTx } from "@qm/database";
 import type { AppContext } from "../context";
@@ -134,8 +135,13 @@ export async function delayDelivery(ctx: AppContext, actor: Actor, deliveryId: s
         kind: "DELIVERY_DELAYED",
         organization_id: actor.organizationId,
         title: "Delivery delayed",
-        summary: `Now expected ${input.new_expected_date}: ${input.reason}`,
-        link_path: "/orders",
+        summary: `A delivery is now expected on ${formatDate(input.new_expected_date)}. The change and its reason are in the audit log.`,
+        link_path: "/deliveries",
+        details: [
+          { label: "Was expected", value: formatDate(d.expectedDate) },
+          { label: "Now expected", value: formatDate(input.new_expected_date) },
+          { label: "Reason", value: input.reason },
+        ],
       }),
     );
     const [updated] = await tx.select().from(deliveries).where(eq(deliveries.id, d.id));

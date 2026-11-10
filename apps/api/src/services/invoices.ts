@@ -183,8 +183,13 @@ export async function analyzeAndRecordInvoice(ctx: AppContext, actor: Actor, inp
           kind: "INVOICE_FLAGGED",
           organization_id: actor.organizationId,
           title: `Invoice ${input.invoice_number} flagged`,
-          summary: `${analysis.status.toLowerCase()} — settlement withheld`,
+          summary: `Quartermaster held this invoice instead of settling it: it did not match the order and previous invoices.`,
           link_path: "/orders",
+          details: [
+            { label: "Invoice", value: input.invoice_number },
+            { label: "Result", value: analysis.status.charAt(0) + analysis.status.slice(1).toLowerCase().replace(/_/g, " ") },
+            { label: "Settlement", value: "Withheld" },
+          ],
         }),
       );
     }
