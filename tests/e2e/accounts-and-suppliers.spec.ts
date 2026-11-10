@@ -49,7 +49,7 @@ test("sign up, invite a manager who joins, and add a supplier, a product and a s
   await invitee.close();
 
   await page.reload();
-  await expect(page.getByRole("cell", { name: managerEmail })).toBeVisible();
+  await expect(page.getByRole("row").filter({ hasText: managerEmail })).toBeVisible();
 
   // Add a supplier, then a product in its catalog.
   await page.goto("/suppliers");
