@@ -4,7 +4,7 @@ import type { ColDef, SuppressKeyboardEventParams } from "ag-grid-community";
 import { useEffect, useRef, type ReactNode } from "react";
 import { cn } from "@/components/ui/cn";
 
-const FOCUSABLE = "a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex='-1'])";
+const FOCUSABLE = "a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex='-1'])";
 
 function focusablesIn(el: Element | null): HTMLElement[] {
   return el ? Array.from(el.querySelectorAll<HTMLElement>(FOCUSABLE)) : [];
@@ -22,6 +22,8 @@ export function suppressControlKeys<T>({ event }: SuppressKeyboardEventParams<T>
   const cell = target?.closest(".ag-cell");
   if (!target || !cell || target === cell) return false;
   if (event.key === "Enter" || event.key === " ") return true;
+  // A <select> in a cell keeps its own arrow keys (changing the option) rather than moving the grid.
+  if (target instanceof HTMLSelectElement && event.key.startsWith("Arrow")) return true;
   if (event.key === "Tab") {
     const controls = focusablesIn(cell);
     const index = controls.indexOf(target);

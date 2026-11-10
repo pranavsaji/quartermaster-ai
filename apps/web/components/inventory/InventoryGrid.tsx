@@ -3,11 +3,14 @@
 import type { ColDef } from "ag-grid-community";
 import type { CustomCellRendererProps } from "ag-grid-react";
 import type { InventoryItemDto } from "@qm/contracts";
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { ActionCell, controlColumn } from "@/components/grid/ActionCell";
 import { DataGrid } from "@/components/grid/DataGrid";
-import { numberColumn, statusColumn, rightCell } from "@/components/grid/columns";
+import { EDITABLE_CELL, numberColumn, statusColumn, rightCell } from "@/components/grid/columns";
+import { useInlineEditor, wholeNumberParser } from "@/components/grid/editing";
+import { EDITABLE_INVENTORY_FIELDS, saveInventoryEdit, type EditableInventoryField } from "@/components/inventory/inventory-edits";
 import { Button } from "@/components/ui/Button";
+import { Notice } from "@/components/ui/Notice";
 import { num } from "@/lib/format";
 import { categoryLabel, STOCK_LABELS, STOCK_TONES, stockSeverity } from "@/lib/labels";
 
@@ -17,15 +20,44 @@ export function InventoryGrid({
   onAdjust,
   canEdit = false,
   onEdit,
+  onItemSaved,
 }: {
   items: InventoryItemDto[] | undefined;
   canAdjust: boolean;
   onAdjust: (item: InventoryItemDto) => void;
-  /** Show "Edit" for an item's details (name, thresholds, supplier, search terms). */
+  /** Show "Edit" for an item's details, and allow typing over on-hand, safety stock and cover target. */
   canEdit?: boolean;
   onEdit?: (item: InventoryItemDto) => void;
+  /** The server's version of an item after an in-grid edit. */
+  onItemSaved?: (item: InventoryItemDto) => void;
 }) {
+  const inlineEditing = canEdit && Boolean(onItemSaved);
+  const editor = useInlineEditor<InventoryItemDto>({
+    save: saveInventoryEdit,
+    onSaved: useCallback((item: InventoryItemDto) => onItemSaved?.(item), [onItemSaved]),
+    rows: items,
+    describe: useCallback((item: InventoryItemDto) => item.name, []),
+    label: useCallback((field: string) => EDITABLE_INVENTORY_FIELDS[field as EditableInventoryField]?.label ?? field, []),
+  });
+
   const columns = useMemo<ColDef<InventoryItemDto>[]>(() => {
+    /** A whole-number column managers can type over (double-click, Enter or start typing). */
+    const editableColumn = (field: EditableInventoryField, extra: Partial<ColDef<InventoryItemDto>> = {}): ColDef<InventoryItemDto> => {
+      const spec = EDITABLE_INVENTORY_FIELDS[field];
+      return numberColumn<InventoryItemDto>(field, spec.label, {
+        ...extra,
+        ...(inlineEditing
+          ? {
+              editable: true,
+              cellClass: rightCell(EDITABLE_CELL),
+              cellEditor: "agNumberCellEditor",
+              cellEditorParams: { min: spec.min, max: spec.max, precision: 0, showStepperButtons: false },
+              valueParser: wholeNumberParser(spec.min, spec.max),
+              headerTooltip: `${spec.label}: double-click or press Enter to edit; saved at once.`,
+            }
+          : {}),
+      });
+    };
     const cols: ColDef<InventoryItemDto>[] = [
       {
         field: "name",
@@ -51,7 +83,7 @@ export function InventoryGrid({
         minWidth: 150,
         valueFormatter: (p) => categoryLabel(typeof p.value === "string" ? p.value : null),
       },
-      numberColumn<InventoryItemDto>("on_hand", "On hand"),
+      editableColumn("on_hand", { minWidth: 110 }),
       numberColumn<InventoryItemDto>("inbound_confirmed", "Inbound"),
       numberColumn<InventoryItemDto>("committed", "Committed"),
       numberColumn<InventoryItemDto>("available", "Available", {
@@ -68,7 +100,8 @@ export function InventoryGrid({
         minWidth: 130,
       }),
       numberColumn<InventoryItemDto>("reorder_point", "Reorder at"),
-      numberColumn<InventoryItemDto>("safety_stock", "Safety stock"),
+      editableColumn("safety_stock", { minWidth: 120 }),
+      editableColumn("coverage_days", { minWidth: 150 }),
       numberColumn<InventoryItemDto>("lead_time_days", "Lead time", {
         valueFormatter: (p) => (typeof p.value === "number" ? `${p.value} d` : "—"),
       }),
@@ -103,16 +136,63 @@ export function InventoryGrid({
       });
     }
     return cols;
-  }, [canAdjust, onAdjust, canEdit, onEdit]);
+  }, [canAdjust, onAdjust, canEdit, onEdit, inlineEditing]);
 
+  const last = editor.lastEdit;
   return (
-    <DataGrid<InventoryItemDto>
-      ariaLabel="Inventory items"
-      rows={items}
-      columns={columns}
-      height={520}
-      rowHeight={52}
-      emptyMessage="No inventory items yet."
-    />
+    <>
+      {inlineEditing ? (
+        <p className="mb-2 text-[12.5px] text-ink-3">
+          Type over <strong className="font-medium text-ink-2">On hand</strong>,{" "}
+          <strong className="font-medium text-ink-2">Safety stock</strong> or{" "}
+          <strong className="font-medium text-ink-2">Cover target</strong> to change them; each edit is saved and audited at once. An
+          on-hand edit is recorded as a stock count.
+        </p>
+      ) : null}
+      {editor.status ? (
+        <Notice
+          tone={editor.status.tone}
+          live
+          className="mb-2"
+          action={
+            <Button size="sm" variant="ghost" onClick={editor.clearStatus}>
+              Dismiss
+            </Button>
+          }
+        >
+          {editor.status.text}
+        </Notice>
+      ) : null}
+      <DataGrid<InventoryItemDto>
+        ariaLabel="Inventory items"
+        rows={items}
+        columns={columns}
+        height={520}
+        rowHeight={52}
+        emptyMessage="No inventory items yet."
+        // Few columns: render them all, so browser find (Ctrl/Cmd+F) sees every cell.
+        suppressColumnVirtualisation
+        stateKey="inventory"
+        tools={{
+          exportFileName: "inventory",
+          actions: inlineEditing ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => void editor.undo()}
+              disabled={!last || editor.saving}
+              loading={editor.saving}
+              aria-label={last ? `Undo last edit (${last.label})` : "Undo last edit"}
+            >
+              Undo last edit
+            </Button>
+          ) : undefined,
+        }}
+        onCellValueChanged={inlineEditing ? editor.onCellValueChanged : undefined}
+        undoRedoCellEditing={inlineEditing}
+        undoRedoCellEditingLimit={20}
+        stopEditingWhenCellsLoseFocus
+      />
+    </>
   );
 }

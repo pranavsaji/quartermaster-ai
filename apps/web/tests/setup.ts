@@ -16,3 +16,12 @@ if (typeof HTMLDialogElement !== "undefined" && !HTMLDialogElement.prototype.sho
     this.removeAttribute("open");
   };
 }
+
+// jsdom has no layout APIs; AG Grid only needs ResizeObserver to exist to render its rows.
+if (typeof globalThis.ResizeObserver === "undefined") {
+  globalThis.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver;
+}

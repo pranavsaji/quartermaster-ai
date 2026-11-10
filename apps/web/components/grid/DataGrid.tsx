@@ -3,6 +3,7 @@
 import {
   CellStyleModule,
   CheckboxEditorModule,
+  ClientSideRowModelApiModule,
   ClientSideRowModelModule,
   ColumnApiModule,
   CsvExportModule,
@@ -16,6 +17,7 @@ import {
   PinnedRowModule,
   QuickFilterModule,
   RenderApiModule,
+  RowApiModule,
   RowAutoHeightModule,
   RowSelectionModule,
   RowStyleModule,
@@ -40,6 +42,8 @@ import { cssColor } from "@/lib/theme";
 // ValidationModule warns in the console if a grid uses a feature whose module isn't listed here.
 ModuleRegistry.registerModules([
   ClientSideRowModelModule, // rowData
+  ClientSideRowModelApiModule, // api.forEachNodeAfterFilter (totals rows that follow filters)
+  RowApiModule, // api.getDisplayedRowCount (toolbar row count)
   CellStyleModule, // cellClass / cellClassRules
   RowStyleModule, // rowClassRules
   RowAutoHeightModule, // autoHeight columns
@@ -217,6 +221,9 @@ export function DataGrid<T extends { id: string }>({
     api.exportDataAsCsv({
       fileName: `${exportFileName}.csv`,
       columnKeys: keys,
+      // Totals rows are a view summary, not data.
+      skipPinnedTop: true,
+      skipPinnedBottom: true,
       // Export what people see (formatted money, dates, labels), not raw minor units or enums.
       processCellCallback: (p) => csvSafe(p.column.getColDef().valueFormatter ? p.formatValue(p.value) : p.value),
     });

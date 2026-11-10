@@ -121,7 +121,14 @@ export function InventoryPage() {
           />
           <div className="p-3">
             <ResourceView resource={inventory} hasData={Boolean(items)}>
-              <InventoryGrid items={items} canAdjust={can("adjustInventory")} onAdjust={onAdjust} canEdit={canEdit} onEdit={onEdit} />
+              <InventoryGrid
+                items={items}
+                canAdjust={can("adjustInventory")}
+                onAdjust={onAdjust}
+                canEdit={canEdit}
+                onEdit={onEdit}
+                onItemSaved={replaceItem}
+              />
             </ResourceView>
           </div>
         </Card>
