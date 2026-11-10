@@ -21,8 +21,8 @@ import { sessionAuth } from "../middleware/auth";
 import { asyncHandler, parse } from "../middleware/errors";
 import { limiterStore } from "../rate-limit-store";
 
-/** Open browser-error groups from anonymous reports before new ones share one overflow group. */
-const MAX_ANONYMOUS_WEB_GROUPS = 100;
+/** Open browser-error groups before further reports share one overflow group. */
+const MAX_OPEN_WEB_GROUPS = 100;
 
 /** Normalised email for rate-limit keys; malformed bodies share one bucket per IP. */
 export function loginEmailKey(body: unknown): string {
@@ -174,9 +174,10 @@ export function authRoutes(ctx: AppContext): Router {
     }),
   );
 
-  // Browser errors for error tracking. No session needed (the sign-in page can fail too), but
-  // anonymous reports are untrusted: they are recorded as warnings (never alert) and grouped by
-  // page only. Once many anonymous groups are open, further ones share a single overflow group.
+  // Browser errors for error tracking. No session is needed (the sign-in page can fail too), and
+  // sign-up is open, so a session is not a trust signal: reports are warnings (never alert),
+  // grouped by page rather than free text, and spill into one overflow group once many are open.
+  // Only operators' own reports are errors that alert.
   r.post(
     "/client-errors",
     clientErrorLimiter,
@@ -184,15 +185,15 @@ export function authRoutes(ctx: AppContext): Router {
       const report = parse(ClientErrorReport, req.body);
       const token = req.cookies?.[cookie.cookieName] as string | undefined;
       const user = token && token.length <= 200 ? await authenticate(ctx, token) : null;
-      const route = user || (await ctx.errors.openGroups("web")) < MAX_ANONYMOUS_WEB_GROUPS ? normalizePath(report.path) : "(overflow)";
+      const trusted = Boolean(user?.operator);
+      const route = trusted || (await ctx.errors.openGroups("web")) < MAX_OPEN_WEB_GROUPS ? normalizePath(report.path) : "(overflow)";
       await ctx.errors.capture({
         source: "web",
-        level: user ? "error" : "warning",
+        level: trusted ? "error" : "warning",
         code: `web.${report.kind}`,
         message: report.message || "Unknown browser error",
         route,
-        // Group by page, not by free text, so reports cannot mint unbounded groups.
-        key: user ? undefined : route,
+        key: trusted ? undefined : route,
         correlationId: req.correlationId ?? null,
         context: { digest: report.digest ?? null, signed_in: Boolean(user), stack: report.stack?.slice(0, 2000) ?? null },
       });

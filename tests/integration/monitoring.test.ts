@@ -132,7 +132,7 @@ describe("error tracking, alerting and PayPal notification health", () => {
     expect(row?.level).toBe("warning");
   });
 
-  it("records anonymous browser reports as warnings grouped by page, and signed-in ones as errors", async () => {
+  it("records browser reports as warnings grouped by page; only operators' reports alert", async () => {
     const before = out.alerts().length;
     const anon = await h.anonymous().post("/client-errors", {
       message: "TypeError: x is undefined at https://evil.example.com/?q=secret",
@@ -150,10 +150,18 @@ describe("error tracking, alerting and PayPal notification health", () => {
     expect(anonRows[0]!.message).not.toContain("secret");
     expect(out.alerts().length).toBe(before);
 
-    const signedIn = await owner.post("/client-errors", { message: "RangeError: bad", path: "/orders", kind: "unhandled" });
-    expect(signedIn.status).toBe(202);
+    // Sign-up is open, so an ordinary session is no more trusted than none.
+    await owner.post("/client-errors", { message: "RangeError: bad", path: "/orders", kind: "unhandled" });
+    await owner.post("/client-errors", { message: "RangeError: other text", path: "/orders", kind: "unhandled" });
     const [row] = await h.ctx.db.select().from(systemErrors).where(eq(systemErrors.code, "web.unhandled"));
-    expect(row).toMatchObject({ level: "error", route: "/orders" });
+    expect(row).toMatchObject({ level: "warning", route: "/orders", occurrences: 2 });
+    expect(out.alerts().length).toBe(before);
+
+    await operator.post("/client-errors", { message: "TypeError: ops page broke", path: "/system", kind: "render" });
+    const [opsRow] = (await h.ctx.db.select().from(systemErrors).where(eq(systemErrors.route, "/system"))).filter(
+      (r) => r.level === "error",
+    );
+    expect(opsRow).toBeDefined();
     expect(out.alerts().length).toBe(before + 1);
   });
 
