@@ -44,6 +44,7 @@ test("console pages have no moderate-or-worse accessibility violations", async (
     "/suppliers",
     "/team",
     "/account",
+    "/deliveries",
   ]) {
     await page.goto(path);
     await expect(page.locator("main")).toBeVisible();

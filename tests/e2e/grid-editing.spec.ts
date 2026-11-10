@@ -29,16 +29,20 @@ test("an owner edits stock levels in the grid and they persist", async ({ page }
     return grid.locator(`.ag-row[row-index="${index}"] [col-id="${col}"]`).first();
   };
 
-  await (await cell("safety_stock")).dblclick();
-  await page.keyboard.press("ControlOrMeta+A");
-  await page.keyboard.type("250");
-  await page.keyboard.press("Enter");
+  // Opens the cell editor, waits for it, types the value and commits it.
+  const edit = async (col: string, value: string) => {
+    await (await cell(col)).dblclick();
+    const editor = grid.locator(".ag-cell-inline-editing input").first();
+    await expect(editor).toBeVisible();
+    await editor.fill(value);
+    await editor.press("Enter");
+    await expect(grid.locator(".ag-cell-inline-editing")).toHaveCount(0);
+  };
+
+  await edit("safety_stock", "250");
   await expect(await cell("safety_stock")).toHaveText(/250/);
 
-  await (await cell("on_hand")).dblclick();
-  await page.keyboard.press("ControlOrMeta+A");
-  await page.keyboard.type("640");
-  await page.keyboard.press("Enter");
+  await edit("on_hand", "640");
   await expect(await cell("on_hand")).toHaveText(/640/);
 
   // Saved on the server: a fresh load shows the new values.
