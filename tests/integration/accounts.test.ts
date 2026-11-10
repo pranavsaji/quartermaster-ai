@@ -1,6 +1,15 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import { DEMO_CREDENTIALS, inventoryItems, memberships, passwordResetTokens, sessions, spendMandates, users } from "@qm/database";
+import {
+  DEMO_CREDENTIALS,
+  hashPassword,
+  inventoryItems,
+  memberships,
+  passwordResetTokens,
+  sessions,
+  spendMandates,
+  users,
+} from "@qm/database";
 import { createHarness, PASSWORD, type Harness } from "../helpers/harness";
 
 interface Sent {
@@ -297,24 +306,46 @@ describe("accounts: sign-up, invitations, password reset", () => {
       expect(live.filter((t) => !t.usedAt)).toHaveLength(1);
     });
 
-    it("lets an owner issue a reset link for a member, which also clears a lockout", async () => {
+    it("lets an owner issue a reset link for a manager or viewer (emailed), which also clears a lockout", async () => {
       const owner = await h.agent("owner");
       const [viewer] = await h.ctx.db.select().from(users).where(eq(users.email, DEMO_CREDENTIALS.viewer.email));
       await h.ctx.db
         .update(users)
         .set({ lockedUntil: new Date(h.clock.now.getTime() + 3_600_000) })
         .where(eq(users.id, viewer!.id));
+      const before = mail.emails().length;
       const link = await owner.post(`/members/${viewer!.id}/password-reset`);
       expect(link.status).toBe(200);
-      expect(link.body.email_sent).toBe(true);
+      // Emailed to the member, so the owner never sees the link.
+      expect(link.body).toMatchObject({ email_sent: true, reset_url: null });
+      const email = mail
+        .emails()
+        .slice(before)
+        .find((e) => e.to[0] === DEMO_CREDENTIALS.viewer.email)!;
+      expect(email.text).toContain("An owner of your workspace issued");
       const manager = await h.agent("manager");
       expect((await manager.post(`/members/${viewer!.id}/password-reset`)).status).toBe(403);
 
-      await h.anonymous().post("/auth/password/reset", { token: tokenIn(link.body.reset_url as string)!, password: NEW_PASSWORD });
+      await h.anonymous().post("/auth/password/reset", { token: tokenIn(email.text)!, password: NEW_PASSWORD });
       await h.signIn(DEMO_CREDENTIALS.viewer.email, NEW_PASSWORD);
       // Restore for other tests in this file.
-      const again = await owner.post(`/members/${viewer!.id}/password-reset`);
-      await h.anonymous().post("/auth/password/reset", { token: tokenIn(again.body.reset_url as string)!, password: PASSWORD });
+      await h.ctx.db
+        .update(users)
+        .set({ passwordHash: await hashPassword(PASSWORD) })
+        .where(eq(users.id, viewer!.id));
+    });
+
+    it("refuses owner-issued reset links for owners, which would take over a co-owner's account", async () => {
+      const owner = await h.agent("owner");
+      const invite = await owner.post("/members/invitations", { email: "co-owner@example.com", role: "OWNER" });
+      const co = await h.anonymous().post("/invitations/accept", {
+        token: tokenIn(invite.body.invite_url as string)!,
+        name: "Co Owner",
+        password: "co-owner-strong-password",
+      });
+      const res = await owner.post(`/members/${co.body.user.id as string}/password-reset`);
+      expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe("RESET_LINK_NOT_ALLOWED");
     });
 
     it("changes the password when the current one is right and signs out other sessions", async () => {
@@ -353,6 +384,10 @@ describe("accounts without email or sign-up", () => {
     const invite = await owner.post("/members/invitations", { email: "m@example.com", role: "VIEWER" });
     expect(invite.status).toBe(201);
     expect(invite.body.email_sent).toBe(false);
+    const [viewer] = await h.ctx.db.select().from(users).where(eq(users.email, DEMO_CREDENTIALS.viewer.email));
+    const link = await owner.post(`/members/${viewer!.id}/password-reset`);
+    expect(link.body.email_sent).toBe(false);
+    expect(link.body.reset_url).toMatch(/\/reset-password#token=[\w-]+$/);
     expect((await h.anonymous().get("/config/public")).body.accounts).toEqual({ signup_enabled: false, email_enabled: false });
   });
 });

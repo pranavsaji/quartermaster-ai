@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import request from "supertest";
-import { DEMO_CREDENTIALS, paymentAttempts, systemErrors } from "@qm/database";
+import { DEMO_CREDENTIALS, ensureOperatorAccounts, paymentAttempts, systemErrors } from "@qm/database";
 import { errorHandler } from "../../apps/api/src/http/middleware/errors";
 import { sweep } from "../../apps/api/src/jobs/sweeper";
 import { createHarness, type Client, type Harness } from "../helpers/harness";
@@ -33,13 +33,16 @@ function recorder() {
 describe("error tracking, alerting and PayPal notification health", () => {
   let h: Harness;
   let owner: Client;
+  let operator: Client;
   const out = recorder();
+  const OPERATOR_PASSWORD = "operator-strong-password";
 
   beforeAll(async () => {
     h = await createHarness({
       monitoringFetch: out.fetch,
       extraEnv: {
-        OPERATOR_EMAILS: DEMO_CREDENTIALS.owner.email,
+        // The shared owner's address is listed too, to prove an existing ordinary account is not promoted.
+        OPERATOR_EMAILS: `ops@example.com,${DEMO_CREDENTIALS.owner.email}`,
         ALERT_EMAILS: "oncall@example.com",
         ALERT_WEBHOOK_URL: "https://alerts.example.com/hook",
         RESEND_API_KEY: "re_test",
@@ -49,6 +52,9 @@ describe("error tracking, alerting and PayPal notification health", () => {
     });
     owner = await h.agent("owner");
     await relaxMandate(owner);
+    const seeded = await ensureOperatorAccounts(h.ctx.db, { emails: h.ctx.config.monitoring.operatorEmails, password: OPERATOR_PASSWORD });
+    expect(seeded).toEqual({ "ops@example.com": "created", [DEMO_CREDENTIALS.owner.email]: "skipped_registered" });
+    operator = await h.signIn("ops@example.com", OPERATOR_PASSWORD);
   });
   afterAll(async () => h.close());
 
@@ -106,7 +112,7 @@ describe("error tracking, alerting and PayPal notification health", () => {
       expect(out.alerts().filter((a) => a.title.includes("INTERNAL"))).toHaveLength(2);
 
       const [row] = await h.ctx.db.select().from(systemErrors).where(eq(systemErrors.code, "INTERNAL"));
-      const resolved = await owner.post(`/ops/errors/${row!.id}/resolve`);
+      const resolved = await operator.post(`/ops/errors/${row!.id}/resolve`);
       expect(resolved.status).toBe(200);
       expect(resolved.body.error.resolved_at).not.toBeNull();
       await failRequest();
@@ -126,21 +132,47 @@ describe("error tracking, alerting and PayPal notification health", () => {
     expect(row?.level).toBe("warning");
   });
 
-  it("accepts browser error reports without a session", async () => {
-    const res = await h.anonymous().post("/client-errors", {
-      message: "TypeError: x is undefined",
+  it("records anonymous browser reports as warnings grouped by page, and signed-in ones as errors", async () => {
+    const before = out.alerts().length;
+    const anon = await h.anonymous().post("/client-errors", {
+      message: "TypeError: x is undefined at https://evil.example.com/?q=secret",
       path: `/procurement/${randomUUID()}?tab=1`,
       kind: "render",
       digest: "abc",
     });
-    expect(res.status).toBe(202);
-    const [row] = await h.ctx.db.select().from(systemErrors).where(eq(systemErrors.code, "web.render"));
-    expect(row).toMatchObject({ source: "web", route: "/procurement/:id" });
+    expect(anon.status).toBe(202);
+    await h.anonymous().post("/client-errors", { message: "A different free-text message", path: "/procurement/123", kind: "render" });
+    const anonRows = (await h.ctx.db.select().from(systemErrors).where(eq(systemErrors.code, "web.render"))).filter(
+      (r) => r.level === "warning",
+    );
+    expect(anonRows).toHaveLength(1);
+    expect(anonRows[0]).toMatchObject({ source: "web", route: "/procurement/:id", occurrences: 2 });
+    expect(anonRows[0]!.message).not.toContain("secret");
+    expect(out.alerts().length).toBe(before);
+
+    const signedIn = await owner.post("/client-errors", { message: "RangeError: bad", path: "/orders", kind: "unhandled" });
+    expect(signedIn.status).toBe(202);
+    const [row] = await h.ctx.db.select().from(systemErrors).where(eq(systemErrors.code, "web.unhandled"));
+    expect(row).toMatchObject({ level: "error", route: "/orders" });
+    expect(out.alerts().length).toBe(before + 1);
+  });
+
+  it("redacts emails, quoted values and tokens from tracked messages", async () => {
+    await h.ctx.errors.capture({
+      source: "api",
+      level: "warning",
+      code: "REDACTION_CHECK",
+      message: `Lookup of "pat@example.com" failed with key sk-live-abcdefghijklmnop and token ${"a".repeat(40)}`,
+    });
+    const [row] = await h.ctx.db.select().from(systemErrors).where(eq(systemErrors.code, "REDACTION_CHECK"));
+    expect(row!.message).not.toMatch(/pat@|sk-live|aaaaaaaa/);
   });
 
   it("restricts the operations endpoints to operators", async () => {
-    const me = await owner.get("/auth/me");
-    expect(me.body.user.operator).toBe(true);
+    expect((await operator.get("/auth/me")).body.user.operator).toBe(true);
+    // Listed in OPERATOR_EMAILS but created as an ordinary account: not an operator.
+    expect((await owner.get("/auth/me")).body.user.operator).toBe(false);
+    expect((await owner.get("/ops/health")).status).toBe(403);
     const manager = await h.agent("manager");
     expect((await manager.get("/auth/me")).body.user.operator).toBe(false);
     const denied = await manager.get("/ops/errors");
@@ -149,7 +181,7 @@ describe("error tracking, alerting and PayPal notification health", () => {
     // The operator gate is scoped to /ops: other unknown paths are still 404 for everyone.
     expect((await manager.get("/nothing-here")).status).toBe(404);
 
-    const health = await owner.get("/ops/health");
+    const health = await operator.get("/ops/health");
     expect(health.status).toBe(200);
     expect(health.body).toMatchObject({
       alerting: { email: true, webhook: true, recipients: 1 },
@@ -158,15 +190,26 @@ describe("error tracking, alerting and PayPal notification health", () => {
     });
     expect(health.body.error_tracking.open_errors).toBeGreaterThan(0);
 
-    const page = await owner.get("/ops/errors?status=ALL&limit=1");
+    const page = await operator.get("/ops/errors?status=ALL&limit=1");
     expect(page.body.items).toHaveLength(1);
     expect(page.body.next_cursor).toEqual(expect.any(String));
-    const next = await owner.get(`/ops/errors?status=ALL&limit=1&cursor=${page.body.next_cursor as string}`);
+    const next = await operator.get(`/ops/errors?status=ALL&limit=1&cursor=${page.body.next_cursor as string}`);
     expect(next.body.items[0].id).not.toBe(page.body.items[0].id);
   });
 
+  it("reserves operator addresses: they cannot be signed up for or invited", async () => {
+    const signup = await h.anonymous().post("/auth/signup", {
+      name: "Squatter",
+      email: "OPS@example.com",
+      password: "correct-horse-battery",
+      organization_name: "Squat",
+    });
+    expect(signup.body.error.code).toBe("EMAIL_IN_USE");
+    expect((await owner.post("/members/invitations", { email: "ops@example.com", role: "VIEWER" })).body.error.code).toBe("EMAIL_IN_USE");
+  });
+
   it("sends a test alert to every channel", async () => {
-    const res = await owner.post("/ops/alerts/test");
+    const res = await operator.post("/ops/alerts/test");
     expect(res.body).toEqual({ email_recipients: 1, emails_sent: 1, webhook_sent: true });
   });
 
