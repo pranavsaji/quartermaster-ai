@@ -128,6 +128,44 @@ const EnvSchema = z.object({
   SWEEPER_INTERVAL_SECONDS: z.coerce.number().int().min(0).max(3600).default(60),
   /** Demo-only delivery simulation. Defaults to false in production, true elsewhere. */
   ALLOW_SYNTHETIC_DELIVERY_ACTIONS: optionalBool(),
+
+  /* ---------------------------------------------------------------------------------------------
+   * Security hardening (abuse limits, shared sample workspace, edge trust, sessions).
+   * Every setting is optional; the defaults suit production. Under NODE_ENV=test the limits are
+   * effectively off and the sample workspace is writable, so suites can drive the demo freely;
+   * tests of these features set them explicitly.
+   * ------------------------------------------------------------------------------------------- */
+  /**
+   * Shared secret the web app's proxy sends as `X-QM-Edge`. When set, forwarded client addresses
+   * (X-Forwarded-For, per TRUST_PROXY) are believed only on requests carrying it; any other request
+   * is limited by its socket peer address. Unset: forwarded addresses are trusted as before.
+   */
+  EDGE_SECRET: z.string().min(16).max(256).optional(),
+  /** Refuse account, team, mandate and supplier changes in the shared sample workspace. */
+  SAMPLE_WORKSPACE_READONLY: optionalBool(),
+  /** Reset the shared sample workspace once a day at this UTC hour (0–23). Unset: never. */
+  SAMPLE_RESET_HOUR_UTC: z.coerce.number().int().min(0).max(23).optional(),
+  /** Research runs per organisation per UTC day that may call OpenAI/Channel3; beyond it, deterministic. */
+  RESEARCH_DAILY_RUNS_PER_ORG: z.coerce.number().int().min(0).max(1_000_000).optional(),
+  /** Research runs per UTC day across the platform that may call OpenAI/Channel3. */
+  RESEARCH_DAILY_RUNS_GLOBAL: z.coerce.number().int().min(0).max(10_000_000).optional(),
+  /** Model tokens per UTC day across the platform; beyond it, language-model steps are deterministic. */
+  RESEARCH_DAILY_TOKENS_GLOBAL: z.coerce.number().int().min(0).max(10_000_000_000).optional(),
+  /** Invitations per workspace per hour and per day. */
+  INVITE_RATE_LIMIT_PER_HOUR: z.coerce.number().int().min(1).max(100_000).optional(),
+  INVITE_RATE_LIMIT_PER_DAY: z.coerce.number().int().min(1).max(1_000_000).optional(),
+  /** Red-team evaluations per user and per workspace, per minute. */
+  RED_TEAM_RATE_LIMIT_PER_USER: z.coerce.number().int().min(1).max(100_000).optional(),
+  RED_TEAM_RATE_LIMIT_PER_ORG: z.coerce.number().int().min(1).max(100_000).optional(),
+  /** Sessions unused for this many minutes end (0 turns idle expiry off). */
+  SESSION_IDLE_MINUTES: z.coerce
+    .number()
+    .int()
+    .min(0)
+    .max(24 * 60 * 30)
+    .optional(),
+  /** PayPal webhook deliveries verified with PayPal per minute, across all sources. */
+  WEBHOOK_VERIFY_GLOBAL_PER_MINUTE: z.coerce.number().int().min(1).max(100_000).default(300),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
@@ -175,6 +213,20 @@ export interface AppConfig {
   sweeperIntervalSeconds: number;
   shutdownGraceMs: number;
   allowSyntheticDeliveryActions: boolean;
+  /** Security hardening (see the block at the end of EnvSchema). */
+  security: {
+    edgeSecret: string | null;
+    sampleReadOnly: boolean;
+    sampleResetHourUtc: number | null;
+    research: { dailyRunsPerOrg: number; dailyRunsGlobal: number; dailyTokensGlobal: number };
+    invitesPerHour: number;
+    invitesPerDay: number;
+    redTeamPerUserPerMinute: number;
+    redTeamPerOrgPerMinute: number;
+    /** 0 = no idle expiry. */
+    sessionIdleMinutes: number;
+    webhookVerifyPerMinute: number;
+  };
 }
 
 const NAMED_PROXY_RANGES = new Set(["loopback", "linklocal", "uniquelocal"]);
@@ -330,5 +382,22 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
     sweeperIntervalSeconds: e.SWEEPER_INTERVAL_SECONDS,
     shutdownGraceMs: e.SHUTDOWN_GRACE_MS,
     allowSyntheticDeliveryActions: e.ALLOW_SYNTHETIC_DELIVERY_ACTIONS ?? !production,
+    // Security hardening. `test` keeps limits out of the way of suites that drive the demo hard.
+    security: {
+      edgeSecret: e.EDGE_SECRET ?? null,
+      sampleReadOnly: e.SAMPLE_WORKSPACE_READONLY ?? e.NODE_ENV !== "test",
+      sampleResetHourUtc: e.SAMPLE_RESET_HOUR_UTC ?? null,
+      research: {
+        dailyRunsPerOrg: e.RESEARCH_DAILY_RUNS_PER_ORG ?? (e.NODE_ENV === "test" ? 100_000 : 40),
+        dailyRunsGlobal: e.RESEARCH_DAILY_RUNS_GLOBAL ?? (e.NODE_ENV === "test" ? 1_000_000 : 600),
+        dailyTokensGlobal: e.RESEARCH_DAILY_TOKENS_GLOBAL ?? (e.NODE_ENV === "test" ? 1_000_000_000 : 6_000_000),
+      },
+      invitesPerHour: e.INVITE_RATE_LIMIT_PER_HOUR ?? (e.NODE_ENV === "test" ? 1000 : 20),
+      invitesPerDay: e.INVITE_RATE_LIMIT_PER_DAY ?? (e.NODE_ENV === "test" ? 10_000 : 100),
+      redTeamPerUserPerMinute: e.RED_TEAM_RATE_LIMIT_PER_USER ?? (e.NODE_ENV === "test" ? 1000 : 30),
+      redTeamPerOrgPerMinute: e.RED_TEAM_RATE_LIMIT_PER_ORG ?? (e.NODE_ENV === "test" ? 1000 : 120),
+      sessionIdleMinutes: e.SESSION_IDLE_MINUTES ?? (e.NODE_ENV === "test" ? 0 : 120),
+      webhookVerifyPerMinute: e.WEBHOOK_VERIFY_GLOBAL_PER_MINUTE,
+    },
   };
 }

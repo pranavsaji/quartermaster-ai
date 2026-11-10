@@ -7,7 +7,8 @@ import { Badge } from "@/components/ui/Badge";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { lookup } from "@/lib/labels";
-import { ROLE_LABELS } from "@/lib/roles";
+import { Notice } from "@/components/ui/Notice";
+import { isReadOnlySample, ROLE_LABELS, SAMPLE_READONLY_MESSAGE } from "@/lib/roles";
 
 export function AccountPage() {
   const { user } = useSession();
@@ -42,9 +43,7 @@ export function AccountPage() {
         </Card>
         <Card aria-labelledby="password-title">
           <CardHeader id="password-title" title="Password" description="Changing it signs out your other sessions." />
-          <CardBody>
-            <ChangePasswordForm />
-          </CardBody>
+          <CardBody>{isReadOnlySample(user) ? <Notice tone="info">{SAMPLE_READONLY_MESSAGE}</Notice> : <ChangePasswordForm />}</CardBody>
         </Card>
       </div>
     </>

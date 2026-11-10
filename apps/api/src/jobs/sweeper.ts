@@ -18,6 +18,7 @@ import { retryOnConflict } from "../services/common";
 import { releaseReservation } from "../services/budget";
 import { setOrderStatus } from "../services/order-status";
 import { runMonitors } from "../services/monitoring/status";
+import { resetSampleWorkspaceIfDue } from "../services/sample-workspace";
 import { reconcilePayment, reconcileRefunds, transitionPayment, voidAbandonedCapture } from "../services/payments";
 
 export interface SweepReport {
@@ -187,6 +188,8 @@ export async function sweep(ctx: AppContext): Promise<SweepReport> {
     }
 
     report.researchRecovered = await recoverAbandonedResearch(ctx, now);
+    // Nightly reset of the shared sample workspace, when SAMPLE_RESET_HOUR_UTC is set.
+    report.errors += await resetSampleWorkspaceIfDue(ctx, now);
 
     const purgedSessions = await ctx.db
       .delete(sessions)

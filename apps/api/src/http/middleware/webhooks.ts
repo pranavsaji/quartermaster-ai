@@ -48,6 +48,24 @@ export function paypalWebhookGuard(ctx: AppContext): RequestHandler {
   };
 }
 
+/**
+ * Platform-wide cap on deliveries that reach signature verification (an OAuth token and a
+ * verify-webhook-signature call to PayPal each), whatever their source address: per-IP limits
+ * alone let a botnet make the API call PayPal without bound. Runs after the local header checks,
+ * so garbage never uses the budget. PayPal retries a 429 later, so real events are delayed, not lost.
+ */
+export function paypalWebhookVerifyCap(ctx: AppContext): RequestHandler {
+  return rateLimit({
+    windowMs: 60_000,
+    ...limiterStore(ctx, "webhooks-global"),
+    limit: ctx.config.security.webhookVerifyPerMinute,
+    keyGenerator: () => "global",
+    standardHeaders: "draft-8",
+    legacyHeaders: false,
+    message: { error: { code: "RATE_LIMITED", message: "Too many webhook deliveries." } },
+  });
+}
+
 /** Per-source-IP limit for webhook deliveries, independent of the authenticated API's limiter. */
 export function paypalWebhookLimiter(ctx: AppContext): RequestHandler {
   return rateLimit({

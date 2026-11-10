@@ -71,6 +71,8 @@ export async function loadInitialSession(): Promise<InitialSession | null> {
     const value = incoming.get(name);
     if (value) forward.set(name, value);
   }
+  // Like the `/api` proxy (proxy.ts): the API believes the forwarded address only with this.
+  if (process.env.EDGE_SECRET) forward.set("x-qm-edge", process.env.EDGE_SECRET);
 
   const [me, config] = await Promise.all([getJson<SessionResponse>("/auth/me", forward), getJson<PublicConfig>("/config/public", forward)]);
   if (!me.ok && me.status === 401) {

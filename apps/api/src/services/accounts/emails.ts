@@ -11,6 +11,9 @@ export function linkWithToken(appBaseUrl: string, path: string, token: string): 
 const ROLE_LABEL = { OWNER: "an owner", MANAGER: "a manager", VIEWER: "a viewer" } as const;
 
 const IGNORE = "If you did not expect this email, you can ignore it: nothing changes until the link is used.";
+/** Workspace and person names are typed by users; the email says so rather than vouching for them. */
+const NAMES_UNVERIFIED =
+  "The workspace and inviter names were entered by the workspace's owner and are not verified by Quartermaster. Quartermaster never asks for payment details by email.";
 
 export function invitationEmail(args: {
   to: string;
@@ -26,7 +29,7 @@ export function invitationEmail(args: {
     kind: "invitation",
     to: args.to,
     subject: `Join ${args.organizationName} on Quartermaster`.slice(0, 200),
-    text: `${who} invited you to ${args.organizationName} on Quartermaster as ${ROLE_LABEL[args.role]}.\n\nAccept the invitation: ${args.url}\n\nThe link works once and expires ${expires}.`,
+    text: `${who} invited you to ${args.organizationName} on Quartermaster as ${ROLE_LABEL[args.role]}.\n\nAccept the invitation: ${args.url}\n\nThe link works once and expires ${expires}.\n\n${NAMES_UNVERIFIED}`,
     html: renderEmail({
       preheader: `${who} invited you to ${args.organizationName} on Quartermaster.`,
       status: "Invitation",
@@ -35,6 +38,7 @@ export function invitationEmail(args: {
       paragraphs: [
         `${who} invited you to ${args.organizationName} as ${ROLE_LABEL[args.role]}.`,
         `The link works once and expires ${expires}.`,
+        NAMES_UNVERIFIED,
       ],
       action: { label: "Accept invitation", href: args.url },
       footnote: IGNORE,

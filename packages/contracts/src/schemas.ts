@@ -50,7 +50,31 @@ const newPassword = z
   .min(PASSWORD_MIN_LENGTH, `Use at least ${PASSWORD_MIN_LENGTH} characters`)
   .max(PASSWORD_MAX_LENGTH)
   .refine((v) => v.trim().length >= PASSWORD_MIN_LENGTH, "Password cannot be mostly spaces");
-const personName = z.string().trim().min(1).max(120);
+/**
+ * Web addresses and domains ("https://…", "www.…", "paypal-support.com/…", "secure-login.net").
+ * Workspace and person names appear in invitation emails, so a link-shaped name could make an
+ * invitation look like a phishing lure from another brand.
+ */
+export function containsWebAddress(value: string): boolean {
+  return /:\/\/|www\.|[a-z0-9-]\.[a-z]{2,}\/|[a-z0-9-]\.(?:com|net|org|io|co|dev|app|xyz|info|biz|me|ru|cn|top|link|site|online|shop)\b/i.test(
+    value,
+  );
+}
+export const NAME_NO_LINKS_MESSAGE = "Names cannot contain web addresses";
+const personName = z
+  .string()
+  .trim()
+  .min(1)
+  .max(120)
+  .refine((v) => !containsWebAddress(v), NAME_NO_LINKS_MESSAGE);
+/** A workspace (restaurant) name: shown to invitees, so short and link-free. */
+export const ORGANIZATION_NAME_MAX_LENGTH = 80;
+const organizationName = z
+  .string()
+  .trim()
+  .min(2)
+  .max(ORGANIZATION_NAME_MAX_LENGTH)
+  .refine((v) => !containsWebAddress(v), NAME_NO_LINKS_MESSAGE);
 /** One-time tokens from invitation and reset links (base64url, 43 characters when issued). */
 const linkToken = z
   .string()
@@ -72,7 +96,7 @@ export const SignupRequest = z.object({
   name: personName,
   email,
   password: newPassword,
-  organization_name: z.string().trim().min(2).max(120),
+  organization_name: organizationName,
   timezone: z.string().max(64).refine(isTimeZone, "Unknown time zone").default("America/Los_Angeles"),
   /** Start with labelled sample suppliers, stock and history (including the adversarial fixture). */
   sample_data: z.boolean().default(true),

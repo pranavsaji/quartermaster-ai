@@ -47,6 +47,26 @@ export function requireRole(min: Role): RequestHandler {
   };
 }
 
+export const sampleReadOnly = () =>
+  new AppError(
+    403,
+    "SAMPLE_WORKSPACE_READONLY",
+    "The shared sample workspace is read-only for this. Create your own workspace (with sample data) to change it.",
+  );
+
+/**
+ * Refuses changes that would let one visitor of the shared sample workspace take it over, lock
+ * others out or deface it: password, team and invitations, reset links, the Spend Mandate,
+ * suppliers and catalog terms. The purchasing journey itself (requests, research, approval,
+ * payment, invoices, deliveries, red-team) stays open. Use after `requireRole`.
+ */
+export function refuseInSampleWorkspace(ctx: AppContext): RequestHandler {
+  return (req, _res, next) => {
+    if (req.user?.sampleWorkspace && ctx.config.security.sampleReadOnly) return next(sampleReadOnly());
+    next();
+  };
+}
+
 export function actorOf(req: Request) {
   if (!req.user) throw unauthorized();
   return { id: req.user.id, organizationId: req.user.organizationId, ip: req.ip, userAgent: req.get("user-agent") ?? undefined };

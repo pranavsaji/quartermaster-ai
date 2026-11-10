@@ -1,4 +1,5 @@
 import { ApiRequestError, describeError } from "@/lib/http";
+import { SAMPLE_READONLY_MESSAGE } from "@/lib/roles";
 import { Button } from "./Button";
 import { Notice } from "./Notice";
 
@@ -26,11 +27,14 @@ export function ErrorNotice({
   if (!error) return null;
   const apiError = error instanceof ApiRequestError ? error : null;
   const roleDenied = apiError?.isRoleDenied ?? false;
-  const heading = title ?? (roleDenied ? "You don't have permission" : "Something went wrong");
+  const sampleReadOnly = apiError?.isSampleReadOnly ?? false;
+  const heading =
+    title ??
+    (roleDenied ? "You don't have permission" : sampleReadOnly ? "Read-only in the shared sample workspace" : "Something went wrong");
 
   return (
     <Notice
-      tone={roleDenied ? "review" : "block"}
+      tone={roleDenied || sampleReadOnly ? "review" : "block"}
       title={heading}
       live
       className={className}
@@ -43,7 +47,7 @@ export function ErrorNotice({
       }
     >
       <p>
-        {describeError(error)}
+        {sampleReadOnly ? SAMPLE_READONLY_MESSAGE : describeError(error)}
         {roleDenied ? " Ask the restaurant owner if you need access." : null}
       </p>
       {apiError && (apiError.correlationId || apiError.code) ? (

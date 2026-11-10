@@ -19,6 +19,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -41,13 +42,27 @@ const oneOf = (column: SQL.Aliased | SQL | AnyPgColumn, values: readonly string[
 
 /* ================================================================ Identity */
 
-export const organizations = pgTable("organizations", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  name: text("name").notNull(),
-  timezone: text("timezone").notNull().default("America/Los_Angeles"),
-  currency: text("currency").notNull().default("USD"),
-  createdAt: createdAt(),
-});
+export const organizations = pgTable(
+  "organizations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    timezone: text("timezone").notNull().default("America/Los_Angeles"),
+    currency: text("currency").notNull().default("USD"),
+    /**
+     * The shared sample workspace whose sign-ins are published for judges. Set only by the seed,
+     * which finds the workspace by this flag (never by name). Account, team, mandate and supplier
+     * changes are refused there, and it can be reset nightly.
+     */
+    isSample: boolean("is_sample").notNull().default(false),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex("organizations_one_sample_uq")
+      .on(t.isSample)
+      .where(sql`${t.isSample}`),
+  ],
+);
 
 export const users = pgTable(
   "users",
@@ -144,6 +159,23 @@ export const passwordResetTokens = pgTable(
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex("password_reset_token_uq").on(t.tokenHash), index("password_reset_user_idx").on(t.userId, t.createdAt)],
+);
+
+/**
+ * Client addresses (SHA-256, never the raw IP) a user has signed in from successfully. The
+ * account-wide lockout counts only failures from addresses not listed here, and does not refuse
+ * them, so a distributed attacker cannot lock an owner out of their usual network.
+ */
+export const knownLoginAddresses = pgTable(
+  "known_login_addresses",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    addressHash: text("address_hash").notNull(),
+    lastSuccessAt: ts("last_success_at").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.addressHash] })],
 );
 
 /* =============================================================== Inventory */
@@ -906,6 +938,22 @@ export const rateLimitHits = pgTable(
     resetAt: ts("reset_at").notNull(),
   },
   (t) => [index("rate_limit_hits_reset_idx").on(t.resetAt)],
+);
+
+/**
+ * Daily usage of paid services (research runs and model tokens), per organisation
+ * (`org:<id>`) and platform-wide (`global`). Beyond the configured caps research runs on the
+ * deterministic fallback instead of calling OpenAI or Channel3.
+ */
+export const usageCounters = pgTable(
+  "usage_counters",
+  {
+    scope: text("scope").notNull(),
+    day: date("day").notNull(),
+    researchRuns: integer("research_runs").notNull().default(0),
+    modelTokens: bigint("model_tokens", { mode: "number" }).notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.scope, t.day] })],
 );
 
 export const idempotencyKeys = pgTable(

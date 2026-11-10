@@ -3,6 +3,7 @@ export * from "./schema";
 export * from "./client";
 export {
   seedDemo,
+  findSampleWorkspace,
   seedSampleWorkspace,
   insertStarterMandate,
   ensureOperatorAccounts,
@@ -13,3 +14,4 @@ export {
   type OperatorSeedOutcome,
 } from "./seed";
 export { hashPassword, verifyPassword, dummyPasswordHash } from "./passwords";
+export { weakPasswordReason, type WeakPasswordReason } from "./password-strength";

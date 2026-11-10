@@ -24,6 +24,7 @@ import { cartFromRows, loadOrder, orderDtos, toCertificateDto, type PurchaseOrde
 import { assessOrder, evaluateOrder, recordDecision, type PolicyEvaluation } from "../policy";
 import { AgentRun } from "../agent/runtime";
 import { interpretInstruction } from "../agent/llm";
+import { claimResearchAllowance, recordModelTokens, withoutPaidServices } from "../usage";
 import { getRequestDto } from "./dto";
 import { isApprovableRequestStatus, refreshRequestStatus } from "./status";
 
@@ -62,11 +63,15 @@ export async function createRequest(ctx: AppContext, actor: Actor, input: Create
   const refs = items.map((i) => ({ id: i.id, sku: i.sku, name: i.name, category: i.category, keywords: i.keywords }));
   let interpreted: Awaited<ReturnType<typeof interpretInstruction>>;
   try {
+    // The model call is paid: over the daily caps the deterministic interpretation is used.
+    const openai = (await claimResearchAllowance(ctx, actor.organizationId, { countRun: false })).paid
+      ? ctx.openai
+      : withoutPaidServices(ctx).openai;
     interpreted = await run.tool(
       "intent.interpret",
       { length: input.instruction.length },
       () =>
-        interpretInstruction(ctx.openai, run, {
+        interpretInstruction(openai, run, {
           instruction: input.instruction,
           inventory: refs,
           today: localDate(now, org!.timezone).date,
@@ -89,6 +94,7 @@ export async function createRequest(ctx: AppContext, actor: Actor, input: Create
   }
   run.aiMode = interpreted.mode;
   await run.finish("SUCCEEDED");
+  await recordModelTokens(ctx, actor.organizationId, run.tokensUsed);
 
   // Explicit form fields override the interpretation; the interpretation never overrides them.
   const intent = {

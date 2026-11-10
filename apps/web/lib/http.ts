@@ -61,6 +61,11 @@ export class ApiRequestError extends Error {
     return this.status === 403 && this.code === "ROLE_REQUIRED";
   }
 
+  /** Refused because this is the shared sample workspace (account, team, mandate and supplier changes). */
+  get isSampleReadOnly(): boolean {
+    return this.status === 403 && this.code === "SAMPLE_WORKSPACE_READONLY";
+  }
+
   /** 409: the resource changed underneath the caller (or another request is still working on it). */
   get isConflict(): boolean {
     return this.status === 409;

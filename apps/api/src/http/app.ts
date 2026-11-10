@@ -6,9 +6,10 @@ import pinoHttp from "pino-http";
 import type { AppContext } from "../context";
 import { notFound } from "../errors";
 import { sessionAuth } from "./middleware/auth";
+import { edgeTrust } from "./middleware/edge";
 import { errorHandler } from "./middleware/errors";
 import { correlation, csrfGuard } from "./middleware/security";
-import { paypalWebhookGuard, paypalWebhookLimiter } from "./middleware/webhooks";
+import { paypalWebhookGuard, paypalWebhookLimiter, paypalWebhookVerifyCap } from "./middleware/webhooks";
 import { authRoutes } from "./routes/auth";
 import { inventoryRoutes } from "./routes/inventory";
 import { memberRoutes } from "./routes/members";
@@ -25,6 +26,7 @@ export function createApp(ctx: AppContext) {
   app.set("trust proxy", ctx.config.trustProxy);
   app.set("etag", false);
 
+  app.use(edgeTrust(ctx.config.security.edgeSecret));
   app.use(correlation);
   app.use(
     pinoHttp({
@@ -85,7 +87,7 @@ export function createApp(ctx: AppContext) {
   const api = Router();
   // Webhooks authenticate by signature and need the raw body, so they precede JSON parsing.
   // They get their own limiter and local header checks, which run before any call to PayPal.
-  api.use("/webhooks/paypal", paypalWebhookLimiter(ctx), paypalWebhookGuard(ctx));
+  api.use("/webhooks/paypal", paypalWebhookLimiter(ctx), paypalWebhookGuard(ctx), paypalWebhookVerifyCap(ctx));
   api.use(webhookRoutes(ctx));
   api.use(json({ limit: "100kb" }));
   api.use(cookieParser());

@@ -38,7 +38,7 @@ Quartermaster is an AI procurement assistant for restaurants and cafés. It watc
 | `manager@demo.quartermaster.dev` | Manager: requests and research, no payment | `trustrail-judges-2026` |
 | `viewer@demo.quartermaster.dev`  | Read-only                                  | `trustrail-judges-2026` |
 
-The shared workspace is persistent: other judges' orders stay, and its weekly budget is shared, so a private workspace is the cleaner way to test.
+The shared workspace is for the purchasing journey: requests, research, approval, PayPal payment, invoices, deliveries and the red-team page all work. Because everyone shares these sign-ins, it is read-only for account, team, Spend Mandate and supplier changes (you will see "read-only in the shared sample workspace"), and its password cannot be changed. Other judges' orders stay visible and the weekly budget is shared until it is reset to the original sample data each night (UTC). To change the mandate, suppliers or team, create your own workspace with sample data as above.
 
 **Paying (PayPal sandbox, no real money):** in the PayPal window, sign in with the sandbox buyer account given in the Devpost testing instructions, or choose **Pay with Debit or Credit Card** and use a [PayPal sandbox test card](https://developer.paypal.com/tools/sandbox/card-testing/).
 

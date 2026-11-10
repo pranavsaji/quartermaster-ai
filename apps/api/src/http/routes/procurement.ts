@@ -10,15 +10,23 @@ import { asyncHandler, param, parse } from "../middleware/errors";
 import { idempotent } from "../middleware/idempotency";
 import { limiterStore } from "../rate-limit-store";
 
+/** Rate-limit key for research runs: the user, plus the client address in the shared sample workspace. */
+export function researchLimitKey(user: { id: string; sampleWorkspace: boolean } | undefined, address: string): string {
+  if (!user) return address;
+  return user.sampleWorkspace ? `${user.id}|${address}` : user.id;
+}
+
 export function procurementRoutes(ctx: AppContext): Router {
   const r = Router();
 
   // Research runs paid model and market-data calls; cap it per user to bound cost and abuse.
+  // Everyone trying the shared sample workspace signs in as the same user, so there the cap is
+  // per user and client address: one visitor cannot use up another's runs.
   const researchLimiter = rateLimit({
     windowMs: 10 * 60_000,
     ...limiterStore(ctx, "research"),
     limit: ctx.config.env === "test" ? 1000 : 20,
-    keyGenerator: (req) => req.user?.id ?? ipKeyGenerator(req.ip ?? "0.0.0.0"),
+    keyGenerator: (req) => researchLimitKey(req.user, ipKeyGenerator(req.ip ?? "0.0.0.0")),
     standardHeaders: "draft-8",
     legacyHeaders: false,
     message: { error: { code: "RATE_LIMITED", message: "Too many research runs. Try again in a few minutes." } },

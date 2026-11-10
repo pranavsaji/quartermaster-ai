@@ -1,0 +1,19 @@
+# Secret scanning (CI job "Secret scan"): gitleaks' default rules, minus files that hold only
+# test fixtures, generated API documents or documented placeholders. Real credentials live in
+# .env (gitignored) and the hosting provider's environment, never in the repository.
+title = "Quartermaster gitleaks configuration"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Test fixtures, generated API documents, placeholders and the common-password list"
+paths = [
+  '''^tests/''',
+  '''^apps/web/tests/''',
+  '''(^|/)\.env\.example$''',
+  '''^docs/openapi\.json$''',
+  '''^postman/''',
+  '''^apimatic/''',
+  '''^packages/database/src/common-passwords\.ts$''',
+]

@@ -17,7 +17,7 @@ import { changePassword, requestPasswordReset, resetPassword, signup } from "../
 import { acceptInvitation, previewInvitation } from "../../services/accounts/members";
 import { authenticate, login, logout, sessionUser } from "../../services/auth";
 import { normalizePath } from "../../services/monitoring/tracker";
-import { sessionAuth } from "../middleware/auth";
+import { refuseInSampleWorkspace, sessionAuth } from "../middleware/auth";
 import { asyncHandler, parse } from "../middleware/errors";
 import { limiterStore } from "../rate-limit-store";
 
@@ -174,6 +174,8 @@ export function authRoutes(ctx: AppContext): Router {
   r.post(
     "/auth/password/change",
     sessionAuth(ctx),
+    // The sample workspace's sign-ins are published: one visitor must not lock out the rest.
+    refuseInSampleWorkspace(ctx),
     changeLimiter,
     asyncHandler(async (req, res) => {
       const u = req.user!;

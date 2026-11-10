@@ -40,7 +40,19 @@ export function roleCan(role: Role | null | undefined, capability: Capability): 
   return role === "MANAGER";
 }
 
+/** Refused in the shared sample workspace (the API answers 403 SAMPLE_WORKSPACE_READONLY). */
+const SAMPLE_LOCKED: ReadonlySet<Capability> = new Set(["editMandate", "manageSuppliers", "manageTeam"]);
+
+export const SAMPLE_READONLY_MESSAGE =
+  "The shared sample workspace is read-only for this. Create your own workspace (with sample data) to change it.";
+
+/** The session is in the shared sample workspace, where account, team, mandate and supplier changes are refused. */
+export function isReadOnlySample(user: SessionUser | null | undefined): boolean {
+  return Boolean(user?.organization.read_only_sample);
+}
+
 export function userCan(user: SessionUser | null | undefined, capability: Capability): boolean {
+  if (isReadOnlySample(user) && SAMPLE_LOCKED.has(capability)) return false;
   return roleCan(user?.role, capability);
 }
 

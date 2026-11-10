@@ -7,8 +7,9 @@ coverage/
 .data/
 *.log
 .env
-.env.local
-.env.*.local
+# Every env file except the documented template (.env.production, .env.render, .env.local, …).
+.env.*
+!.env.example
 credentials.json
 token.json
 playwright-report/
