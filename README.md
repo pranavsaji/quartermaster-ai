@@ -18,12 +18,18 @@ Quartermaster is an AI procurement assistant for restaurants and cafés. It watc
 | **AI**                      | OpenAI strict structured outputs, with a labelled deterministic fallback                                                                        |
 | **Data grids and charts**   | AG Grid (inventory, supplier comparison, orders, invoices, security findings, audit log) and AG Charts (analytics)                              |
 | **Hosting**                 | Render (web, API, Postgres)                                                                                                                     |
-| **Notifications**           | Zapier webhook on completed payments                                                                                                            |
+| **Notifications**           | Zapier webhook on completed payments; operator alerts by email and webhook                                                                      |
+| **Accounts and teams**      | Self-service sign-up, invitations with roles, password reset by email or owner-issued link                                                      |
+| **Error tracking**          | Built-in grouped error tracking with alert throttling, health monitors, optional Sentry forwarding                                              |
 | **API tooling**             | OpenAPI 3.1 spec and Postman collection, generated from the route table                                                                         |
 
 ## For judges
 
 **Live app:** <https://quartermaster-web-o0df.onrender.com>. It runs on Render's free plan, so the first request after 15 idle minutes takes about a minute while the services wake up. Health check: <https://quartermaster-api-sziv.onrender.com/readyz>.
+
+**Create your own workspace (recommended):** choose **Create an account** on the sign-in page and keep **Start with sample data** ticked. You get a private copy of the sample restaurant (suppliers, stock, 14 days of usage and the deliberately malicious QuickServe listing), so nothing you do affects other judges. You can then invite teammates from **Team**, add suppliers and catalog listings under **Suppliers**, and add stock items under **Inventory**.
+
+**Or use the shared sample workspace:**
 
 | Account                          | Role                                       | Password                |
 | -------------------------------- | ------------------------------------------ | ----------------------- |
@@ -31,13 +37,13 @@ Quartermaster is an AI procurement assistant for restaurants and cafés. It watc
 | `manager@demo.quartermaster.dev` | Manager: requests and research, no payment | `trustrail-judges-2026` |
 | `viewer@demo.quartermaster.dev`  | Read-only                                  | `trustrail-judges-2026` |
 
-These are demo-only accounts. The demo organization is re-seeded every time the API starts, so you usually begin from a clean state.
+The shared workspace is persistent: other judges' orders stay, and its weekly budget is shared, so a private workspace is the cleaner way to test.
 
 **Paying (PayPal sandbox, no real money):** in the PayPal window, sign in with the sandbox buyer account given in the Devpost testing instructions, or choose **Pay with Debit or Credit Card** and use a [PayPal sandbox test card](https://developer.paypal.com/tools/sandbox/card-testing/).
 
 **A five-minute path through the product:**
 
-1. Sign in as the owner. **Procurement → New request:** _"We're expecting a busy weekend. Restock takeaway containers and cooking oil without exceeding $300."_
+1. Sign up with sample data (or sign in as the owner). **Procurement → New request:** _"We're expecting a busy weekend. Restock takeaway containers and cooking oil without exceeding $300."_
 2. Watch the agent research: interpretation, forecast, Channel3 market prices and the supplier comparison.
 3. The cheapest supplier (QuickServe) is **blocked by TrustRail**: its listing hides a fee and a prompt injection. Open the finding.
 4. Approve a compliant proposal, click **Verify** on the Intent Certificate, then **Pay with PayPal**.

@@ -8,7 +8,7 @@
 | Web                         | `pnpm --filter @qm/web start`                     | `GET /login`                                                                              |
 | Sweeper (cron, every 5 min) | `node apps/api/dist/sweep.js`                     | logs `sweep complete` with counts                                                         |
 | Migrations (pre-deploy)     | `node apps/api/dist/migrate.js`                   | exits 0                                                                                   |
-| Demo seed (once)            | `DEMO_USER_PASSWORD=… node apps/api/dist/seed.js` | logs `demo seed`                                                                          |
+| Sample workspace (once)     | `DEMO_USER_PASSWORD=… node apps/api/dist/seed.js` | logs `demo seed`; idempotent, never resets without `--reset`                              |
 
 All logs are structured JSON (pino). Every line written while handling a request carries
 `correlation_id`, `organization_id` and `user_id`; every API response carries `x-correlation-id`, and
@@ -50,16 +50,46 @@ private-network traffic, so a free deployment differs from `render.yaml`:
 
 - **Database:** `plan: free` Postgres (one per workspace; expires 30 days after creation, deleted 14
   days later unless upgraded).
-- **API:** start command `node apps/api/dist/seed.js --reset && node apps/api/dist/server.js` with
-  `ALLOW_DEMO_RESET=true`. Every boot migrates and re-seeds the demo organization, so each judge who
-  wakes the sleeping service starts from a clean demo (and the demo password and lockouts are reset).
-  Drop `--reset` to keep data across restarts; the plain seed is idempotent. Set `SWEEPER_INTERVAL_SECONDS=120` so the API runs
-  the sweeper itself (no cron).
+- **API:** start command `node apps/api/dist/seed.js && node apps/api/dist/server.js`. Every boot
+  migrates and creates the shared sample workspace only if it is missing; data persists across
+  restarts and deploys. Set `SWEEPER_INTERVAL_SECONDS=120` so the API runs the sweeper (and the health
+  monitors) itself, since free instances have no cron jobs.
 - **Web:** set `API_URL=https://<api-host>` (public URL) instead of `API_HOSTPORT`. It is read at build
   time, so redeploy the web service after changing it. The API then sits behind two edge hops:
   `TRUST_PROXY=3`.
 - Free services sleep after 15 idle minutes; the first request after that takes about a minute, and
   the sweeper only runs while the API is awake.
+
+## Accounts
+
+- **Sign-up** (`/signup`) creates a workspace, its first owner and Spend Mandate v1 (no suppliers
+  approved; restricted categories off), optionally with labelled sample data. Turn it off with
+  `SIGNUP_ENABLED=false`; owners can still invite people.
+- **Invitations and resets** are one-time links. Only a SHA-256 of each token is stored and the token
+  travels in the URL fragment, so it never reaches access logs. With `RESEND_API_KEY` (or
+  `EMAIL_WEBHOOK_URL`) they are emailed; without email, owners copy them from the Team page and
+  "Forgot password" is hidden. A reset clears any lockout and ends every session of that user.
+- An account belongs to one workspace. Removing a member ends their sessions, disables the account and
+  releases the address (renamed to a reserved `.invalid` address) so they can be invited again; their
+  orders and audit history keep pointing at the original user row.
+
+## Error tracking and alerting
+
+- 5xx responses, crashes (`uncaughtException`/`unhandledRejection`), sweeper failures and browser
+  errors (`POST /api/v1/client-errors`) are grouped by fingerprint in `system_errors` with counts,
+  first/last seen and the last correlation id (search the logs for it).
+- Operators (`OPERATOR_EMAILS`) see them on the **System** page with platform health, can resolve a
+  group, and can send a test alert. Workspace owners never see platform errors.
+- An error-level group alerts on its first occurrence, when it recurs after being resolved, and when
+  new occurrences arrive after `ALERT_COOLDOWN_MINUTES` (30). Each alert is claimed with one conditional
+  update, so instances never double-send. Warnings (retryable 503s, lock conflicts) are recorded only.
+- Channels: `ALERT_EMAILS` (needs email), `ALERT_WEBHOOK_URL` (Slack-compatible `{ text }`; the payload
+  also carries `title`/`summary`/`link`, so a Zapier Catch Hook can email it), and `SENTRY_DSN`.
+- Monitors run with every sweep and resolve themselves when the condition clears:
+  `monitor.capture_pending` (a capture pending over 15 minutes), `monitor.paypal_webhook_missing` (a
+  completed payment with no verified PayPal notification after 30 minutes: check the webhook URL and
+  `PAYPAL_WEBHOOK_ID`) and `monitor.webhook_signatures` (3+ rejected signatures in an hour).
+- Each workspace's **Security center** shows its own PayPal notification status.
 
 ## Routine checks
 

@@ -80,6 +80,22 @@ services:
         sync: false
       - key: DEMO_USER_PASSWORD
         sync: false
+      # Accounts: open sign-up; email for invitations and password resets (Resend or a JSON webhook).
+      - key: SIGNUP_ENABLED
+        value: "true"
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      # Monitoring: operators see /system; alerts go by email and/or a Slack-style webhook.
+      - key: OPERATOR_EMAILS
+        sync: false
+      - key: ALERT_EMAILS
+        sync: false
+      - key: ALERT_WEBHOOK_URL
+        sync: false
+      - key: SENTRY_DSN
+        sync: false
 
   - type: web
     name: quartermaster-web
@@ -138,4 +154,12 @@ services:
         sync: false
       # Required in production whenever PayPal credentials are set.
       - key: PAYPAL_MERCHANT_ID
+        sync: false
+      - key: ALERT_EMAILS
+        sync: false
+      - key: ALERT_WEBHOOK_URL
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: SENTRY_DSN
         sync: false

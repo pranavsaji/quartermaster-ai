@@ -5,7 +5,7 @@ pnpm monorepo, TypeScript (strict, ESM, `moduleResolution: Bundler`). Node ≥ 2
 ## Commands
 
 - `pnpm dev` — API (:4000, tsx watch) + web (:3000). Needs `.env` (see `.env.example`); `pnpm keys:generate` for the signing key.
-- `pnpm db:seed` — migrate + seed demo org (needs `DEMO_USER_PASSWORD`). Embedded PGlite under `.data/` unless `DATABASE_URL` is set.
+- `pnpm db:seed` — migrate + seed the shared sample workspace once (needs `DEMO_USER_PASSWORD`; `--reset` recreates it) and operator accounts (`OPERATOR_EMAILS` + `OPERATOR_PASSWORD`). Embedded PGlite under `.data/` unless `DATABASE_URL` is set.
 - `pnpm test` — Vitest (unit, adversarial, integration on PGlite + `tests/helpers/fake-paypal.ts`; the harness clock starts at the fixed `HARNESS_EPOCH`). `TEST_DATABASE_URL` / `HARNESS_DATABASE_URL` add real-Postgres runs. Injection recall: `tests/adversarial/heldout-recall.test.ts` (never tune rules against fresh rounds; write a new one).
 - `pnpm typecheck` (packages + tests/scripts), `pnpm lint` (ESLint, typed rules; web has its own config), `pnpm format` / `format:check` (Prettier, width 140), `pnpm test:coverage` (floors in `vitest.config.ts`), `pnpm test:web`, `pnpm build`.
 - `pnpm test:e2e` — Playwright + axe; starts the built stack itself (`pnpm build` first, `E2E_PASSWORD`).
@@ -27,6 +27,9 @@ pnpm monorepo, TypeScript (strict, ESM, `moduleResolution: Bundler`). Node ≥ 2
 - Side effects (notifications) inside a transaction go through `AfterCommit`; retry only idempotent transactions with `retryOnConflict`.
 - Client-facing error text is fixed per code; raw provider/driver messages stay in logs. `evaluatePolicy` must stay total (malformed input → `POLICY_INPUT_INVALID`).
 - New mutating routes: `requireRole`, CSRF header is global, add `idempotent(...)` for approval/payment-like actions, add to `scripts/api-routes.ts`.
+- One-time links (invitations, password resets): store only `hashToken(token)`; the token travels in the URL fragment (`#token=`). Owners may not issue reset links for owners or operators.
+- Operators (system-wide error tracking) are `users.operator`, set only by `ensureOperatorAccounts` in the seed for `OPERATOR_EMAILS`; sign-up and invitations refuse those addresses.
+- Server failures go to `ctx.errors.capture` (redacts messages, groups, alerts with cooldown); never throw from tracking. Browser reports without a session are warnings grouped by page.
 
 ## Layout
 
