@@ -2,12 +2,12 @@
 
 import type { CatalogItemDto, SupplierDetailDto } from "@qm/contracts";
 import Link from "next/link";
-import { useMemo, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { useSession } from "@/components/session/SessionProvider";
+import { CatalogGrid } from "@/components/suppliers/CatalogGrid";
 import { CatalogItemDialog } from "@/components/suppliers/CatalogItemDialog";
 import { SupplierBadges } from "@/components/suppliers/SupplierBadges";
 import { SupplierDialog } from "@/components/suppliers/SupplierDialog";
-import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -17,9 +17,8 @@ import { ResourceView } from "@/components/ui/ResourceView";
 import { SkeletonCard } from "@/components/ui/Skeleton";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import { api } from "@/lib/api";
-import { money, num, plural } from "@/lib/format";
+import { money, plural } from "@/lib/format";
 import { useResource } from "@/lib/hooks";
-import { categoryLabel } from "@/lib/labels";
 
 type Editing = { kind: "supplier" } | { kind: "item"; item?: CatalogItemDto } | null;
 
@@ -34,6 +33,15 @@ export function SupplierDetail({ id }: { id: string }) {
 
   const supplier = resource.data?.supplier;
   const stockNames = useMemo(() => new Map((inventory.data?.items ?? []).map((i) => [i.id, i.name])), [inventory.data]);
+
+  const onEditItem = useCallback((item: CatalogItemDto) => setEditing({ kind: "item", item }), []);
+  /** An in-grid edit: replace the listing in place (the grid already shows it and reports it). */
+  function onGridItemSaved(shown: SupplierDetailDto, item: CatalogItemDto) {
+    resource.setData((prev) => {
+      const base = prev?.supplier ?? shown;
+      return { supplier: { ...base, catalog: base.catalog.map((c) => (c.id === item.id ? item : c)) } };
+    });
+  }
 
   function onSupplierSaved(next: SupplierDetailDto) {
     resource.setData({ supplier: next });
@@ -152,10 +160,13 @@ export function SupplierDetail({ id }: { id: string }) {
                 {supplier.catalog.length === 0 ? (
                   <EmptyState compact title="No products yet" description="Add what this supplier sells, with the price per pack." />
                 ) : (
-                  <CatalogTable
+                  <CatalogGrid
+                    supplierId={supplier.id}
                     items={supplier.catalog}
                     stockNames={stockNames}
-                    onEdit={manage ? (item) => setEditing({ kind: "item", item }) : undefined}
+                    currency={currency}
+                    onEdit={manage ? onEditItem : undefined}
+                    onItemSaved={(item) => onGridItemSaved(supplier, item)}
                   />
                 )}
               </CardBody>
@@ -187,85 +198,6 @@ function Term({ label, children }: { label: string; children: ReactNode }) {
     <div>
       <dt className="text-[12px] text-ink-3">{label}</dt>
       <dd className="mt-0.5 text-ink">{children}</dd>
-    </div>
-  );
-}
-
-function CatalogTable({
-  items,
-  stockNames,
-  onEdit,
-}: {
-  items: CatalogItemDto[];
-  stockNames: Map<string, string>;
-  onEdit?: (item: CatalogItemDto) => void;
-}) {
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[760px] text-left text-[13px]">
-        <caption className="sr-only">Catalog</caption>
-        <thead className="border-b border-line text-[11.5px] text-ink-3">
-          <tr>
-            <th scope="col" className="py-2 pr-3 font-medium">
-              Product
-            </th>
-            <th scope="col" className="py-2 pr-3 font-medium">
-              Category
-            </th>
-            <th scope="col" className="py-2 pr-3 font-medium">
-              Restocks
-            </th>
-            <th scope="col" className="py-2 pr-3 text-right font-medium">
-              Pack
-            </th>
-            <th scope="col" className="py-2 pr-3 text-right font-medium">
-              Price / pack
-            </th>
-            <th scope="col" className="py-2 pr-3 font-medium">
-              Flags
-            </th>
-            {onEdit ? (
-              <th scope="col" className="py-2 font-medium">
-                <span className="sr-only">Actions</span>
-              </th>
-            ) : null}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-line">
-          {items.map((item) => (
-            <tr key={item.id}>
-              <td className="py-2.5 pr-3 align-top">
-                <p className="font-medium text-ink">{item.title}</p>
-                <p className="font-mono text-[11px] text-ink-4">{item.sku}</p>
-              </td>
-              <td className="py-2.5 pr-3 align-top text-ink-2">{categoryLabel(item.category)}</td>
-              <td className="py-2.5 pr-3 align-top text-ink-2">
-                {item.inventory_item_id ? (stockNames.get(item.inventory_item_id) ?? "Linked item") : "—"}
-              </td>
-              <td className="tnum py-2.5 pr-3 text-right align-top">{num(item.pack_quantity)}</td>
-              <td className="tnum py-2.5 pr-3 text-right align-top font-medium">{money(item.unit_price_minor, item.currency)}</td>
-              <td className="py-2.5 pr-3 align-top">
-                <span className="inline-flex flex-wrap gap-1.5">
-                  {item.quarantined ? (
-                    <Badge tone="block" title={item.quarantine_reason ?? undefined}>
-                      Quarantined{item.quarantine_reason ? `: ${item.quarantine_reason}` : ""}
-                    </Badge>
-                  ) : null}
-                  {!item.in_stock ? <Badge tone="review">Out of stock</Badge> : null}
-                  {item.recurring ? <Badge tone="info">Recurring</Badge> : null}
-                </span>
-              </td>
-              {onEdit ? (
-                <td className="py-2.5 text-right align-top">
-                  <Button size="sm" variant="secondary" onClick={() => onEdit(item)} aria-label={`Edit ${item.sku}`}>
-                    Edit
-                  </Button>
-                </td>
-              ) : null}
-            </tr>
-          ))}
-        </tbody>
-      </table>
     </div>
   );
 }

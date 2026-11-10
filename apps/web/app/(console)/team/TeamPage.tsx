@@ -1,23 +1,23 @@
 "use client";
 
-import { INVITABLE_ROLES, type InvitationCreatedResponse, type InvitationDto, type MemberDto, type Role } from "@qm/contracts";
-import { useState } from "react";
+import type { InvitationCreatedResponse, InvitationDto, MemberDto } from "@qm/contracts";
+import { useMemo, useState } from "react";
 import { useSession } from "@/components/session/SessionProvider";
 import { InviteForm } from "@/components/team/InviteForm";
+import { MembersGrid, type MemberGridHandlers } from "@/components/team/MembersGrid";
 import { OneTimeLink } from "@/components/team/OneTimeLink";
-import { Badge, StatusBadge } from "@/components/ui/Badge";
+import { StatusBadge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Dialog } from "@/components/ui/Dialog";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
-import { Select } from "@/components/ui/Field";
 import { Notice } from "@/components/ui/Notice";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ResourceView } from "@/components/ui/ResourceView";
 import { SkeletonRows } from "@/components/ui/Skeleton";
 import { api } from "@/lib/api";
-import { date, dateTime } from "@/lib/format";
+import { dateTime } from "@/lib/format";
 import { useAction, useResource } from "@/lib/hooks";
 import { INVITATION_STATUS_TONES, lookup } from "@/lib/labels";
 import { ROLE_LABELS } from "@/lib/roles";
@@ -42,12 +42,27 @@ export function TeamPage() {
     }));
   }
 
-  function replaceMember(member: MemberDto) {
-    team.setData((prev) => ({
-      members: (prev?.members ?? []).map((m) => (m.user_id === member.user_id ? member : m)),
-      invitations: prev?.invitations ?? [],
-    }));
-  }
+  const [memberError, setMemberError] = useState<{ title: string; error: unknown } | null>(null);
+  const setTeam = team.setData;
+  // Stable, so the grid's columns are not rebuilt on every render.
+  const handlers = useMemo<MemberGridHandlers>(
+    () => ({
+      onChanged: (member) => {
+        setMemberError(null);
+        setTeam((prev) => ({
+          members: (prev?.members ?? []).map((m) => (m.user_id === member.user_id ? member : m)),
+          invitations: prev?.invitations ?? [],
+        }));
+      },
+      onRemove: (member) => setRemoving(member),
+      onResetLink: (member, r) => {
+        setMemberError(null);
+        setLink({ kind: "reset", url: r.url, emailSent: r.emailSent, recipient: member.email });
+      },
+      onError: (title, error) => setMemberError({ title, error }),
+    }),
+    [setTeam],
+  );
 
   function replaceInvitation(invitation: InvitationDto) {
     team.setData((prev) => ({
@@ -102,15 +117,8 @@ export function TeamPage() {
           <CardHeader id="members-title" title="Members" />
           <CardBody>
             <ResourceView resource={team} hasData={Boolean(members)} loading={<SkeletonRows rows={3} />}>
-              {members ? (
-                <MembersTable
-                  members={members}
-                  manage={manage}
-                  onChanged={replaceMember}
-                  onRemove={setRemoving}
-                  onResetLink={(m, r) => setLink({ kind: "reset", url: r.url, emailSent: r.emailSent, recipient: m.email })}
-                />
-              ) : null}
+              {memberError ? <ErrorNotice error={memberError.error} title={memberError.title} className="mb-3" /> : null}
+              {members ? <MembersGrid members={members} manage={manage} handlers={handlers} /> : null}
             </ResourceView>
           </CardBody>
         </Card>
@@ -148,132 +156,6 @@ export function TeamPage() {
         />
       ) : null}
     </>
-  );
-}
-
-function MembersTable({
-  members,
-  manage,
-  onChanged,
-  onRemove,
-  onResetLink,
-}: {
-  members: MemberDto[];
-  manage: boolean;
-  onChanged: (member: MemberDto) => void;
-  onRemove: (member: MemberDto) => void;
-  onResetLink: (member: MemberDto, link: { url: string | null; emailSent: boolean }) => void;
-}) {
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full min-w-[560px] text-left text-[13px]">
-        <caption className="sr-only">Workspace members</caption>
-        <thead className="border-b border-line text-[11.5px] text-ink-3">
-          <tr>
-            <th scope="col" className="py-2 pr-3 font-medium">
-              Name
-            </th>
-            <th scope="col" className="py-2 pr-3 font-medium">
-              Role
-            </th>
-            <th scope="col" className="py-2 pr-3 font-medium">
-              Joined
-            </th>
-            {manage ? (
-              <th scope="col" className="py-2 text-right font-medium">
-                <span className="sr-only">Actions</span>
-              </th>
-            ) : null}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-line">
-          {members.map((m) => (
-            <MemberRow key={m.user_id} member={m} manage={manage} onChanged={onChanged} onRemove={onRemove} onResetLink={onResetLink} />
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function MemberRow({
-  member: m,
-  manage,
-  onChanged,
-  onRemove,
-  onResetLink,
-}: {
-  member: MemberDto;
-  manage: boolean;
-  onChanged: (member: MemberDto) => void;
-  onRemove: (member: MemberDto) => void;
-  onResetLink: (member: MemberDto, link: { url: string | null; emailSent: boolean }) => void;
-}) {
-  const setRole = useAction(async (role: Role) => onChanged((await api.members.setRole(m.user_id, role)).member));
-  const reset = useAction(async () => {
-    const r = await api.members.resetLink(m.user_id);
-    onResetLink(m, { url: r.reset_url, emailSent: r.email_sent });
-  });
-  const roleLabel = lookup(ROLE_LABELS, m.role, m.role);
-  return (
-    <tr>
-      <td className="py-2.5 pr-3 align-top">
-        <p className="font-medium text-ink">
-          {m.name}
-          {m.is_self ? (
-            <Badge tone="neutral" className="ml-2">
-              You
-            </Badge>
-          ) : null}
-        </p>
-        <p className="text-[12px] text-ink-3">{m.email}</p>
-      </td>
-      <td className="py-2.5 pr-3 align-top">
-        {manage ? (
-          <Select
-            aria-label={`Role for ${m.name}`}
-            value={m.role}
-            disabled={setRole.pending}
-            onChange={(e) => void setRole.run(e.target.value as Role)}
-            className="w-36"
-          >
-            {INVITABLE_ROLES.map((r) => (
-              <option key={r} value={r}>
-                {ROLE_LABELS[r]}
-              </option>
-            ))}
-          </Select>
-        ) : (
-          <Badge tone={m.role === "OWNER" ? "accent" : "neutral"}>{roleLabel}</Badge>
-        )}
-        <ErrorNotice error={setRole.error} title="Role not changed" className="mt-2" />
-      </td>
-      <td className="py-2.5 pr-3 align-top text-ink-2">{date(m.joined_at)}</td>
-      {manage ? (
-        <td className="py-2.5 text-right align-top">
-          <div className="flex justify-end gap-2">
-            {/* Owners reset their own passwords: a link for another owner would take over their account. */}
-            {m.role !== "OWNER" ? (
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={() => void reset.run()}
-                loading={reset.pending}
-                aria-label={`Reset link for ${m.name}`}
-              >
-                Reset link
-              </Button>
-            ) : null}
-            {!m.is_self ? (
-              <Button size="sm" variant="danger" onClick={() => onRemove(m)} aria-label={`Remove ${m.name}`}>
-                Remove
-              </Button>
-            ) : null}
-          </div>
-          <ErrorNotice error={reset.error} title="No reset link issued" className="mt-2 text-left" />
-        </td>
-      ) : null}
-    </tr>
   );
 }
 
