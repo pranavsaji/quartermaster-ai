@@ -49,6 +49,7 @@ The shared workspace is persistent: other judges' orders stay, and its weekly bu
 3. The cheapest supplier (QuickServe) is **blocked by TrustRail**: its listing hides a fee and a prompt injection. Open the finding.
 4. Approve a compliant proposal, click **Verify** on the Intent Certificate, then **Pay with PayPal**.
 5. Check **Orders & invoices** (submit the invoice, then try "Simulate duplicate invoice"), the **Security center** (audit chain valid) and **Analytics**.
+6. **Try to break it:** open **Red-team TrustRail**, write your own hostile supplier listing (or pick an example), and press **Attack**. You see what the detector finds, then what TrustRail decides if the agent obeyed your listing completely, against the workspace's real Spend Mandate. Nothing is stored, no model is called and PayPal is never contacted, so try as many as you like.
 
 To run it locally instead, follow [Quick start](#quick-start-local-no-external-accounts): it needs no external accounts.
 
@@ -125,7 +126,11 @@ The language model **never** touches money. It interprets the owner's request an
 3. **Intent Certificate** — the owner's approval of one exact cart: cart hash, amount, supplier, mandate version, policy decision, buyer, expiry and nonce, signed with Ed25519 (domain-separated). Budget is reserved under a row lock in the same transaction.
 4. **Capture guard** — immediately before PayPal capture, TrustRail re-verifies the certificate against the _current_ stored cart, re-runs the policy, and checks the PayPal order's status, amount, currency, intent binding, purchase-order binding, payee merchant and the budget reservation. Only the approving owner can complete payment.
 
-Detail: [docs/security-model.md](docs/security-model.md) · Architecture: [docs/architecture.md](docs/architecture.md)
+### Measured: what a hijacked agent can do
+
+[docs/benchmark.md](docs/benchmark.md) assumes prompt injection **succeeds completely** and the attacker writes the agent's output. **28,000 hostile attempts across 28 attack families; 0 moved money outside the owner's Spend Mandate.** 27,000 were refused outright (wrong supplier, over the limits, restricted goods, invented prices or products, hidden fees, a tampered cart, an altered PayPal amount or payee, replayed, expired or forged certificates …), and 1,000 over-purchases were held for the owner. Honest controls all pass, so the gates are not simply refusing everything. Detection is measured separately: it quarantines 95% of the held-out attack corpus but only about half of a fresh round nobody tuned against, which is exactly why money is decided by policy, not by detection. Regenerate with `pnpm bench:hijack`; CI runs it at a smaller size.
+
+Detail: [docs/security-model.md](docs/security-model.md) · Architecture: [docs/architecture.md](docs/architecture.md) · How it relates to Google's Agent Payments Protocol: [docs/ap2.md](docs/ap2.md)
 
 ---
 
