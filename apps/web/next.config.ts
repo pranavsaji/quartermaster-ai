@@ -27,6 +27,10 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // Hosts with small build machines (Render's free tier) set NEXT_SKIP_TYPECHECK=1: CI runs the
+  // same type check (`pnpm typecheck`) on every push, and loading Bryntum's 16 MB type
+  // definitions there exceeds the build's memory.
+  typescript: { ignoreBuildErrors: process.env.NEXT_SKIP_TYPECHECK === "1" },
   poweredByHeader: false,
   transpilePackages: ["@qm/contracts"],
   async rewrites() {
