@@ -13,6 +13,7 @@ import { loginRedirectFor, PATH_HEADER, SESSION_COOKIE_NAMES } from "./lib/sessi
  */
 export function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
+  if (pathname.startsWith("/api/")) return withEdgeSecret(request);
   const hasSession = SESSION_COOKIE_NAMES.some((name) => request.cookies.has(name));
   const loginUrl = loginRedirectFor(pathname, search, hasSession);
   if (loginUrl) return NextResponse.redirect(new URL(loginUrl, request.url));
@@ -31,8 +32,26 @@ export function proxy(request: NextRequest) {
   return response;
 }
 
+/** Header carrying EDGE_SECRET to the API (apps/api/src/http/middleware/edge.ts). */
+export const EDGE_HEADER = "x-qm-edge";
+
+/**
+ * API requests (proxied to the Express API by the `/api/:path*` rewrite) carry EDGE_SECRET, which
+ * tells the API that this proxy set X-Forwarded-For, so per-client rate limits can trust it. A
+ * value sent by the browser is always dropped. The secret is a request header only: it is never
+ * copied into the response.
+ */
+export function withEdgeSecret(request: NextRequest, secret = process.env.EDGE_SECRET) {
+  const headers = new Headers(request.headers);
+  headers.delete(EDGE_HEADER);
+  if (secret) headers.set(EDGE_HEADER, secret);
+  return NextResponse.next({ request: { headers } });
+}
+
 export const config = {
   matcher: [
+    // API calls: only to attach the edge secret (see withEdgeSecret).
+    "/api/:path*",
     {
       // Pages only: not the API rewrite, build assets, or files with an extension (icon.svg, …).
       source: "/((?!api/|_next/static|_next/image|favicon\\.ico|.*\\.[a-z0-9]+$).*)",

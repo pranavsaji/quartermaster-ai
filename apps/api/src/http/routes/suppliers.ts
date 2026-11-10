@@ -13,12 +13,14 @@ import {
   updateCatalogItem,
   updateSupplier,
 } from "../../services/suppliers";
-import { requireRole } from "../middleware/auth";
+import { refuseInSampleWorkspace, requireRole } from "../middleware/auth";
 import { asyncHandler, param, parse } from "../middleware/errors";
 
 /** Suppliers and their catalogs. Managers maintain them; only owners approve suppliers (Spend Mandate). */
 export function supplierRoutes(ctx: AppContext): Router {
   const r = Router();
+  // Supplier terms, catalog prices and supplier approval feed TrustRail: fixed in the shared sample.
+  const sample = refuseInSampleWorkspace(ctx);
   const mandateOf = async (orgId: string) => {
     const row = await getActiveMandateRow(ctx.db, orgId);
     return row ? rowToMandate(row) : null;
@@ -44,6 +46,7 @@ export function supplierRoutes(ctx: AppContext): Router {
   r.post(
     "/suppliers",
     requireRole("MANAGER"),
+    sample,
     asyncHandler(async (req, res) => {
       const input = parse(SupplierInput, req.body);
       const orgId = req.user!.organizationId;
@@ -55,6 +58,7 @@ export function supplierRoutes(ctx: AppContext): Router {
   r.put(
     "/suppliers/:id",
     requireRole("MANAGER"),
+    sample,
     asyncHandler(async (req, res) => {
       const input = parse(SupplierInput, req.body);
       const orgId = req.user!.organizationId;
@@ -75,6 +79,7 @@ export function supplierRoutes(ctx: AppContext): Router {
   r.post(
     "/suppliers/:id/catalog",
     requireRole("MANAGER"),
+    sample,
     asyncHandler(async (req, res) => {
       const input = parse(CatalogItemInput, req.body);
       const actor = { id: req.user!.id, organizationId: req.user!.organizationId };
@@ -86,6 +91,7 @@ export function supplierRoutes(ctx: AppContext): Router {
   r.put(
     "/suppliers/:id/catalog/:itemId",
     requireRole("MANAGER"),
+    sample,
     asyncHandler(async (req, res) => {
       const input = parse(CatalogItemInput, req.body);
       const actor = { id: req.user!.id, organizationId: req.user!.organizationId };

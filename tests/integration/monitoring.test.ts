@@ -218,7 +218,12 @@ describe("error tracking, alerting and PayPal notification health", () => {
       organization_name: "Squat",
     });
     expect(signup.body.error.code).toBe("EMAIL_IN_USE");
-    expect((await owner.post("/members/invitations", { email: "ops@example.com", role: "VIEWER" })).body.error.code).toBe("EMAIL_IN_USE");
+    // Inviting it looks like any invitation (no account disclosure), but the link never works.
+    const invite = await owner.post("/members/invitations", { email: "ops@example.com", role: "VIEWER" });
+    expect(invite.status).toBe(201);
+    const token = /#token=([\w-]+)/.exec(invite.body.invite_url as string)![1]!;
+    const accept = await h.anonymous().post("/invitations/accept", { token, name: "Squatter", password: "a-fresh-passphrase-2026" });
+    expect(accept.body.error.code).toBe("INVITATION_INVALID");
   });
 
   it("sends a test alert to every channel", async () => {

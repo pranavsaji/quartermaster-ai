@@ -44,7 +44,17 @@ export interface SessionUser {
   email: string;
   name: string;
   role: Role;
-  organization: { id: string; name: string; timezone: string; currency: string };
+  organization: {
+    id: string;
+    name: string;
+    timezone: string;
+    currency: string;
+    /**
+     * The shared sample workspace, where password, team, mandate and supplier changes are refused
+     * (403 SAMPLE_WORKSPACE_READONLY). Absent from older API builds; treat as false.
+     */
+    read_only_sample?: boolean;
+  };
   /** Platform operator (OPERATOR_EMAILS): may see system-wide error tracking. */
   operator: boolean;
 }

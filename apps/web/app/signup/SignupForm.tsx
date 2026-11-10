@@ -21,7 +21,7 @@ type Errors = Partial<Record<FieldName, string>>;
 const MESSAGES: Record<Exclude<FieldName, "password" | "confirm">, string> = {
   name: "Enter your name.",
   email: "Enter a valid email address.",
-  organization_name: "Enter your restaurant's name (at least 2 characters).",
+  organization_name: "Enter your restaurant's name (2–80 characters, no web addresses).",
   timezone: "Choose a time zone.",
 };
 

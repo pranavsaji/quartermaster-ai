@@ -39,10 +39,20 @@ function mulberry32(seed: number) {
 }
 
 export interface SeedOptions {
-  password: string;
+  /**
+   * The demo accounts' password. Optional on a reset: accounts that already exist keep their
+   * password (the nightly reset runs without it); it is required to create them.
+   */
+  password?: string;
   now?: Date;
   /** Drop and recreate the demo organization if it exists. */
   reset?: boolean;
+}
+
+/** The shared sample workspace, found by its durable flag (never by name, which anyone can choose). */
+export async function findSampleWorkspace(db: DbOrTx): Promise<typeof s.organizations.$inferSelect | null> {
+  const [org] = await db.select().from(s.organizations).where(eq(s.organizations.isSample, true));
+  return org ?? null;
 }
 
 export interface SeedResult {
@@ -52,28 +62,35 @@ export interface SeedResult {
 
 export async function seedDemo(db: Database, options: SeedOptions): Promise<SeedResult> {
   const now = options.now ?? new Date();
-  const existing = await db.select().from(s.organizations).where(eq(s.organizations.name, DEMO_ORG_NAME));
-  if (existing.length > 0 && !options.reset) return { organizationId: existing[0]!.id, created: false };
+  const existing = await findSampleWorkspace(db);
+  if (existing && !options.reset) return { organizationId: existing.id, created: false };
 
   // Reset and re-seed atomically: a failure leaves the previous demo organisation intact.
+  const passwordHash = options.password ? await hashPassword(options.password) : null;
   return db.transaction(async (tx) => {
-    if (existing.length > 0) {
+    if (existing) {
       // Deleting the organisation cascades to its audit log, which is otherwise append-only.
       await tx.execute(sql`select set_config('qm.allow_audit_purge', 'on', true)`);
-      await tx.delete(s.organizations).where(eq(s.organizations.id, existing[0]!.id));
+      await tx.delete(s.organizations).where(eq(s.organizations.id, existing.id));
     }
     const [org] = await tx
       .insert(s.organizations)
-      .values({ name: DEMO_ORG_NAME, timezone: "America/Los_Angeles", currency: "USD" })
+      .values({ name: DEMO_ORG_NAME, timezone: "America/Los_Angeles", currency: "USD", isSample: true, createdAt: now })
       .returning();
     const orgId = org!.id;
 
-    const passwordHash = await hashPassword(options.password);
     const userIds: Record<string, string> = {};
     for (const [key, u] of Object.entries(DEMO_CREDENTIALS)) {
       const found = await tx.select().from(s.users).where(eq(s.users.email, u.email));
-      const user = found[0] ?? (await tx.insert(s.users).values({ email: u.email, name: u.name, passwordHash }).returning())[0]!;
-      if (found[0]) await tx.update(s.users).set({ passwordHash, failedLogins: 0, lockedUntil: null }).where(eq(s.users.id, user.id));
+      if (!found[0] && !passwordHash) throw new Error("A password is required to create the demo accounts");
+      const user =
+        found[0] ?? (await tx.insert(s.users).values({ email: u.email, name: u.name, passwordHash: passwordHash! }).returning())[0]!;
+      if (found[0]) {
+        await tx
+          .update(s.users)
+          .set({ ...(passwordHash ? { passwordHash } : {}), failedLogins: 0, lockedUntil: null })
+          .where(eq(s.users.id, user.id));
+      }
       await tx.insert(s.memberships).values({ organizationId: orgId, userId: user.id, role: u.role });
       userIds[key] = user.id;
     }

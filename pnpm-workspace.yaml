@@ -5,3 +5,12 @@ onlyBuiltDependencies:
   - esbuild
   - sharp
   - "@tailwindcss/oxide"
+# `pnpm audit --audit-level moderate` (CI) allowlist: development-only tooling, never shipped in the
+# API image or the web build. Re-check when drizzle-kit or ts-json-schema-generator upgrade.
+auditConfig:
+  ignoreGhsas:
+    # esbuild dev-server CORS (drizzle-kit migration generator; no server is ever started).
+    - GHSA-67mh-4wv8-2f99
+    # glob/minimatch in ts-json-schema-generator (pnpm docs:api over our own source tree).
+    - GHSA-3g3m-2fjr-6pw4
+    - GHSA-g3hv-75wg-m249

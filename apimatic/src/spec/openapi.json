@@ -350,6 +350,11 @@
                 "type": "string",
                 "description": "ISO 4217 currency code.",
                 "example": "USD"
+              },
+              "read_only_sample": {
+                "type": "boolean",
+                "description": "The shared sample workspace, where password, team, mandate and supplier changes are refused (403 SAMPLE_WORKSPACE_READONLY). Absent from older API builds; treat as false.",
+                "example": true
               }
             },
             "required": [
@@ -440,7 +445,7 @@
           "organization_name": {
             "type": "string",
             "minLength": 2,
-            "maxLength": 120,
+            "maxLength": 80,
             "description": "Workspace (restaurant) name.",
             "example": "Harbor Restaurant Supply"
           },

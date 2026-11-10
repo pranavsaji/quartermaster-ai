@@ -12,12 +12,13 @@ import {
   sessions,
   users,
   verifyPassword,
+  weakPasswordReason,
   type DbOrTx,
 } from "@qm/database";
 import type { AppContext } from "../../context";
 import { AppError, conflict, notFound } from "../../errors";
 import { appendAudit } from "../audit";
-import { hashToken, newToken, openSession, recordFailedPassword, sessionUser, type SessionMeta } from "../auth";
+import { hashToken, inReadOnlySample, newToken, openSession, recordFailedPassword, sessionUser, type SessionMeta } from "../auth";
 import { linkWithToken, passwordResetEmail } from "./emails";
 
 export type UserRow = typeof users.$inferSelect;
@@ -35,6 +36,20 @@ export function isReservedAddress(ctx: AppContext, email: string): boolean {
   return ctx.config.monitoring.operatorEmails.includes(email.trim().toLowerCase());
 }
 
+/**
+ * Refuses a new password that is common or built from the person's own details (see
+ * weakPasswordReason). Runs wherever a password is set: sign-up, invitation, reset and change.
+ */
+export function assertStrongPassword(password: string, context: readonly string[]): void {
+  if (weakPasswordReason(password, context)) {
+    throw new AppError(
+      400,
+      "PASSWORD_TOO_COMMON",
+      "That password is too common or easy to guess. Choose a longer, less predictable one, such as a few unrelated words.",
+    );
+  }
+}
+
 export const emailInUse = () =>
   conflict("EMAIL_IN_USE", "An account with this email already exists. Sign in, or reset your password if you have forgotten it.");
 
@@ -44,6 +59,7 @@ export const emailInUse = () =>
  */
 export async function signup(ctx: AppContext, input: SignupRequest, meta: SessionMeta) {
   if (!ctx.config.accounts.signupEnabled) throw new AppError(403, "SIGNUP_DISABLED", "Sign-up is closed on this deployment.");
+  assertStrongPassword(input.password, [input.email, input.name, input.organization_name]);
   const passwordHash = await hashPassword(input.password);
   const now = ctx.now();
   const out = await ctx.db.transaction(async (tx) => {
@@ -103,6 +119,8 @@ export async function requestPasswordReset(ctx: AppContext, email: string): Prom
   if (!ctx.mailer.enabled) return;
   const user = await findUserByEmail(ctx.db, email);
   if (!user || user.disabled) return;
+  // The sample workspace's addresses are published; their passwords are reset by the seed only.
+  if (await inReadOnlySample(ctx, ctx.db, user.id)) return;
   const orgs = await organizationsOf(ctx.db, user.id);
   if (orgs.length === 0) return;
   const { token, expiresAt } = await ctx.db.transaction(async (tx) => {
@@ -146,6 +164,7 @@ export async function resetPassword(ctx: AppContext, input: ResetPasswordRequest
     if (!token || token.usedAt || token.expiresAt <= now) throw invalidResetLink();
     const [user] = await tx.select().from(users).where(eq(users.id, token.userId)).for("update");
     if (!user || user.disabled) throw invalidResetLink();
+    assertStrongPassword(input.password, [user.email, user.name]);
     // An owner-issued link is re-checked when used: if its target has since become an owner (or
     // is an operator), it no longer works.
     if (token.issuedBy) {
@@ -199,6 +218,7 @@ export async function changePassword(
   if (input.current_password === input.new_password) {
     throw new AppError(400, "PASSWORD_UNCHANGED", "Choose a password different from your current one.");
   }
+  assertStrongPassword(input.new_password, [user.email, user.name]);
   const passwordHash = await hashPassword(input.new_password);
   const now = ctx.now();
   await ctx.db.transaction(async (tx) => {

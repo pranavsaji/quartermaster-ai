@@ -174,15 +174,36 @@ describe("accounts: sign-up, invitations, password reset", () => {
       expect(members.body.members.map((m: { email: string }) => m.email)).toContain("sam@example.com");
     });
 
-    it("only owners invite, and existing accounts are refused", async () => {
+    it("only owners invite; an address with an account elsewhere gets an inert, ordinary-looking invitation", async () => {
       const manager = await h.agent("manager");
       expect((await manager.post("/members/invitations", { email: "z@example.com", role: "VIEWER" })).status).toBe(403);
       expect((await manager.get("/members")).body.invitations).toEqual([]);
       const owner = await h.agent("owner");
       const member = await owner.post("/members/invitations", { email: DEMO_CREDENTIALS.viewer.email, role: "VIEWER" });
       expect(member.body.error.code).toBe("ALREADY_MEMBER");
+
+      // Same shape as inviting a stranger, so the form cannot reveal who has an account…
+      const sentBefore = mail.emails().length;
+      const stranger = await owner.post("/members/invitations", { email: "stranger@example.com", role: "VIEWER" });
       const elsewhere = await owner.post("/members/invitations", { email: "ada@example.com", role: "VIEWER" });
-      expect(elsewhere.body.error.code).toBe("EMAIL_IN_USE");
+      expect(elsewhere.status).toBe(stranger.status);
+      expect(Object.keys(elsewhere.body).sort()).toEqual(Object.keys(stranger.body).sort());
+      expect(elsewhere.body.email_sent).toBe(stranger.body.email_sent);
+      expect(elsewhere.body.invitation).toMatchObject({ email: "ada@example.com", status: "PENDING" });
+      // …but nobody is emailed on its behalf, and the link cannot add the account to this workspace.
+      const sent = mail
+        .emails()
+        .slice(sentBefore)
+        .flatMap((e) => e.to);
+      expect(sent).toContain("stranger@example.com");
+      expect(sent).not.toContain("ada@example.com");
+      const accept = await h.anonymous().post("/invitations/accept", {
+        token: tokenIn(elsewhere.body.invite_url as string)!,
+        name: "Ada Again",
+        password: "a-fresh-passphrase-2026",
+      });
+      expect(accept.status).toBe(404);
+      expect(accept.body.error.code).toBe("INVITATION_INVALID");
     });
 
     it("re-inviting replaces the old link, and revoked or expired links stop working", async () => {

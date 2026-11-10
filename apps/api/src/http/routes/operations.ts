@@ -1,4 +1,5 @@
-import { Router } from "express";
+import { Router, type Request } from "express";
+import rateLimit from "express-rate-limit";
 import {
   AnalyzeInvoiceRequest,
   DelayDeliveryRequest,
@@ -20,12 +21,29 @@ import { getActiveMandateRow, toMandateDto, updateMandate } from "../../services
 import { listOrders, loadOrder, orderDtos } from "../../services/orders";
 import { redTeamListing } from "../../services/red-team";
 import { listAuditEvents, listDecisions, listFindings } from "../../services/security";
-import { actorOf, requireRole } from "../middleware/auth";
+import { actorOf, refuseInSampleWorkspace, requireRole } from "../middleware/auth";
 import { asyncHandler, param, parse } from "../middleware/errors";
 import { idempotent } from "../middleware/idempotency";
+import { limiterStore } from "../rate-limit-store";
 
 export function operationsRoutes(ctx: AppContext): Router {
   const r = Router();
+  const perMinute = (name: string, limit: number, key: (req: Request) => string) =>
+    rateLimit({
+      windowMs: 60_000,
+      ...limiterStore(ctx, name),
+      limit,
+      standardHeaders: "draft-8",
+      legacyHeaders: false,
+      keyGenerator: key,
+      message: { error: { code: "RATE_LIMITED", message: "Too many red-team runs. Try again in a minute." } },
+    });
+  const redTeamPerUser = perMinute("red-team-user", ctx.config.security.redTeamPerUserPerMinute, (req) => `user|${req.user?.id ?? ""}`);
+  const redTeamPerOrg = perMinute(
+    "red-team-org",
+    ctx.config.security.redTeamPerOrgPerMinute,
+    (req) => `org|${req.user?.organizationId ?? ""}`,
+  );
 
   /* ------------------------------------------------------------- Mandate */
   r.get(
@@ -40,6 +58,7 @@ export function operationsRoutes(ctx: AppContext): Router {
   r.put(
     "/mandates/current",
     requireRole("OWNER"),
+    refuseInSampleWorkspace(ctx),
     idempotent(ctx, "mandates.update", async (req) => {
       const input = parse(SpendMandateInput, req.body);
       const out = await ctx.db.transaction((tx) =>
@@ -152,7 +171,9 @@ export function operationsRoutes(ctx: AppContext): Router {
   r.post(
     "/security/red-team",
     // Pure evaluation (nothing stored, no model, no PayPal), so every member may try attacks;
-    // the global API rate limit bounds how often.
+    // per-user and per-workspace limits bound how often (each run reads the mandate and budget).
+    redTeamPerUser,
+    redTeamPerOrg,
     asyncHandler(async (req, res) => {
       res.json(await redTeamListing(ctx, req.user!.organizationId, parse(RedTeamRequest, req.body)));
     }),

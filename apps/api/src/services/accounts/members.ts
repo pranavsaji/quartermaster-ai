@@ -15,7 +15,7 @@ import type { AppContext } from "../../context";
 import { AppError, conflict, notFound } from "../../errors";
 import { appendAudit } from "../audit";
 import { hashToken, newToken, openSession, sessionUser, type SessionMeta } from "../auth";
-import { emailInUse, findUserByEmail, isReservedAddress } from "./accounts";
+import { assertStrongPassword, findUserByEmail, isReservedAddress } from "./accounts";
 import { invitationEmail, linkWithToken } from "./emails";
 
 type InvitationRow = typeof invitations.$inferSelect;
@@ -67,8 +67,12 @@ export async function listMembers(ctx: AppContext, actor: { id: string; organiza
 
 /**
  * Invites an address to the workspace. Re-inviting the same address replaces the open
- * invitation (the old link stops working). An account belongs to one workspace, so addresses that
- * already have an account are refused.
+ * invitation (the old link stops working).
+ *
+ * An account belongs to one workspace, so an address that already has an account elsewhere (or is
+ * reserved for an operator) cannot join. It still gets the ordinary, success-shaped answer, so the
+ * invite form cannot be used to find out who has an account: the invitation is recorded but inert
+ * (no email is sent, and accepting it fails like any invalid link).
  */
 export async function createInvitation(
   ctx: AppContext,
@@ -79,7 +83,6 @@ export async function createInvitation(
   const token = newToken();
   const expiresAt = new Date(now.getTime() + ctx.config.accounts.invitationTtlDays * 86_400_000);
   const out = await ctx.db.transaction(async (tx) => {
-    if (isReservedAddress(ctx, input.email)) throw emailInUse();
     const existing = await findUserByEmail(tx, input.email);
     if (existing) {
       const [member] = await tx
@@ -87,8 +90,8 @@ export async function createInvitation(
         .from(memberships)
         .where(and(eq(memberships.organizationId, actor.organizationId), eq(memberships.userId, existing.id)));
       if (member) throw conflict("ALREADY_MEMBER", "That person is already a member of this workspace.");
-      throw conflict("EMAIL_IN_USE", "That email already has a Quartermaster account in another workspace. Invite a different address.");
     }
+    const deliverable = !existing && !isReservedAddress(ctx, input.email);
     await tx
       .update(invitations)
       .set({ revokedAt: now })
@@ -123,12 +126,15 @@ export async function createInvitation(
     });
     const [org] = await tx.select().from(organizations).where(eq(organizations.id, actor.organizationId));
     const [inviter] = await tx.select({ name: users.name }).from(users).where(eq(users.id, actor.id));
-    return { row: row!, orgName: org!.name, inviterName: inviter?.name ?? null };
+    return { row: row!, orgName: org!.name, inviterName: inviter?.name ?? null, deliverable };
   });
   const url = linkWithToken(ctx.config.appBaseUrl, "/invite", token);
-  const sent = await ctx.mailer.send(
-    invitationEmail({ to: input.email, organizationName: out.orgName, inviterName: out.inviterName, role: input.role, url, expiresAt }),
-  );
+  // An inert invitation reports what an ordinary send would (email is configured) without sending.
+  const sent = out.deliverable
+    ? await ctx.mailer.send(
+        invitationEmail({ to: input.email, organizationName: out.orgName, inviterName: out.inviterName, role: input.role, url, expiresAt }),
+      )
+    : { sent: ctx.mailer.enabled };
   return { invitation: toInvitationDto(out.row, out.inviterName, now), invite_url: url, email_sent: sent.sent };
 }
 
@@ -196,7 +202,10 @@ export async function acceptInvitation(ctx: AppContext, input: AcceptInvitationR
   const now = ctx.now();
   const out = await ctx.db.transaction(async (tx) => {
     const invitation = await openInvitation(tx, input.token, now, true);
-    if (await findUserByEmail(tx, invitation.email)) throw emailInUse();
+    // An invitation for an address that has an account (or is reserved) is inert; refusing it
+    // like any invalid link keeps the inviter from learning which it was.
+    if (isReservedAddress(ctx, invitation.email) || (await findUserByEmail(tx, invitation.email))) throw invalidInvitation();
+    assertStrongPassword(input.password, [invitation.email, input.name]);
     const [user] = await tx.insert(users).values({ email: invitation.email, name: input.name, passwordHash, createdAt: now }).returning();
     await tx
       .insert(memberships)

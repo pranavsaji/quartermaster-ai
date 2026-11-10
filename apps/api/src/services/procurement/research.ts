@@ -32,6 +32,7 @@ import {
 } from "../suppliers";
 import { AgentBudgetExceeded, AgentRun } from "../agent/runtime";
 import { classifyInjection, deterministicExplanation, explainRecommendation, type ExplanationFacts } from "../agent/llm";
+import { ALLOWANCE_NOTE, claimResearchAllowance, recordModelTokens, withoutPaidServices } from "../usage";
 import { getRequestDto } from "./dto";
 import { refreshRequestStatus } from "./status";
 
@@ -99,6 +100,9 @@ export async function researchRequest(ctx: AppContext, user: { id: string; organ
   let run: AgentRun | null = null;
   const createdProposalIds: string[] = [];
   try {
+    // Daily caps on paid services: over them the run proceeds on the deterministic fallback.
+    const allowance = await claimResearchAllowance(ctx, orgId, { countRun: true });
+    const runCtx = allowance.paid ? ctx : withoutPaidServices(ctx);
     run = await AgentRun.start(ctx.db, {
       organizationId: orgId,
       requestId,
@@ -111,12 +115,13 @@ export async function researchRequest(ctx: AppContext, user: { id: string; organ
         tokenBudget: ctx.config.agent.tokenBudget,
       },
     });
-    run.aiMode = ctx.openai.enabled ? "LLM" : "DETERMINISTIC_FALLBACK";
+    run.aiMode = runCtx.openai.enabled ? "LLM" : "DETERMINISTIC_FALLBACK";
+    if (!allowance.paid) await run.skip("market.search", ALLOWANCE_NOTE);
     // The intent carries the owner's cap: research never runs on one it cannot read.
     const intent = parseStoredIntent(claimed.intent);
     if (!intent) throw unprocessable("REQUEST_INTENT_INVALID", "The request's stored intent is malformed. Create a new request.");
     return await runResearch({
-      ctx,
+      ctx: runCtx,
       run,
       orgId,
       userId: user.id,
@@ -132,6 +137,12 @@ export async function researchRequest(ctx: AppContext, user: { id: string; organ
       ctx.log.error({ err: cleanup, request_id: requestId }, "could not record a failed research run"),
     );
     throw err;
+  } finally {
+    if (run) {
+      await recordModelTokens(ctx, orgId, run.tokensUsed).catch((e: unknown) =>
+        ctx.log.warn({ err: e, request_id: requestId }, "could not record model token usage"),
+      );
+    }
   }
 }
 
