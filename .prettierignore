@@ -15,3 +15,4 @@ apps/web/next-env.d.ts
 apimatic/sdk
 apimatic/portal
 apimatic/src/spec
+apps/web/public/vendor

@@ -5,8 +5,8 @@
   "type": "module",
   "description": "Quartermaster AI web console: procurement, TrustRail policy evidence and PayPal sandbox checkout.",
   "scripts": {
-    "dev": "next dev --port 3000",
-    "build": "next build",
+    "dev": "node scripts/copy-bryntum.mjs && next dev --port 3000",
+    "build": "node scripts/copy-bryntum.mjs && next build",
     "start": "next start --port ${PORT:-3000}",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
@@ -16,7 +16,6 @@
   },
   "dependencies": {
     "@bryntum/scheduler": "npm:@bryntum/scheduler-trial@7.3.8",
-    "@bryntum/scheduler-react": "7.3.8",
     "@qm/contracts": "workspace:*",
     "ag-charts-community": "^14.3.0",
     "ag-charts-react": "^14.3.0",

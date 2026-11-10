@@ -22,3 +22,6 @@ next-env.d.ts
 __pycache__/
 *.egg-info/
 .venv/
+
+# Copied from node_modules at build time (scripts/copy-bryntum.mjs)
+apps/web/public/vendor/bryntum/

@@ -5,7 +5,8 @@ import jsxA11y from "eslint-plugin-jsx-a11y";
 import reactHooks from "eslint-plugin-react-hooks";
 
 const config = [
-  { ignores: [".next/**", "next-env.d.ts", "node_modules/**"] },
+  // public/vendor holds copied third-party bundles (Bryntum), not source.
+  { ignores: [".next/**", "next-env.d.ts", "node_modules/**", "public/vendor/**"] },
 
   // Next.js + React + react-hooks (v7 incl. the React Compiler rules such as `refs`) + typescript-eslint.
   ...nextCoreWebVitals,
