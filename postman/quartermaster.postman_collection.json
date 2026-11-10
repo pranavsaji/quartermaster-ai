@@ -126,7 +126,7 @@
       ]
     },
     {
-      "name": "Auth",
+      "name": "Accounts",
       "item": [
         {
           "name": "Sign in (sets httpOnly session cookie)",
@@ -487,7 +487,7 @@
           ]
         },
         {
-          "name": "Accept an invitation: create the account and sign in",
+          "name": "Accept an invitation, create the account and sign in",
           "request": {
             "method": "POST",
             "header": [
@@ -1971,7 +1971,7 @@
       "name": "Orders",
       "item": [
         {
-          "name": "Order history; optional ?status=PROPOSED,APPROVED (comma-separated)",
+          "name": "Purchase order history, optionally filtered by status",
           "request": {
             "method": "GET",
             "header": [],

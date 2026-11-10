@@ -12,6 +12,33 @@
     "contact": {
       "name": "Quartermaster",
       "url": "https://github.com/pranavsaji/quartermaster-ai"
+    },
+    "x-server-configuration": {
+      "default-environment": "hosted",
+      "default-server": "default",
+      "environments": [
+        {
+          "name": "hosted",
+          "description": "Hosted demo (PayPal sandbox)",
+          "servers": [
+            {
+              "name": "default",
+              "url": "https://quartermaster-web-o0df.onrender.com/api/v1"
+            }
+          ]
+        },
+        {
+          "name": "local",
+          "description": "Local development (`pnpm dev`)",
+          "disableTryItOut": true,
+          "servers": [
+            {
+              "name": "default",
+              "url": "http://localhost:4000/api/v1"
+            }
+          ]
+        }
+      ]
     }
   },
   "servers": [
@@ -30,7 +57,7 @@
       "description": "Public configuration and browser error reports."
     },
     {
-      "name": "Auth",
+      "name": "Accounts",
       "description": "Sign-up, sign-in (httpOnly session cookie), password reset and change."
     },
     {
@@ -80,7 +107,13 @@
         "type": "apiKey",
         "in": "cookie",
         "name": "qm_session",
-        "description": "Session cookie set by sign-in (named `__Host-qm_session` on HTTPS deployments)."
+        "description": "Session cookie set by sign-in on local development servers."
+      },
+      "secureSession": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "__Host-qm_session",
+        "description": "Session cookie set by sign-in on HTTPS deployments (the hosted demo)."
       }
     },
     "parameters": {
@@ -92,8 +125,10 @@
         "schema": {
           "type": "string",
           "minLength": 8,
-          "maxLength": 128
-        }
+          "maxLength": 128,
+          "description": "A unique key per user action; retries with the same key return the first result."
+        },
+        "example": "3b8c2c1e-6f6d-4a59-9a43-8f0c2a9e1d22"
       },
       "Csrf": {
         "name": "X-Requested-With",
@@ -102,8 +137,10 @@
         "description": "CSRF guard: must be `quartermaster` on every mutation.",
         "schema": {
           "type": "string",
-          "const": "quartermaster"
-        }
+          "const": "quartermaster",
+          "description": "CSRF guard: must be `quartermaster` on every mutation."
+        },
+        "example": "quartermaster"
       }
     },
     "schemas": {
@@ -114,14 +151,18 @@
             "type": "object",
             "properties": {
               "code": {
-                "type": "string"
+                "type": "string",
+                "description": "Stable machine-readable code."
               },
               "message": {
-                "type": "string"
+                "type": "string",
+                "description": "Human-readable message (fixed per code)."
               },
               "details": {},
               "correlation_id": {
-                "type": "string"
+                "type": "string",
+                "description": "Request correlation id; quote it to support to find the server logs.",
+                "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
               }
             },
             "required": [
@@ -134,35 +175,44 @@
         "required": [
           "error"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "Error envelope shared by every endpoint. `code` is stable; `message` is fixed per code."
       },
       "PublicConfig": {
         "type": "object",
         "properties": {
           "environment": {
-            "type": "string"
+            "type": "string",
+            "description": "Deployment environment."
           },
           "paypal": {
             "type": "object",
             "properties": {
               "enabled": {
-                "type": "boolean"
+                "type": "boolean",
+                "description": "Whether the feature is turned on.",
+                "example": true
               },
               "client_id": {
                 "type": [
                   "string",
                   "null"
-                ]
+                ],
+                "description": "Id of the related client.",
+                "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
               },
               "sdk_url": {
-                "type": "string"
+                "type": "string",
+                "example": "https://example.com"
               },
               "environment": {
                 "type": "string",
                 "enum": [
                   "sandbox",
                   "live"
-                ]
+                ],
+                "description": "Deployment environment.",
+                "example": "sandbox"
               }
             },
             "required": [
@@ -178,10 +228,14 @@
             "properties": {
               "provider": {
                 "type": "string",
-                "const": "channel3"
+                "const": "channel3",
+                "description": "Provider in use.",
+                "example": "channel3"
               },
               "enabled": {
-                "type": "boolean"
+                "type": "boolean",
+                "description": "Whether the feature is turned on.",
+                "example": true
               }
             },
             "required": [
@@ -194,7 +248,9 @@
             "type": "object",
             "properties": {
               "enabled": {
-                "type": "boolean"
+                "type": "boolean",
+                "description": "Whether the feature is turned on.",
+                "example": true
               },
               "mode": {
                 "$ref": "#/components/schemas/AiMode"
@@ -211,11 +267,13 @@
             "properties": {
               "signup_enabled": {
                 "type": "boolean",
-                "description": "Anyone may create a workspace."
+                "description": "Anyone may create a workspace.",
+                "example": true
               },
               "email_enabled": {
                 "type": "boolean",
-                "description": "Outbound email is configured: invitations and reset links are emailed."
+                "description": "Outbound email is configured: invitations and reset links are emailed.",
+                "example": true
               }
             },
             "required": [
@@ -226,7 +284,8 @@
           },
           "sample_accounts_hint": {
             "type": "boolean",
-            "description": "Show the shared sample-workspace accounts on the sign-in page."
+            "description": "Show the shared sample-workspace accounts on the sign-in page.",
+            "example": true
           }
         },
         "required": [
@@ -237,26 +296,34 @@
           "accounts",
           "sample_accounts_hint"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "Feature flags and integration status visible before sign-in."
       },
       "AiMode": {
         "type": "string",
         "enum": [
           "LLM",
           "DETERMINISTIC_FALLBACK"
-        ]
+        ],
+        "description": "Whether the language model or the deterministic fallback interpreted a request."
       },
       "SessionUser": {
         "type": "object",
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Unique identifier (UUID).",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "email": {
-            "type": "string"
+            "type": "string",
+            "description": "Email address.",
+            "example": "owner@example.com"
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Display name.",
+            "example": "Harbor Restaurant Supply"
           },
           "role": {
             "$ref": "#/components/schemas/Role"
@@ -265,16 +332,24 @@
             "type": "object",
             "properties": {
               "id": {
-                "type": "string"
+                "type": "string",
+                "description": "Unique identifier (UUID).",
+                "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
               },
               "name": {
-                "type": "string"
+                "type": "string",
+                "description": "Display name.",
+                "example": "Harbor Restaurant Supply"
               },
               "timezone": {
-                "type": "string"
+                "type": "string",
+                "description": "IANA time zone of the workspace.",
+                "example": "America/Los_Angeles"
               },
               "currency": {
-                "type": "string"
+                "type": "string",
+                "description": "ISO 4217 currency code.",
+                "example": "USD"
               }
             },
             "required": [
@@ -283,11 +358,13 @@
               "timezone",
               "currency"
             ],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "description": "The user's workspace."
           },
           "operator": {
             "type": "boolean",
-            "description": "Platform operator (OPERATOR_EMAILS): may see system-wide error tracking."
+            "description": "Platform operator (OPERATOR_EMAILS): may see system-wide error tracking.",
+            "example": true
           }
         },
         "required": [
@@ -298,7 +375,8 @@
           "organization",
           "operator"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "The signed-in user and their workspace."
       },
       "Role": {
         "type": "string",
@@ -306,7 +384,8 @@
           "OWNER",
           "MANAGER",
           "VIEWER"
-        ]
+        ],
+        "description": "Workspace role: owners approve and pay, managers request, viewers read."
       },
       "LoginRequest": {
         "type": "object",
@@ -315,18 +394,23 @@
             "type": "string",
             "maxLength": 254,
             "format": "email",
-            "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+            "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
+            "description": "Email address.",
+            "example": "owner@example.com"
           },
           "password": {
             "type": "string",
             "minLength": 8,
-            "maxLength": 200
+            "maxLength": 200,
+            "description": "Password (never returned by the API).",
+            "example": "correct-horse-battery-staple"
           }
         },
         "required": [
           "email",
           "password"
-        ]
+        ],
+        "description": "Email and password sign-in."
       },
       "SignupRequest": {
         "type": "object",
@@ -334,32 +418,42 @@
           "name": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 120
+            "maxLength": 120,
+            "description": "Display name.",
+            "example": "Harbor Restaurant Supply"
           },
           "email": {
             "type": "string",
             "maxLength": 254,
             "format": "email",
-            "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+            "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
+            "description": "Email address.",
+            "example": "owner@example.com"
           },
           "password": {
             "type": "string",
             "minLength": 12,
-            "maxLength": 200
+            "maxLength": 200,
+            "description": "Password (never returned by the API).",
+            "example": "correct-horse-battery-staple"
           },
           "organization_name": {
             "type": "string",
             "minLength": 2,
-            "maxLength": 120
+            "maxLength": 120,
+            "description": "Workspace (restaurant) name.",
+            "example": "Harbor Restaurant Supply"
           },
           "timezone": {
             "default": "America/Los_Angeles",
             "type": "string",
-            "maxLength": 64
+            "maxLength": 64,
+            "description": "IANA time zone of the workspace."
           },
           "sample_data": {
             "default": true,
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Start the workspace with labelled sample suppliers, stock and history."
           }
         },
         "required": [
@@ -367,7 +461,8 @@
           "email",
           "password",
           "organization_name"
-        ]
+        ],
+        "description": "Create a workspace and its first owner."
       },
       "ForgotPasswordRequest": {
         "type": "object",
@@ -376,12 +471,15 @@
             "type": "string",
             "maxLength": 254,
             "format": "email",
-            "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+            "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
+            "description": "Email address.",
+            "example": "owner@example.com"
           }
         },
         "required": [
           "email"
-        ]
+        ],
+        "description": "Request a password reset email."
       },
       "ResetPasswordRequest": {
         "type": "object",
@@ -390,18 +488,22 @@
             "type": "string",
             "minLength": 20,
             "maxLength": 200,
-            "pattern": "^[\\w-]+$"
+            "pattern": "^[\\w-]+$",
+            "description": "One-time link token from an invitation or reset email."
           },
           "password": {
             "type": "string",
             "minLength": 12,
-            "maxLength": 200
+            "maxLength": 200,
+            "description": "Password (never returned by the API).",
+            "example": "correct-horse-battery-staple"
           }
         },
         "required": [
           "token",
           "password"
-        ]
+        ],
+        "description": "Set a new password from a one-time reset link."
       },
       "ChangePasswordRequest": {
         "type": "object",
@@ -409,27 +511,34 @@
           "current_password": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 200
+            "maxLength": 200,
+            "example": "correct-horse-battery-staple"
           },
           "new_password": {
             "type": "string",
             "minLength": 12,
-            "maxLength": 200
+            "maxLength": 200,
+            "example": "correct-horse-battery-staple"
           }
         },
         "required": [
           "current_password",
           "new_password"
-        ]
+        ],
+        "description": "Change the signed-in user's password."
       },
       "InvitationPreviewDto": {
         "type": "object",
         "properties": {
           "organization_name": {
-            "type": "string"
+            "type": "string",
+            "description": "Workspace (restaurant) name.",
+            "example": "Harbor Restaurant Supply"
           },
           "email": {
-            "type": "string"
+            "type": "string",
+            "description": "Email address.",
+            "example": "owner@example.com"
           },
           "role": {
             "$ref": "#/components/schemas/Role"
@@ -438,10 +547,14 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Name of the owner who sent the invitation.",
+            "example": "Harbor Restaurant Supply"
           },
           "expires_at": {
-            "type": "string"
+            "type": "string",
+            "description": "When expires happened (ISO 8601, UTC).",
+            "example": "2026-11-10T18:30:00.000Z"
           }
         },
         "required": [
@@ -461,12 +574,14 @@
             "type": "string",
             "minLength": 20,
             "maxLength": 200,
-            "pattern": "^[\\w-]+$"
+            "pattern": "^[\\w-]+$",
+            "description": "One-time link token from an invitation or reset email."
           }
         },
         "required": [
           "token"
-        ]
+        ],
+        "description": "An invitation link token."
       },
       "AcceptInvitationRequest": {
         "type": "object",
@@ -475,43 +590,53 @@
             "type": "string",
             "minLength": 20,
             "maxLength": 200,
-            "pattern": "^[\\w-]+$"
+            "pattern": "^[\\w-]+$",
+            "description": "One-time link token from an invitation or reset email."
           },
           "name": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 120
+            "maxLength": 120,
+            "description": "Display name.",
+            "example": "Harbor Restaurant Supply"
           },
           "password": {
             "type": "string",
             "minLength": 12,
-            "maxLength": 200
+            "maxLength": 200,
+            "description": "Password (never returned by the API).",
+            "example": "correct-horse-battery-staple"
           }
         },
         "required": [
           "token",
           "name",
           "password"
-        ]
+        ],
+        "description": "Accept an invitation: the invitee's name and new password, with the link token."
       },
       "ClientErrorReport": {
         "type": "object",
         "properties": {
           "message": {
             "type": "string",
-            "maxLength": 500
+            "maxLength": 500,
+            "description": "Human-readable message (fixed per code)."
           },
           "digest": {
             "type": "string",
-            "maxLength": 64
+            "maxLength": 64,
+            "description": "Next.js error digest."
           },
           "path": {
             "type": "string",
-            "maxLength": 300
+            "maxLength": 300,
+            "description": "Page path."
           },
           "stack": {
             "type": "string",
-            "maxLength": 4000
+            "maxLength": 4000,
+            "description": "Trimmed stack trace."
           },
           "kind": {
             "type": "string",
@@ -519,65 +644,89 @@
               "render",
               "unhandled",
               "rejection"
-            ]
+            ],
+            "description": "Kind of entry.",
+            "example": "render"
           }
         },
         "required": [
           "message",
           "path",
           "kind"
-        ]
+        ],
+        "description": "A browser error reported for error tracking."
       },
       "InventoryItemDto": {
         "type": "object",
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Unique identifier (UUID).",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "sku": {
-            "type": "string"
+            "type": "string",
+            "description": "Stock-keeping unit code.",
+            "example": "PKG-TAKEOUT-32"
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Display name.",
+            "example": "Harbor Restaurant Supply"
           },
           "category": {
             "$ref": "#/components/schemas/ProductCategory"
           },
           "unit": {
-            "type": "string"
+            "type": "string",
+            "description": "Unit of measure (each, liter, case...)."
           },
           "on_hand": {
-            "type": "number"
+            "type": "integer",
+            "description": "Units currently in stock.",
+            "example": 1
           },
           "inbound_confirmed": {
-            "type": "number"
+            "type": "integer",
+            "example": 1
           },
           "committed": {
-            "type": "number"
+            "type": "integer",
+            "example": 1
           },
           "available": {
-            "type": "number"
+            "type": "integer",
+            "example": 1
           },
           "avg_daily_usage": {
-            "type": "number"
+            "type": "number",
+            "example": 1
           },
           "lead_time_days": {
-            "type": "number"
+            "type": "integer",
+            "description": "Days from order to delivery.",
+            "example": 3
           },
           "safety_stock": {
-            "type": "number"
+            "type": "integer",
+            "description": "Units to keep on hand as a buffer.",
+            "example": 1
           },
           "coverage_days": {
-            "type": "number"
+            "type": "integer",
+            "description": "Days of usage an order should cover.",
+            "example": 3
           },
           "reorder_point": {
-            "type": "number"
+            "type": "integer",
+            "example": 1
           },
           "days_of_cover": {
             "type": [
               "number",
               "null"
-            ]
+            ],
+            "example": 1
           },
           "status": {
             "type": "string",
@@ -586,13 +735,17 @@
               "LOW",
               "CRITICAL",
               "OUT"
-            ]
+            ],
+            "description": "Current status.",
+            "example": "OK"
           },
           "preferred_supplier_id": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Id of the related preferred supplier.",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "data_source": {
             "$ref": "#/components/schemas/DataSource"
@@ -605,13 +758,16 @@
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Words that identify this item in natural-language requests."
           },
           "lead_time_days_override": {
             "type": [
               "number",
               "null"
-            ]
+            ],
+            "description": "Lead time for this item, overriding the supplier's (null = use supplier's).",
+            "example": 1
           }
         },
         "required": [
@@ -637,7 +793,8 @@
           "keywords",
           "lead_time_days_override"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "A stock item with current levels, usage and reorder status."
       },
       "ProductCategory": {
         "type": "string",
@@ -650,7 +807,8 @@
           "alcohol",
           "gift_cards",
           "services"
-        ]
+        ],
+        "description": "Product category used by the Spend Mandate's category rules."
       },
       "DataSource": {
         "type": "string",
@@ -659,7 +817,8 @@
           "SANDBOX_SUPPLIER",
           "SYNTHETIC",
           "USER_ENTERED"
-        ]
+        ],
+        "description": "Where a piece of commercial data came from (shown as a label in the UI)."
       },
       "InventoryAdjustmentRequest": {
         "type": "object",
@@ -667,7 +826,8 @@
           "quantity_delta": {
             "type": "integer",
             "minimum": -1000000,
-            "maximum": 1000000
+            "maximum": 1000000,
+            "example": 1
           },
           "reason": {
             "type": "string",
@@ -676,44 +836,57 @@
               "WASTE",
               "CONSUMPTION",
               "MANUAL_RECEIPT"
-            ]
+            ],
+            "description": "Reason given by the person making the change.",
+            "example": "COUNT_CORRECTION"
           },
           "note": {
             "type": "string",
-            "maxLength": 500
+            "maxLength": 500,
+            "description": "Optional note."
           },
           "expected_on_hand": {
             "type": "integer",
             "minimum": 0,
-            "maximum": 10000000
+            "maximum": 10000000,
+            "example": 1
           }
         },
         "required": [
           "quantity_delta",
           "reason"
-        ]
+        ],
+        "description": "An authorised stock change with a reason."
       },
       "ForecastRunDto": {
         "type": "object",
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Unique identifier (UUID).",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "demand_multiplier": {
-            "type": "number"
+            "type": "number",
+            "description": "Demand relative to normal (1 = normal, 1.25 = 25% busier).",
+            "example": 1.25
           },
           "created_at": {
-            "type": "string"
+            "type": "string",
+            "description": "When created happened (ISO 8601, UTC).",
+            "example": "2026-11-10T18:30:00.000Z"
           },
           "method": {
             "type": "string",
-            "const": "REORDER_POINT_V1"
+            "const": "REORDER_POINT_V1",
+            "example": "REORDER_POINT_V1"
           },
           "lines": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ForecastLineDto"
-            }
+            },
+            "description": "Line items."
           }
         },
         "required": [
@@ -723,64 +896,91 @@
           "method",
           "lines"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "A stored forecast run with its lines."
       },
       "ForecastLineDto": {
         "type": "object",
         "properties": {
           "inventory_item_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Id of the related inventory item.",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "sku": {
-            "type": "string"
+            "type": "string",
+            "description": "Stock-keeping unit code.",
+            "example": "PKG-TAKEOUT-32"
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Display name.",
+            "example": "Harbor Restaurant Supply"
           },
           "unit": {
-            "type": "string"
+            "type": "string",
+            "description": "Unit of measure (each, liter, case...)."
           },
           "base_daily_usage": {
-            "type": "number"
+            "type": "number",
+            "example": 1
           },
           "demand_multiplier": {
-            "type": "number"
+            "type": "number",
+            "description": "Demand relative to normal (1 = normal, 1.25 = 25% busier).",
+            "example": 1.25
           },
           "forecast_daily_usage": {
-            "type": "number"
+            "type": "number",
+            "example": 1
           },
           "lead_time_days": {
-            "type": "number"
+            "type": "integer",
+            "description": "Days from order to delivery.",
+            "example": 3
           },
           "safety_stock": {
-            "type": "number"
+            "type": "integer",
+            "description": "Units to keep on hand as a buffer.",
+            "example": 1
           },
           "coverage_days": {
-            "type": "number"
+            "type": "integer",
+            "description": "Days of usage an order should cover.",
+            "example": 3
           },
           "on_hand": {
-            "type": "number"
+            "type": "integer",
+            "description": "Units currently in stock.",
+            "example": 1
           },
           "inbound_confirmed": {
-            "type": "number"
+            "type": "integer",
+            "example": 1
           },
           "committed": {
-            "type": "number"
+            "type": "integer",
+            "example": 1
           },
           "available": {
-            "type": "number"
+            "type": "integer",
+            "example": 1
           },
           "reorder_point": {
-            "type": "number"
+            "type": "integer",
+            "example": 1
           },
           "target_stock": {
-            "type": "number"
+            "type": "number",
+            "example": 1
           },
           "needs_reorder": {
-            "type": "boolean"
+            "type": "boolean",
+            "example": true
           },
           "suggested_quantity": {
-            "type": "number"
+            "type": "number",
+            "example": 1
           },
           "explanation": {
             "type": "string"
@@ -807,7 +1007,8 @@
           "suggested_quantity",
           "explanation"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "Reorder recommendation for one stock item."
       },
       "ForecastRequest": {
         "type": "object",
@@ -819,20 +1020,25 @@
               "type": "string",
               "format": "uuid",
               "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-            }
+            },
+            "description": "Ids of the related inventory items."
           },
           "demand_multiplier": {
             "default": 1,
             "type": "number",
             "minimum": 0.25,
-            "maximum": 4
+            "maximum": 4,
+            "description": "Demand relative to normal (1 = normal, 1.25 = 25% busier)."
           },
           "horizon_days": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 30
+            "maximum": 30,
+            "description": "Horizon, in days.",
+            "example": 3
           }
-        }
+        },
+        "description": "Parameters for a reorder forecast."
       },
       "CreateInventoryItemRequest": {
         "type": "object",
@@ -841,12 +1047,16 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 64,
-            "pattern": "^[A-Za-z0-9][\\w.\\-/]*$"
+            "pattern": "^[A-Za-z0-9][\\w.\\-/]*$",
+            "description": "Stock-keeping unit code.",
+            "example": "PKG-TAKEOUT-32"
           },
           "name": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 120
+            "maxLength": 120,
+            "description": "Display name.",
+            "example": "Harbor Restaurant Supply"
           },
           "category": {
             "type": "string",
@@ -859,26 +1069,34 @@
               "alcohol",
               "gift_cards",
               "services"
-            ]
+            ],
+            "description": "Product category.",
+            "example": "food_packaging"
           },
           "unit": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 24
+            "maxLength": 24,
+            "description": "Unit of measure (each, liter, case...)."
           },
           "safety_stock": {
             "type": "integer",
             "minimum": 0,
-            "maximum": 10000000
+            "maximum": 10000000,
+            "description": "Units to keep on hand as a buffer.",
+            "example": 1
           },
           "coverage_days": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 60
+            "maximum": 60,
+            "description": "Days of usage an order should cover.",
+            "example": 3
           },
           "lead_time_days_override": {
             "default": null,
-            "anyOf": [
+            "description": "Lead time for this item, overriding the supplier's (null = use supplier's).",
+            "oneOf": [
               {
                 "type": "integer",
                 "minimum": 0,
@@ -891,7 +1109,8 @@
           },
           "preferred_supplier_id": {
             "default": null,
-            "anyOf": [
+            "description": "Id of the related preferred supplier.",
+            "oneOf": [
               {
                 "type": "string",
                 "format": "uuid",
@@ -905,7 +1124,8 @@
           "search_query": {
             "type": "string",
             "minLength": 2,
-            "maxLength": 200
+            "maxLength": 200,
+            "description": "Phrase used to look up market prices (Channel3)."
           },
           "keywords": {
             "default": [],
@@ -915,13 +1135,15 @@
               "type": "string",
               "minLength": 1,
               "maxLength": 40
-            }
+            },
+            "description": "Words that identify this item in natural-language requests."
           },
           "on_hand": {
             "default": 0,
             "type": "integer",
             "minimum": 0,
-            "maximum": 10000000
+            "maximum": 10000000,
+            "description": "Units currently in stock."
           }
         },
         "required": [
@@ -932,7 +1154,8 @@
           "safety_stock",
           "coverage_days",
           "search_query"
-        ]
+        ],
+        "description": "A new stock item, including its opening on-hand count."
       },
       "InventoryItemInput": {
         "type": "object",
@@ -941,12 +1164,16 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 64,
-            "pattern": "^[A-Za-z0-9][\\w.\\-/]*$"
+            "pattern": "^[A-Za-z0-9][\\w.\\-/]*$",
+            "description": "Stock-keeping unit code.",
+            "example": "PKG-TAKEOUT-32"
           },
           "name": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 120
+            "maxLength": 120,
+            "description": "Display name.",
+            "example": "Harbor Restaurant Supply"
           },
           "category": {
             "type": "string",
@@ -959,26 +1186,34 @@
               "alcohol",
               "gift_cards",
               "services"
-            ]
+            ],
+            "description": "Product category.",
+            "example": "food_packaging"
           },
           "unit": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 24
+            "maxLength": 24,
+            "description": "Unit of measure (each, liter, case...)."
           },
           "safety_stock": {
             "type": "integer",
             "minimum": 0,
-            "maximum": 10000000
+            "maximum": 10000000,
+            "description": "Units to keep on hand as a buffer.",
+            "example": 1
           },
           "coverage_days": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 60
+            "maximum": 60,
+            "description": "Days of usage an order should cover.",
+            "example": 3
           },
           "lead_time_days_override": {
             "default": null,
-            "anyOf": [
+            "description": "Lead time for this item, overriding the supplier's (null = use supplier's).",
+            "oneOf": [
               {
                 "type": "integer",
                 "minimum": 0,
@@ -991,7 +1226,8 @@
           },
           "preferred_supplier_id": {
             "default": null,
-            "anyOf": [
+            "description": "Id of the related preferred supplier.",
+            "oneOf": [
               {
                 "type": "string",
                 "format": "uuid",
@@ -1005,7 +1241,8 @@
           "search_query": {
             "type": "string",
             "minLength": 2,
-            "maxLength": 200
+            "maxLength": 200,
+            "description": "Phrase used to look up market prices (Channel3)."
           },
           "keywords": {
             "default": [],
@@ -1015,7 +1252,8 @@
               "type": "string",
               "minLength": 1,
               "maxLength": 40
-            }
+            },
+            "description": "Words that identify this item in natural-language requests."
           }
         },
         "required": [
@@ -1026,55 +1264,77 @@
           "safety_stock",
           "coverage_days",
           "search_query"
-        ]
+        ],
+        "description": "Editable details of a stock item (quantities change through adjustments)."
       },
       "SupplierDto": {
         "type": "object",
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Unique identifier (UUID).",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Display name.",
+            "example": "Harbor Restaurant Supply"
           },
           "approved": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Approved in the current Spend Mandate.",
+            "example": true
           },
           "active": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether the record is in use.",
+            "example": true
           },
           "checkout_eligible": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether orders from this supplier can be paid through PayPal checkout.",
+            "example": true
           },
           "lead_time_days": {
-            "type": "number"
+            "type": "integer",
+            "description": "Days from order to delivery.",
+            "example": 3
           },
           "tax_rate_bps": {
-            "type": "number"
+            "type": "integer",
+            "description": "Tax rate, in basis points (825 = 8.25%).",
+            "example": 825
           },
           "fee_terms": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/FeeTermDto"
-            }
+            },
+            "description": "Published fees and shipping terms; any other fee in a quote is unauthorised."
           },
           "website": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Supplier website.",
+            "example": "https://example.com"
           },
           "description": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Free-text description."
           },
           "quarantined": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Flagged by prompt-injection screening: withheld from the agent and blocked by TrustRail.",
+            "example": true
           },
           "catalog_items": {
-            "type": "number"
+            "type": "integer",
+            "example": 1
           },
           "data_source": {
             "$ref": "#/components/schemas/DataSource"
@@ -1095,13 +1355,15 @@
           "catalog_items",
           "data_source"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "A supplier with its terms and mandate approval."
       },
       "FeeTermDto": {
         "type": "object",
         "properties": {
           "code": {
-            "type": "string"
+            "type": "string",
+            "description": "Stable machine-readable code."
           },
           "label": {
             "type": "string"
@@ -1111,16 +1373,22 @@
             "enum": [
               "SHIPPING",
               "FEE"
-            ]
+            ],
+            "description": "Kind of entry.",
+            "example": "SHIPPING"
           },
           "amount_minor": {
-            "type": "number"
+            "type": "integer",
+            "description": "Amount, in minor units (cents).",
+            "example": 17320
           },
           "waived_over_minor": {
             "type": [
-              "number",
+              "integer",
               "null"
-            ]
+            ],
+            "description": "Waived over, in minor units (cents).",
+            "example": 17320
           }
         },
         "required": [
@@ -1130,55 +1398,77 @@
           "amount_minor",
           "waived_over_minor"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "A published supplier fee or shipping term; only listed fees are authorised."
       },
       "SupplierDetailDto": {
         "type": "object",
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Unique identifier (UUID).",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Display name.",
+            "example": "Harbor Restaurant Supply"
           },
           "approved": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Approved in the current Spend Mandate.",
+            "example": true
           },
           "active": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether the record is in use.",
+            "example": true
           },
           "checkout_eligible": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether orders from this supplier can be paid through PayPal checkout.",
+            "example": true
           },
           "lead_time_days": {
-            "type": "number"
+            "type": "integer",
+            "description": "Days from order to delivery.",
+            "example": 3
           },
           "tax_rate_bps": {
-            "type": "number"
+            "type": "integer",
+            "description": "Tax rate, in basis points (825 = 8.25%).",
+            "example": 825
           },
           "fee_terms": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/FeeTermDto"
-            }
+            },
+            "description": "Published fees and shipping terms; any other fee in a quote is unauthorised."
           },
           "website": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Supplier website.",
+            "example": "https://example.com"
           },
           "description": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Free-text description."
           },
           "quarantined": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Flagged by prompt-injection screening: withheld from the agent and blocked by TrustRail.",
+            "example": true
           },
           "catalog_items": {
-            "type": "number"
+            "type": "integer",
+            "example": 1
           },
           "data_source": {
             "$ref": "#/components/schemas/DataSource"
@@ -1190,7 +1480,9 @@
             }
           },
           "created_at": {
-            "type": "string"
+            "type": "string",
+            "description": "When created happened (ISO 8601, UTC).",
+            "example": "2026-11-10T18:30:00.000Z"
           }
         },
         "required": [
@@ -1210,25 +1502,34 @@
           "tax_rate_bps",
           "website"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "A supplier with its catalog."
       },
       "CatalogItemDto": {
         "type": "object",
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Unique identifier (UUID).",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "supplier_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Id of the related supplier.",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "sku": {
-            "type": "string"
+            "type": "string",
+            "description": "Stock-keeping unit code.",
+            "example": "PKG-TAKEOUT-32"
           },
           "title": {
-            "type": "string"
+            "type": "string",
+            "description": "Short title."
           },
           "description": {
-            "type": "string"
+            "type": "string",
+            "description": "Free-text description."
           },
           "category": {
             "$ref": "#/components/schemas/ProductCategory"
@@ -1237,35 +1538,51 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Id of the related inventory item.",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "pack_quantity": {
-            "type": "number"
+            "type": "integer",
+            "description": "Units in one pack.",
+            "example": 1
           },
           "unit_price_minor": {
-            "type": "number"
+            "type": "integer",
+            "description": "Unit price, in minor units (cents).",
+            "example": 17320
           },
           "currency": {
-            "type": "string"
+            "type": "string",
+            "description": "ISO 4217 currency code.",
+            "example": "USD"
           },
           "in_stock": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether the supplier currently has it in stock.",
+            "example": true
           },
           "recurring": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "A recurring subscription rather than a one-off purchase.",
+            "example": true
           },
           "quarantined": {
             "type": "boolean",
-            "description": "Flagged by injection screening: withheld from the agent, and TrustRail blocks carts with it."
+            "description": "Flagged by injection screening: withheld from the agent, and TrustRail blocks carts with it.",
+            "example": true
           },
           "quarantine_reason": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Detection rules that triggered the quarantine."
           },
           "updated_at": {
-            "type": "string"
+            "type": "string",
+            "description": "When updated happened (ISO 8601, UTC).",
+            "example": "2026-11-10T18:30:00.000Z"
           }
         },
         "required": [
@@ -1285,7 +1602,8 @@
           "quarantine_reason",
           "updated_at"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "A supplier catalog listing (product, pack size, price)."
       },
       "SupplierInput": {
         "type": "object",
@@ -1293,11 +1611,14 @@
           "name": {
             "type": "string",
             "minLength": 2,
-            "maxLength": 120
+            "maxLength": 120,
+            "description": "Display name.",
+            "example": "Harbor Restaurant Supply"
           },
           "website": {
             "default": null,
-            "anyOf": [
+            "description": "Supplier website.",
+            "oneOf": [
               {
                 "type": "string",
                 "maxLength": 300,
@@ -1310,7 +1631,8 @@
           },
           "description": {
             "default": null,
-            "anyOf": [
+            "description": "Free-text description.",
+            "oneOf": [
               {
                 "type": "string",
                 "maxLength": 1000
@@ -1323,12 +1645,16 @@
           "lead_time_days": {
             "type": "integer",
             "minimum": 0,
-            "maximum": 60
+            "maximum": 60,
+            "description": "Days from order to delivery.",
+            "example": 3
           },
           "tax_rate_bps": {
             "type": "integer",
             "minimum": 0,
-            "maximum": 3000
+            "maximum": 3000,
+            "description": "Tax rate, in basis points (825 = 8.25%).",
+            "example": 825
           },
           "fee_terms": {
             "default": [],
@@ -1341,7 +1667,8 @@
                   "type": "string",
                   "minLength": 1,
                   "maxLength": 32,
-                  "pattern": "^[A-Z0-9_]+$"
+                  "pattern": "^[A-Z0-9_]+$",
+                  "description": "Stable machine-readable code."
                 },
                 "label": {
                   "type": "string",
@@ -1353,15 +1680,20 @@
                   "enum": [
                     "SHIPPING",
                     "FEE"
-                  ]
+                  ],
+                  "description": "Kind of entry.",
+                  "example": "SHIPPING"
                 },
                 "amount_minor": {
                   "type": "integer",
                   "minimum": 0,
-                  "maximum": 10000000
+                  "maximum": 10000000,
+                  "description": "Amount, in minor units (cents).",
+                  "example": 17320
                 },
                 "waived_over_minor": {
-                  "anyOf": [
+                  "description": "Waived over, in minor units (cents).",
+                  "oneOf": [
                     {
                       "type": "integer",
                       "minimum": 0,
@@ -1380,22 +1712,26 @@
                 "amount_minor",
                 "waived_over_minor"
               ]
-            }
+            },
+            "description": "Published fees and shipping terms; any other fee in a quote is unauthorised."
           },
           "active": {
             "default": true,
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether the record is in use."
           },
           "checkout_eligible": {
             "default": true,
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether orders from this supplier can be paid through PayPal checkout."
           }
         },
         "required": [
           "name",
           "lead_time_days",
           "tax_rate_bps"
-        ]
+        ],
+        "description": "Fields for creating or updating a supplier."
       },
       "CatalogItemInput": {
         "type": "object",
@@ -1404,17 +1740,21 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 64,
-            "pattern": "^[A-Za-z0-9][\\w.\\-/]*$"
+            "pattern": "^[A-Za-z0-9][\\w.\\-/]*$",
+            "description": "Stock-keeping unit code.",
+            "example": "PKG-TAKEOUT-32"
           },
           "title": {
             "type": "string",
             "minLength": 2,
-            "maxLength": 200
+            "maxLength": 200,
+            "description": "Short title."
           },
           "description": {
             "default": "",
             "type": "string",
-            "maxLength": 2000
+            "maxLength": 2000,
+            "description": "Free-text description."
           },
           "category": {
             "type": "string",
@@ -1427,11 +1767,14 @@
               "alcohol",
               "gift_cards",
               "services"
-            ]
+            ],
+            "description": "Product category.",
+            "example": "food_packaging"
           },
           "inventory_item_id": {
             "default": null,
-            "anyOf": [
+            "description": "Id of the related inventory item.",
+            "oneOf": [
               {
                 "type": "string",
                 "format": "uuid",
@@ -1445,20 +1788,26 @@
           "pack_quantity": {
             "type": "integer",
             "minimum": 1,
-            "maximum": 1000000
+            "maximum": 1000000,
+            "description": "Units in one pack.",
+            "example": 1
           },
           "unit_price_minor": {
             "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 100000000
+            "maximum": 100000000,
+            "description": "Unit price, in minor units (cents).",
+            "example": 17320,
+            "minimum": 1
           },
           "in_stock": {
             "default": true,
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether the supplier currently has it in stock."
           },
           "recurring": {
             "default": false,
-            "type": "boolean"
+            "type": "boolean",
+            "description": "A recurring subscription rather than a one-off purchase."
           }
         },
         "required": [
@@ -1467,7 +1816,8 @@
           "category",
           "pack_quantity",
           "unit_price_minor"
-        ]
+        ],
+        "description": "Fields for creating or updating a catalog listing."
       },
       "MembersResponse": {
         "type": "object",
@@ -1496,22 +1846,32 @@
         "type": "object",
         "properties": {
           "user_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Id of the related user.",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "email": {
-            "type": "string"
+            "type": "string",
+            "description": "Email address.",
+            "example": "owner@example.com"
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Display name.",
+            "example": "Harbor Restaurant Supply"
           },
           "role": {
             "$ref": "#/components/schemas/Role"
           },
           "joined_at": {
-            "type": "string"
+            "type": "string",
+            "description": "When joined happened (ISO 8601, UTC).",
+            "example": "2026-11-10T18:30:00.000Z"
           },
           "is_self": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "True for the signed-in user.",
+            "example": true
           }
         },
         "required": [
@@ -1522,16 +1882,21 @@
           "joined_at",
           "is_self"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "A member of the workspace."
       },
       "InvitationDto": {
         "type": "object",
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Unique identifier (UUID).",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "email": {
-            "type": "string"
+            "type": "string",
+            "description": "Email address.",
+            "example": "owner@example.com"
           },
           "role": {
             "$ref": "#/components/schemas/Role"
@@ -1543,13 +1908,19 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Name of the owner who sent the invitation.",
+            "example": "Harbor Restaurant Supply"
           },
           "created_at": {
-            "type": "string"
+            "type": "string",
+            "description": "When created happened (ISO 8601, UTC).",
+            "example": "2026-11-10T18:30:00.000Z"
           },
           "expires_at": {
-            "type": "string"
+            "type": "string",
+            "description": "When expires happened (ISO 8601, UTC).",
+            "example": "2026-11-10T18:30:00.000Z"
           }
         },
         "required": [
@@ -1561,7 +1932,8 @@
           "created_at",
           "expires_at"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "An invitation to the workspace."
       },
       "InvitationStatus": {
         "type": "string",
@@ -1570,7 +1942,8 @@
           "ACCEPTED",
           "REVOKED",
           "EXPIRED"
-        ]
+        ],
+        "description": "Invitation lifecycle."
       },
       "InvitationCreatedResponse": {
         "type": "object",
@@ -1579,10 +1952,14 @@
             "$ref": "#/components/schemas/InvitationDto"
           },
           "invite_url": {
-            "type": "string"
+            "type": "string",
+            "description": "One-time invitation link (token in the URL fragment). Shown once.",
+            "example": "https://example.com"
           },
           "email_sent": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether the link was emailed.",
+            "example": true
           }
         },
         "required": [
@@ -1600,7 +1977,9 @@
             "type": "string",
             "maxLength": 254,
             "format": "email",
-            "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+            "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
+            "description": "Email address.",
+            "example": "owner@example.com"
           },
           "role": {
             "type": "string",
@@ -1608,13 +1987,16 @@
               "OWNER",
               "MANAGER",
               "VIEWER"
-            ]
+            ],
+            "description": "Workspace role.",
+            "example": "OWNER"
           }
         },
         "required": [
           "email",
           "role"
-        ]
+        ],
+        "description": "Invite an email address with a role."
       },
       "UpdateMemberRoleRequest": {
         "type": "object",
@@ -1625,12 +2007,15 @@
               "OWNER",
               "MANAGER",
               "VIEWER"
-            ]
+            ],
+            "description": "Workspace role.",
+            "example": "OWNER"
           }
         },
         "required": [
           "role"
-        ]
+        ],
+        "description": "A member's new role."
       },
       "ResetLinkResponse": {
         "type": "object",
@@ -1639,13 +2024,19 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "One-time password reset link, or null when it was emailed to the member.",
+            "example": "https://example.com"
           },
           "expires_at": {
-            "type": "string"
+            "type": "string",
+            "description": "When expires happened (ISO 8601, UTC).",
+            "example": "2026-11-10T18:30:00.000Z"
           },
           "email_sent": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether the link was emailed.",
+            "example": true
           }
         },
         "required": [
@@ -1660,25 +2051,34 @@
         "type": "object",
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Unique identifier (UUID).",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "status": {
             "$ref": "#/components/schemas/RequestStatus"
           },
           "instruction": {
-            "type": "string"
+            "type": "string",
+            "description": "The natural-language instruction from the restaurant."
           },
           "total_minor": {
             "type": [
-              "number",
+              "integer",
               "null"
-            ]
+            ],
+            "description": "Total, in minor units (cents).",
+            "example": 17320
           },
           "currency": {
-            "type": "string"
+            "type": "string",
+            "description": "ISO 4217 currency code.",
+            "example": "USD"
           },
           "created_at": {
-            "type": "string"
+            "type": "string",
+            "description": "When created happened (ISO 8601, UTC).",
+            "example": "2026-11-10T18:30:00.000Z"
           }
         },
         "required": [
@@ -1689,7 +2089,8 @@
           "currency",
           "created_at"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "A procurement request in a list."
       },
       "RequestStatus": {
         "type": "string",
@@ -1705,40 +2106,51 @@
           "REJECTED",
           "CANCELLED",
           "FAILED"
-        ]
+        ],
+        "description": "Procurement request lifecycle."
       },
       "ProcurementRequestDto": {
         "type": "object",
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Unique identifier (UUID).",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "status": {
             "$ref": "#/components/schemas/RequestStatus"
           },
           "instruction": {
-            "type": "string"
+            "type": "string",
+            "description": "The natural-language instruction from the restaurant."
           },
           "currency": {
-            "type": "string"
+            "type": "string",
+            "description": "ISO 4217 currency code.",
+            "example": "USD"
           },
           "budget_limit_minor": {
             "type": [
-              "number",
+              "integer",
               "null"
-            ]
+            ],
+            "description": "Budget limit, in minor units (cents).",
+            "example": 17320
           },
           "required_by": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Date the goods are needed by (YYYY-MM-DD).",
+            "example": "2026-11-12"
           },
           "allow_alternatives": {
-            "type": "boolean"
+            "type": "boolean",
+            "example": true
           },
           "intent": {
-            "anyOf": [
+            "oneOf": [
               {
                 "$ref": "#/components/schemas/InterpretedIntentDto"
               },
@@ -1748,7 +2160,7 @@
             ]
           },
           "forecast": {
-            "anyOf": [
+            "oneOf": [
               {
                 "$ref": "#/components/schemas/ForecastRunDto"
               },
@@ -1779,10 +2191,12 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Id of the related active proposal.",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "recommendation": {
-            "anyOf": [
+            "oneOf": [
               {
                 "$ref": "#/components/schemas/RecommendationDto"
               },
@@ -1807,10 +2221,14 @@
             "type": "string"
           },
           "created_at": {
-            "type": "string"
+            "type": "string",
+            "description": "When created happened (ISO 8601, UTC).",
+            "example": "2026-11-10T18:30:00.000Z"
           },
           "updated_at": {
-            "type": "string"
+            "type": "string",
+            "description": "When updated happened (ISO 8601, UTC).",
+            "example": "2026-11-10T18:30:00.000Z"
           }
         },
         "required": [
@@ -1834,7 +2252,8 @@
           "created_at",
           "updated_at"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "A procurement request with forecast, market evidence, candidates, proposals and decisions."
       },
       "InterpretedIntentDto": {
         "type": "object",
@@ -1843,22 +2262,29 @@
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Ids of the related inventory items."
           },
           "demand_multiplier": {
-            "type": "number"
+            "type": "number",
+            "description": "Demand relative to normal (1 = normal, 1.25 = 25% busier).",
+            "example": 1.25
           },
           "budget_limit_minor": {
             "type": [
-              "number",
+              "integer",
               "null"
-            ]
+            ],
+            "description": "Budget limit, in minor units (cents).",
+            "example": 17320
           },
           "required_by": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Date the goods are needed by (YYYY-MM-DD).",
+            "example": "2026-11-12"
           },
           "notes": {
             "type": "string"
@@ -1882,28 +2308,36 @@
           "unsupported_requests",
           "ai_mode"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "How the request was interpreted: items, demand multiplier, budget and date."
       },
       "MarketReferenceDto": {
         "type": "object",
         "properties": {
           "inventory_item_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Id of the related inventory item.",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "reference_unit_price_minor": {
             "type": [
               "number",
               "null"
-            ]
+            ],
+            "description": "Market reference price per unit, in minor units; may be fractional (null when no comparable quote).",
+            "example": 1
           },
           "sample_size": {
-            "type": "number"
+            "type": "number",
+            "example": 1
           },
           "observed_at": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "When observed happened (ISO 8601, UTC).",
+            "example": "2026-11-10T18:30:00.000Z"
           },
           "status": {
             "type": "string",
@@ -1913,7 +2347,9 @@
               "STALE",
               "DISABLED",
               "ERROR"
-            ]
+            ],
+            "description": "Current status.",
+            "example": "AVAILABLE"
           },
           "quotes": {
             "type": "array",
@@ -1930,50 +2366,68 @@
           "status",
           "quotes"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "The market reference price for an item."
       },
       "MarketQuoteDto": {
         "type": "object",
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Unique identifier (UUID).",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "source": {
             "type": "string",
-            "const": "CHANNEL3_MARKET"
+            "const": "CHANNEL3_MARKET",
+            "description": "Where the error came from.",
+            "example": "CHANNEL3_MARKET"
           },
           "title": {
-            "type": "string"
+            "type": "string",
+            "description": "Short title."
           },
           "merchant_domain": {
             "type": "string"
           },
           "url": {
-            "type": "string"
+            "type": "string",
+            "example": "https://example.com"
           },
           "price_minor": {
-            "type": "number"
+            "type": "number",
+            "description": "Price, in minor units (cents).",
+            "example": 1
           },
           "currency": {
-            "type": "string"
+            "type": "string",
+            "description": "ISO 4217 currency code.",
+            "example": "USD"
           },
           "pack_quantity": {
             "type": [
               "number",
               "null"
-            ]
+            ],
+            "description": "Units in one pack.",
+            "example": 1
           },
           "normalized_unit_price_minor": {
             "type": [
               "number",
               "null"
-            ]
+            ],
+            "description": "Quote price per unit after pack-size normalisation, in minor units; may be fractional.",
+            "example": 1
           },
           "comparable": {
-            "type": "boolean"
+            "type": "boolean",
+            "example": true
           },
           "observed_at": {
-            "type": "string"
+            "type": "string",
+            "description": "When observed happened (ISO 8601, UTC).",
+            "example": "2026-11-10T18:30:00.000Z"
           },
           "availability": {
             "type": "string"
@@ -1993,76 +2447,112 @@
           "observed_at",
           "availability"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "A market price quote from Channel3, used as a reference only."
       },
       "CandidateDto": {
         "type": "object",
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Unique identifier (UUID).",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "inventory_item_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Id of the related inventory item.",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "supplier_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Id of the related supplier.",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "supplier_name": {
-            "type": "string"
+            "type": "string",
+            "example": "Harbor Restaurant Supply"
           },
           "supplier_approved": {
-            "type": "boolean"
+            "type": "boolean",
+            "example": true
           },
           "checkout_eligible": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether orders from this supplier can be paid through PayPal checkout.",
+            "example": true
           },
           "catalog_item_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Id of the related catalog item.",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "sku": {
-            "type": "string"
+            "type": "string",
+            "description": "Stock-keeping unit code.",
+            "example": "PKG-TAKEOUT-32"
           },
           "title": {
-            "type": "string"
+            "type": "string",
+            "description": "Short title."
           },
           "pack_quantity": {
-            "type": "number"
+            "type": "integer",
+            "description": "Units in one pack.",
+            "example": 1
           },
           "packs": {
-            "type": "number"
+            "type": "number",
+            "example": 1
           },
           "units": {
-            "type": "number"
+            "type": "number",
+            "example": 1
           },
           "item_subtotal_minor": {
-            "type": "number"
+            "type": "integer",
+            "description": "Item subtotal, in minor units (cents).",
+            "example": 17320
           },
           "shipping_minor": {
-            "type": "number"
+            "type": "integer",
+            "description": "Shipping, in minor units (cents).",
+            "example": 17320
           },
           "tax_minor": {
-            "type": "number"
+            "type": "integer",
+            "description": "Tax, in minor units (cents).",
+            "example": 17320
           },
           "fees_minor": {
-            "type": "number"
+            "type": "integer",
+            "description": "Fees, in minor units (cents).",
+            "example": 17320
           },
           "delivered_total_minor": {
-            "type": "number"
+            "type": "integer",
+            "description": "Delivered total, in minor units (cents).",
+            "example": 17320
           },
           "delivered_unit_cost_minor": {
-            "type": "number"
+            "type": "number",
+            "description": "Delivered cost per unit (price, shipping, tax and fees over units), in minor units; may be fractional.",
+            "example": 1
           },
           "lead_time_days": {
-            "type": "number"
+            "type": "integer",
+            "description": "Days from order to delivery.",
+            "example": 3
           },
           "rank": {
             "type": [
               "number",
               "null"
-            ]
+            ],
+            "example": 1
           },
           "eligible": {
-            "type": "boolean"
+            "type": "boolean",
+            "example": true
           },
           "ineligible_reasons": {
             "type": "array",
@@ -2071,7 +2561,9 @@
             }
           },
           "quarantined": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Flagged by prompt-injection screening: withheld from the agent and blocked by TrustRail.",
+            "example": true
           },
           "data_source": {
             "$ref": "#/components/schemas/DataSource"
@@ -2103,13 +2595,16 @@
           "quarantined",
           "data_source"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "A supplier offer the agent considered, with its policy verdict and delivered cost."
       },
       "PurchaseOrderDto": {
         "type": "object",
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Unique identifier (UUID).",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "number": {
             "type": "string"
@@ -2118,46 +2613,66 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Id of the related request.",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "supplier_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Id of the related supplier.",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "supplier_name": {
-            "type": "string"
+            "type": "string",
+            "example": "Harbor Restaurant Supply"
           },
           "status": {
             "$ref": "#/components/schemas/PurchaseOrderStatus"
           },
           "currency": {
-            "type": "string"
+            "type": "string",
+            "description": "ISO 4217 currency code.",
+            "example": "USD"
           },
           "subtotal_minor": {
-            "type": "number"
+            "type": "integer",
+            "description": "Subtotal, in minor units (cents).",
+            "example": 17320
           },
           "shipping_minor": {
-            "type": "number"
+            "type": "integer",
+            "description": "Shipping, in minor units (cents).",
+            "example": 17320
           },
           "tax_minor": {
-            "type": "number"
+            "type": "integer",
+            "description": "Tax, in minor units (cents).",
+            "example": 17320
           },
           "fees_minor": {
-            "type": "number"
+            "type": "integer",
+            "description": "Fees, in minor units (cents).",
+            "example": 17320
           },
           "total_minor": {
-            "type": "number"
+            "type": "integer",
+            "description": "Total, in minor units (cents).",
+            "example": 17320
           },
           "cart_hash": {
-            "type": "string"
+            "type": "string",
+            "description": "SHA-256 of the canonical cart, bound into the Intent Certificate.",
+            "example": "sha256:9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f"
           },
           "items": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/PurchaseOrderItemDto"
-            }
+            },
+            "description": "The items in this response."
           },
           "policy_decision": {
-            "anyOf": [
+            "oneOf": [
               {
                 "$ref": "#/components/schemas/PolicyDecisionDto"
               },
@@ -2167,7 +2682,8 @@
             ]
           },
           "certificate": {
-            "anyOf": [
+            "description": "Intent Certificate.",
+            "oneOf": [
               {
                 "$ref": "#/components/schemas/IntentCertificateDto"
               },
@@ -2177,7 +2693,8 @@
             ]
           },
           "payment": {
-            "anyOf": [
+            "description": "Payment attempt.",
+            "oneOf": [
               {
                 "$ref": "#/components/schemas/PaymentDto"
               },
@@ -2187,7 +2704,8 @@
             ]
           },
           "delivery": {
-            "anyOf": [
+            "description": "Delivery.",
+            "oneOf": [
               {
                 "$ref": "#/components/schemas/DeliveryDto"
               },
@@ -2197,7 +2715,9 @@
             ]
           },
           "created_at": {
-            "type": "string"
+            "type": "string",
+            "description": "When created happened (ISO 8601, UTC).",
+            "example": "2026-11-10T18:30:00.000Z"
           }
         },
         "required": [
@@ -2221,7 +2741,8 @@
           "delivery",
           "created_at"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "A proposed or committed purchase order (immutable once proposed)."
       },
       "PurchaseOrderStatus": {
         "type": "string",
@@ -2236,13 +2757,16 @@
           "REJECTED",
           "CANCELLED",
           "EXPIRED"
-        ]
+        ],
+        "description": "Purchase order lifecycle."
       },
       "PurchaseOrderItemDto": {
         "type": "object",
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Unique identifier (UUID).",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "kind": {
             "$ref": "#/components/schemas/LineKind"
@@ -2251,13 +2775,17 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Stock-keeping unit code.",
+            "example": "PKG-TAKEOUT-32"
           },
           "description": {
-            "type": "string"
+            "type": "string",
+            "description": "Free-text description."
           },
           "category": {
-            "anyOf": [
+            "description": "Product category.",
+            "oneOf": [
               {
                 "$ref": "#/components/schemas/ProductCategory"
               },
@@ -2267,25 +2795,34 @@
             ]
           },
           "quantity": {
-            "type": "number"
+            "type": "integer",
+            "example": 1
           },
           "unit_price_minor": {
-            "type": "number"
+            "type": "integer",
+            "description": "Unit price, in minor units (cents).",
+            "example": 17320
           },
           "line_total_minor": {
-            "type": "number"
+            "type": "integer",
+            "description": "Line total, in minor units (cents).",
+            "example": 17320
           },
           "inventory_item_id": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Id of the related inventory item.",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "pack_quantity": {
             "type": [
-              "number",
+              "integer",
               "null"
-            ]
+            ],
+            "description": "Units in one pack.",
+            "example": 1
           }
         },
         "required": [
@@ -2300,7 +2837,8 @@
           "inventory_item_id",
           "pack_quantity"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "A purchase order line."
       },
       "LineKind": {
         "type": "string",
@@ -2309,16 +2847,21 @@
           "SHIPPING",
           "TAX",
           "FEE"
-        ]
+        ],
+        "description": "Kind of cart or invoice line."
       },
       "PolicyDecisionDto": {
         "type": "object",
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Unique identifier (UUID).",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "purchase_order_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Id of the related purchase order.",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "decision": {
             "$ref": "#/components/schemas/PolicyDecisionKind"
@@ -2336,10 +2879,13 @@
             }
           },
           "human_approval_required": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "An owner must approve every purchase (always true).",
+            "example": true
           },
           "mandate_version": {
-            "type": "number"
+            "type": "number",
+            "example": 1
           },
           "policy_version": {
             "type": "string"
@@ -2348,7 +2894,9 @@
             "type": "string"
           },
           "evaluated_at": {
-            "type": "string"
+            "type": "string",
+            "description": "When evaluated happened (ISO 8601, UTC).",
+            "example": "2026-11-10T18:30:00.000Z"
           }
         },
         "required": [
@@ -2363,7 +2911,8 @@
           "input_digest",
           "evaluated_at"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "A recorded TrustRail decision with its checks and violations."
       },
       "PolicyDecisionKind": {
         "type": "string",
@@ -2371,7 +2920,8 @@
           "ALLOW",
           "REVIEW_REQUIRED",
           "BLOCK"
-        ]
+        ],
+        "description": "TrustRail's verdict on a cart."
       },
       "ViolationDto": {
         "type": "object",
@@ -2384,14 +2934,17 @@
             "enum": [
               "BLOCK",
               "REVIEW"
-            ]
+            ],
+            "description": "Severity.",
+            "example": "BLOCK"
           },
           "message": {
-            "type": "string"
+            "type": "string",
+            "description": "Human-readable message (fixed per code)."
           },
           "evidence": {
             "type": "object",
-            "additionalProperties": {}
+            "additionalProperties": true
           }
         },
         "required": [
@@ -2399,7 +2952,8 @@
           "severity",
           "message"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "A policy violation with its severity and explanation."
       },
       "ViolationCode": {
         "type": "string",
@@ -2423,16 +2977,19 @@
           "QUARANTINED_SOURCE",
           "QUANTITY_EXCEEDS_NEED",
           "POLICY_INPUT_INVALID"
-        ]
+        ],
+        "description": "Machine-readable TrustRail policy violation."
       },
       "PolicyCheckDto": {
         "type": "object",
         "properties": {
           "code": {
-            "type": "string"
+            "type": "string",
+            "description": "Stable machine-readable code."
           },
           "passed": {
-            "type": "boolean"
+            "type": "boolean",
+            "example": true
           },
           "detail": {
             "type": "string"
@@ -2443,13 +3000,16 @@
           "passed",
           "detail"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "One TrustRail policy check and its result."
       },
       "IntentCertificateDto": {
         "type": "object",
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Unique identifier (UUID).",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "status": {
             "$ref": "#/components/schemas/CertificateStatus"
@@ -2458,20 +3018,27 @@
             "$ref": "#/components/schemas/IntentCertificatePayload"
           },
           "key_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Id of the related key.",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "signature": {
             "type": "string"
           },
           "algorithm": {
             "type": "string",
-            "const": "Ed25519"
+            "const": "Ed25519",
+            "example": "Ed25519"
           },
           "issued_at": {
-            "type": "string"
+            "type": "string",
+            "description": "When issued happened (ISO 8601, UTC).",
+            "example": "2026-11-10T18:30:00.000Z"
           },
           "expires_at": {
-            "type": "string"
+            "type": "string",
+            "description": "When expires happened (ISO 8601, UTC).",
+            "example": "2026-11-10T18:30:00.000Z"
           }
         },
         "required": [
@@ -2484,7 +3051,8 @@
           "issued_at",
           "expires_at"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "The owner's signed approval of one exact cart (Ed25519)."
       },
       "CertificateStatus": {
         "type": "string",
@@ -2493,59 +3061,88 @@
           "CONSUMED",
           "REVOKED",
           "EXPIRED"
-        ]
+        ],
+        "description": "Lifecycle of an Intent Certificate."
       },
       "IntentCertificatePayload": {
         "type": "object",
         "properties": {
           "certificate_version": {
             "type": "number",
-            "const": 1
+            "const": 1,
+            "example": 1
           },
           "intent_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Id of the related intent.",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "organization_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Id of the related organization.",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "buyer_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Id of the related buyer.",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "purchase_order_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Id of the related purchase order.",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "supplier_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Id of the related supplier.",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "cart_hash": {
-            "type": "string"
+            "type": "string",
+            "description": "SHA-256 of the canonical cart, bound into the Intent Certificate.",
+            "example": "sha256:9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f"
           },
           "mandate_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Id of the related mandate.",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "mandate_version": {
-            "type": "number"
+            "type": "number",
+            "example": 1
           },
           "policy_decision_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Id of the related policy decision.",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "currency": {
-            "type": "string"
+            "type": "string",
+            "description": "ISO 4217 currency code.",
+            "example": "USD"
           },
           "approved_amount_minor": {
-            "type": "number"
+            "type": "integer",
+            "description": "Approved amount, in minor units (cents).",
+            "example": 17320
           },
           "approved_at": {
-            "type": "string"
+            "type": "string",
+            "description": "When approved happened (ISO 8601, UTC).",
+            "example": "2026-11-10T18:30:00.000Z"
           },
           "expires_at": {
-            "type": "string"
+            "type": "string",
+            "description": "When expires happened (ISO 8601, UTC).",
+            "example": "2026-11-10T18:30:00.000Z"
           },
           "nonce": {
             "type": "string"
           },
           "key_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Id of the related key.",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           }
         },
         "required": [
@@ -2566,19 +3163,26 @@
           "nonce",
           "key_id"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "The signed fields of an Intent Certificate."
       },
       "PaymentDto": {
         "type": "object",
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Unique identifier (UUID).",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "intent_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Id of the related intent.",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "purchase_order_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Id of the related purchase order.",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "status": {
             "$ref": "#/components/schemas/PaymentStatus"
@@ -2587,28 +3191,40 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "PayPal Orders v2 order id.",
+            "example": "5O190127TN364715T"
           },
           "paypal_capture_id": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "PayPal capture id once payment completed.",
+            "example": "3C679366HH908993F"
           },
           "amount_minor": {
-            "type": "number"
+            "type": "integer",
+            "description": "Amount, in minor units (cents).",
+            "example": 17320
           },
           "currency": {
-            "type": "string"
+            "type": "string",
+            "description": "ISO 4217 currency code.",
+            "example": "USD"
           },
           "captured_amount_minor": {
             "type": [
-              "number",
+              "integer",
               "null"
-            ]
+            ],
+            "description": "Captured amount, in minor units (cents).",
+            "example": 17320
           },
           "refunded_amount_minor": {
-            "type": "number"
+            "type": "integer",
+            "description": "Refunded amount, in minor units (cents).",
+            "example": 17320
           },
           "failure_code": {
             "type": [
@@ -2623,16 +3239,22 @@
             ]
           },
           "created_at": {
-            "type": "string"
+            "type": "string",
+            "description": "When created happened (ISO 8601, UTC).",
+            "example": "2026-11-10T18:30:00.000Z"
           },
           "updated_at": {
-            "type": "string"
+            "type": "string",
+            "description": "When updated happened (ISO 8601, UTC).",
+            "example": "2026-11-10T18:30:00.000Z"
           },
           "completed_at": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "When completed happened (ISO 8601, UTC).",
+            "example": "2026-11-10T18:30:00.000Z"
           }
         },
         "required": [
@@ -2652,7 +3274,8 @@
           "updated_at",
           "completed_at"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "A PayPal payment attempt for a purchase order."
       },
       "PaymentStatus": {
         "type": "string",
@@ -2666,34 +3289,47 @@
           "VOIDED",
           "REFUNDED",
           "PARTIALLY_REFUNDED"
-        ]
+        ],
+        "description": "Payment attempt lifecycle."
       },
       "DeliveryDto": {
         "type": "object",
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Unique identifier (UUID).",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "purchase_order_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Id of the related purchase order.",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "supplier_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Id of the related supplier.",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "status": {
             "$ref": "#/components/schemas/DeliveryStatus"
           },
           "expected_date": {
-            "type": "string"
+            "type": "string",
+            "description": "Expected date (YYYY-MM-DD).",
+            "example": "2026-11-12"
           },
           "original_expected_date": {
-            "type": "string"
+            "type": "string",
+            "description": "Original expected date (YYYY-MM-DD).",
+            "example": "2026-11-12"
           },
           "delivered_at": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "When delivered happened (ISO 8601, UTC).",
+            "example": "2026-11-10T18:30:00.000Z"
           },
           "delay_reason": {
             "type": [
@@ -2703,7 +3339,9 @@
           },
           "data_source": {
             "type": "string",
-            "const": "SYNTHETIC"
+            "const": "SYNTHETIC",
+            "description": "Where this data came from.",
+            "example": "SYNTHETIC"
           }
         },
         "required": [
@@ -2717,7 +3355,8 @@
           "delay_reason",
           "data_source"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "A delivery for a paid purchase order (synthetic in the sandbox)."
       },
       "DeliveryStatus": {
         "type": "string",
@@ -2727,7 +3366,8 @@
           "DELAYED",
           "DELIVERED",
           "CANCELLED"
-        ]
+        ],
+        "description": "Delivery progress."
       },
       "RecommendationDto": {
         "type": "object",
@@ -2750,13 +3390,16 @@
           "rationale",
           "ai_mode"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "The agent's recommended proposal and its explanation."
       },
       "SecurityFindingDto": {
         "type": "object",
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Unique identifier (UUID).",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "type": {
             "$ref": "#/components/schemas/FindingType"
@@ -2765,10 +3408,12 @@
             "$ref": "#/components/schemas/Severity"
           },
           "title": {
-            "type": "string"
+            "type": "string",
+            "description": "Short title."
           },
           "description": {
-            "type": "string"
+            "type": "string",
+            "description": "Free-text description."
           },
           "source_kind": {
             "type": "string"
@@ -2777,26 +3422,34 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Id of the related source.",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "evidence": {
             "type": "object",
-            "additionalProperties": {}
+            "additionalProperties": true
           },
           "related_purchase_order_id": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Id of the related related purchase order.",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "related_request_id": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Id of the related related request.",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "created_at": {
-            "type": "string"
+            "type": "string",
+            "description": "When created happened (ISO 8601, UTC).",
+            "example": "2026-11-10T18:30:00.000Z"
           }
         },
         "required": [
@@ -2812,7 +3465,8 @@
           "related_request_id",
           "created_at"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "A security finding (prompt injection, unauthorised fee, duplicate, signature failure...)."
       },
       "FindingType": {
         "type": "string",
@@ -2828,7 +3482,8 @@
           "PAYMENT_AMOUNT_MISMATCH",
           "ACCESS_DENIED",
           "PAYMENT_REVERSED"
-        ]
+        ],
+        "description": "Kind of security finding."
       },
       "Severity": {
         "type": "string",
@@ -2837,13 +3492,16 @@
           "MEDIUM",
           "HIGH",
           "CRITICAL"
-        ]
+        ],
+        "description": "Finding severity."
       },
       "AgentStepDto": {
         "type": "object",
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Unique identifier (UUID).",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "tool": {
             "type": "string"
@@ -2854,16 +3512,22 @@
               "SUCCEEDED",
               "FAILED",
               "SKIPPED"
-            ]
+            ],
+            "description": "Current status.",
+            "example": "SUCCEEDED"
           },
           "duration_ms": {
-            "type": "number"
+            "type": "number",
+            "description": "Duration, in milliseconds.",
+            "example": 1
           },
           "summary": {
             "type": "string"
           },
           "started_at": {
-            "type": "string"
+            "type": "string",
+            "description": "When started happened (ISO 8601, UTC).",
+            "example": "2026-11-10T18:30:00.000Z"
           }
         },
         "required": [
@@ -2874,7 +3538,8 @@
           "summary",
           "started_at"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "One step of the procurement agent's research run (tool, input summary, outcome)."
       },
       "CreateProcurementRequest": {
         "type": "object",
@@ -2882,23 +3547,29 @@
           "instruction": {
             "type": "string",
             "minLength": 3,
-            "maxLength": 2000
+            "maxLength": 2000,
+            "description": "The natural-language instruction from the restaurant."
           },
           "currency": {
             "default": "USD",
             "type": "string",
             "enum": [
               "USD"
-            ]
+            ],
+            "description": "ISO 4217 currency code."
           },
           "budget_limit_minor": {
             "type": "integer",
             "minimum": 0,
-            "maximum": 9007199254740991
+            "maximum": 9007199254740991,
+            "description": "Budget limit, in minor units (cents).",
+            "example": 17320
           },
           "required_by": {
             "type": "string",
-            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "Date the goods are needed by (YYYY-MM-DD).",
+            "example": "2026-11-12"
           },
           "allow_alternatives": {
             "default": true,
@@ -2907,12 +3578,15 @@
           "demand_multiplier": {
             "type": "number",
             "minimum": 0.25,
-            "maximum": 4
+            "maximum": 4,
+            "description": "Demand relative to normal (1 = normal, 1.25 = 25% busier).",
+            "example": 1.25
           }
         },
         "required": [
           "instruction"
-        ]
+        ],
+        "description": "A natural-language purchasing instruction for the agent."
       },
       "ApproveRequest": {
         "type": "object",
@@ -2920,11 +3594,15 @@
           "purchase_order_id": {
             "type": "string",
             "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "Id of the related purchase order.",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "cart_hash": {
             "type": "string",
-            "pattern": "^sha256:[a-f0-9]{64}$"
+            "pattern": "^sha256:[a-f0-9]{64}$",
+            "description": "SHA-256 of the canonical cart, bound into the Intent Certificate.",
+            "example": "sha256:9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f"
           },
           "acknowledged_review_codes": {
             "default": [],
@@ -2937,13 +3615,15 @@
           },
           "note": {
             "type": "string",
-            "maxLength": 500
+            "maxLength": 500,
+            "description": "Optional note."
           }
         },
         "required": [
           "purchase_order_id",
           "cart_hash"
-        ]
+        ],
+        "description": "The owner's approval of one exact proposal, bound to the cart hash they saw."
       },
       "RejectRequest": {
         "type": "object",
@@ -2951,96 +3631,132 @@
           "reason": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 500
+            "maxLength": 500,
+            "description": "Reason given by the person making the change."
           },
           "purchase_order_id": {
             "type": "string",
             "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "Id of the related purchase order.",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           }
         },
         "required": [
           "reason"
-        ]
+        ],
+        "description": "Reject one proposal, or every open proposal on the request."
       },
       "SpendMandateDto": {
         "type": "object",
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Unique identifier (UUID).",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "version": {
-            "type": "number"
+            "type": "integer",
+            "description": "Version number.",
+            "example": 1
           },
           "status": {
             "type": "string",
             "enum": [
               "ACTIVE",
               "SUPERSEDED"
-            ]
+            ],
+            "description": "Current status.",
+            "example": "ACTIVE"
           },
           "currency": {
-            "type": "string"
+            "type": "string",
+            "description": "ISO 4217 currency code.",
+            "example": "USD"
           },
           "weekly_budget_minor": {
-            "type": "number"
+            "type": "integer",
+            "description": "Weekly budget, in minor units (cents).",
+            "example": 17320
           },
           "per_order_limit_minor": {
-            "type": "number"
+            "type": "integer",
+            "description": "Per order limit, in minor units (cents).",
+            "example": 17320
           },
           "auto_approval_limit_minor": {
-            "type": "number"
+            "type": "integer",
+            "description": "Auto approval limit, in minor units (cents).",
+            "example": 17320
           },
           "human_approval_required": {
             "type": "boolean",
-            "const": true
+            "description": "An owner must approve every purchase (always true). Always true.",
+            "example": true
           },
           "approved_supplier_ids": {
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Suppliers the owner has approved for payment."
           },
           "allowed_categories": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ProductCategory"
-            }
+            },
+            "description": "Product categories purchases may contain."
           },
           "max_market_price_premium_pct": {
-            "type": "number"
+            "type": "integer",
+            "description": "Max market price premium, in percent.",
+            "example": 1
           },
           "market_price_action": {
             "type": "string",
             "enum": [
               "REVIEW",
               "BLOCK"
-            ]
+            ],
+            "description": "What happens when a price exceeds the market premium: REVIEW or BLOCK.",
+            "example": "REVIEW"
           },
           "duplicate_window_hours": {
-            "type": "number"
+            "type": "integer",
+            "description": "Duplicate window, in hours.",
+            "example": 1
           },
           "duplicate_action": {
             "type": "string",
             "enum": [
               "REVIEW",
               "BLOCK"
-            ]
+            ],
+            "description": "What happens to a likely duplicate order: REVIEW or BLOCK.",
+            "example": "REVIEW"
           },
           "subscriptions_allowed": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether recurring purchases are allowed.",
+            "example": true
           },
           "certificate_ttl_minutes": {
-            "type": "number"
+            "type": "integer",
+            "description": "Certificate ttl, in minutes.",
+            "example": 1
           },
           "max_quantity_multiple_of_need": {
-            "type": "number"
+            "type": "number",
+            "example": 1
           },
           "created_by": {
             "type": "string"
           },
           "created_at": {
-            "type": "string"
+            "type": "string",
+            "description": "When created happened (ISO 8601, UTC).",
+            "example": "2026-11-10T18:30:00.000Z"
           }
         },
         "required": [
@@ -3064,7 +3780,8 @@
           "created_by",
           "created_at"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "The owner's Spend Mandate: what the business permits across purchases."
       },
       "BudgetDto": {
         "type": "object",
@@ -3076,19 +3793,29 @@
             "type": "string"
           },
           "currency": {
-            "type": "string"
+            "type": "string",
+            "description": "ISO 4217 currency code.",
+            "example": "USD"
           },
           "limit_minor": {
-            "type": "number"
+            "type": "integer",
+            "description": "Limit, in minor units (cents).",
+            "example": 17320
           },
           "reserved_minor": {
-            "type": "number"
+            "type": "integer",
+            "description": "Reserved, in minor units (cents).",
+            "example": 17320
           },
           "spent_minor": {
-            "type": "number"
+            "type": "integer",
+            "description": "Spent, in minor units (cents).",
+            "example": 17320
           },
           "remaining_minor": {
-            "type": "number"
+            "type": "integer",
+            "description": "Remaining, in minor units (cents).",
+            "example": 17320
           }
         },
         "required": [
@@ -3100,7 +3827,8 @@
           "spent_minor",
           "remaining_minor"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "The current weekly budget: limit, reserved and spent amounts."
       },
       "MandateUpdateResponse": {
         "type": "object",
@@ -3112,8 +3840,9 @@
             "$ref": "#/components/schemas/BudgetDto"
           },
           "revoked_certificates": {
-            "type": "number",
-            "description": "Active intent certificates revoked because they were signed under the previous version."
+            "type": "integer",
+            "description": "Active intent certificates revoked because they were signed under the previous version.",
+            "example": 1
           }
         },
         "required": [
@@ -3131,26 +3860,35 @@
             "type": "string",
             "enum": [
               "USD"
-            ]
+            ],
+            "description": "ISO 4217 currency code.",
+            "example": "USD"
           },
           "weekly_budget_minor": {
             "type": "integer",
             "minimum": 0,
-            "maximum": 100000000
+            "maximum": 100000000,
+            "description": "Weekly budget, in minor units (cents).",
+            "example": 17320
           },
           "per_order_limit_minor": {
             "type": "integer",
             "minimum": 0,
-            "maximum": 100000000
+            "maximum": 100000000,
+            "description": "Per order limit, in minor units (cents).",
+            "example": 17320
           },
           "auto_approval_limit_minor": {
             "type": "integer",
             "minimum": 0,
-            "maximum": 100000000
+            "maximum": 100000000,
+            "description": "Auto approval limit, in minor units (cents).",
+            "example": 17320
           },
           "human_approval_required": {
             "type": "boolean",
-            "const": true
+            "description": "An owner must approve every purchase (always true). Always true.",
+            "example": true
           },
           "approved_supplier_ids": {
             "maxItems": 200,
@@ -3159,7 +3897,8 @@
               "type": "string",
               "format": "uuid",
               "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-            }
+            },
+            "description": "Suppliers the owner has approved for payment."
           },
           "allowed_categories": {
             "minItems": 1,
@@ -3177,49 +3916,65 @@
                 "gift_cards",
                 "services"
               ]
-            }
+            },
+            "description": "Product categories purchases may contain."
           },
           "max_market_price_premium_pct": {
             "type": "integer",
             "minimum": 0,
-            "maximum": 500
+            "maximum": 500,
+            "description": "Max market price premium, in percent.",
+            "example": 1
           },
           "market_price_action": {
             "type": "string",
             "enum": [
               "REVIEW",
               "BLOCK"
-            ]
+            ],
+            "description": "What happens when a price exceeds the market premium: REVIEW or BLOCK.",
+            "example": "REVIEW"
           },
           "duplicate_window_hours": {
             "type": "integer",
             "minimum": 0,
-            "maximum": 720
+            "maximum": 720,
+            "description": "Duplicate window, in hours.",
+            "example": 1
           },
           "duplicate_action": {
             "type": "string",
             "enum": [
               "REVIEW",
               "BLOCK"
-            ]
+            ],
+            "description": "What happens to a likely duplicate order: REVIEW or BLOCK.",
+            "example": "REVIEW"
           },
           "subscriptions_allowed": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether recurring purchases are allowed.",
+            "example": true
           },
           "certificate_ttl_minutes": {
             "type": "integer",
             "minimum": 5,
-            "maximum": 60
+            "maximum": 60,
+            "description": "Certificate ttl, in minutes.",
+            "example": 5
           },
           "max_quantity_multiple_of_need": {
             "type": "number",
             "minimum": 1,
-            "maximum": 10
+            "maximum": 10,
+            "example": 1
           },
           "expected_version": {
             "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
+            "maximum": 9007199254740991,
+            "description": "The mandate version being edited (refused if it changed meanwhile).",
+            "example": 1,
+            "minimum": 1
           }
         },
         "required": [
@@ -3238,19 +3993,24 @@
           "certificate_ttl_minutes",
           "max_quantity_multiple_of_need",
           "expected_version"
-        ]
+        ],
+        "description": "A new Spend Mandate version (optimistic concurrency on `expected_version`)."
       },
       "CertificateVerificationDto": {
         "type": "object",
         "properties": {
           "intent_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Id of the related intent.",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "status": {
             "$ref": "#/components/schemas/CertificateVerificationStatus"
           },
           "valid": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether verification passed.",
+            "example": true
           },
           "checks": {
             "type": "array",
@@ -3262,7 +4022,9 @@
             "$ref": "#/components/schemas/IntentCertificateDto"
           },
           "verified_at": {
-            "type": "string"
+            "type": "string",
+            "description": "When verified happened (ISO 8601, UTC).",
+            "example": "2026-11-10T18:30:00.000Z"
           }
         },
         "required": [
@@ -3273,7 +4035,8 @@
           "certificate",
           "verified_at"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "Result of verifying an Intent Certificate's signature and bindings."
       },
       "CertificateVerificationStatus": {
         "type": "string",
@@ -3287,7 +4050,8 @@
           "REVOKED",
           "CONSUMED",
           "PAYLOAD_MISMATCH"
-        ]
+        ],
+        "description": "Outcome of a certificate verification."
       },
       "PayPalOrderResponse": {
         "type": "object",
@@ -3296,7 +4060,9 @@
             "$ref": "#/components/schemas/PaymentDto"
           },
           "paypal_order_id": {
-            "type": "string"
+            "type": "string",
+            "description": "PayPal Orders v2 order id.",
+            "example": "5O190127TN364715T"
           }
         },
         "required": [
@@ -3313,37 +4079,45 @@
             "type": "string",
             "minLength": 5,
             "maxLength": 64,
-            "pattern": "^[A-Z0-9-]+$"
+            "pattern": "^[A-Z0-9-]+$",
+            "description": "PayPal Orders v2 order id.",
+            "example": "5O190127TN364715T"
           }
         },
         "required": [
           "paypal_order_id"
-        ]
+        ],
+        "description": "Capture a PayPal order the buyer approved."
       },
       "RefundRequest": {
         "type": "object",
         "properties": {
           "amount_minor": {
             "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
+            "maximum": 9007199254740991,
+            "description": "Amount, in minor units (cents).",
+            "example": 17320,
+            "minimum": 1
           },
           "reason": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 255
+            "maxLength": 255,
+            "description": "Reason given by the person making the change."
           }
         },
         "required": [
           "reason"
-        ]
+        ],
+        "description": "Refund part or all of a captured payment."
       },
       "WebhookAckResponse": {
         "type": "object",
         "properties": {
           "received": {
             "type": "boolean",
-            "const": true
+            "description": "Always true: the notification was accepted. Always true.",
+            "example": true
           },
           "outcome": {
             "type": "string",
@@ -3351,7 +4125,9 @@
               "PROCESSED",
               "IGNORED",
               "DUPLICATE"
-            ]
+            ],
+            "description": "How the notification was handled.",
+            "example": "PROCESSED"
           }
         },
         "required": [
@@ -3374,79 +4150,102 @@
                 "purchase_order_item_id": {
                   "type": "string",
                   "format": "uuid",
-                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "description": "Id of the related purchase order item.",
+                  "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
                 },
                 "quantity_received": {
                   "type": "integer",
                   "minimum": 0,
-                  "maximum": 1000000
+                  "maximum": 1000000,
+                  "example": 1
                 }
               },
               "required": [
                 "purchase_order_item_id",
                 "quantity_received"
               ]
-            }
+            },
+            "description": "Line items."
           },
           "note": {
             "type": "string",
-            "maxLength": 500
+            "maxLength": 500,
+            "description": "Optional note."
           }
         },
         "required": [
           "lines"
-        ]
+        ],
+        "description": "Quantities received per purchase order line."
       },
       "DelayDeliveryRequest": {
         "type": "object",
         "properties": {
           "new_expected_date": {
             "type": "string",
-            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "New expected date (YYYY-MM-DD).",
+            "example": "2026-11-12"
           },
           "reason": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 255
+            "maxLength": 255,
+            "description": "Reason given by the person making the change."
           }
         },
         "required": [
           "new_expected_date",
           "reason"
-        ]
+        ],
+        "description": "Move a delivery's expected date, with a reason."
       },
       "InvoiceDto": {
         "type": "object",
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Unique identifier (UUID).",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "supplier_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Id of the related supplier.",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "purchase_order_id": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Id of the related purchase order.",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "invoice_number": {
             "type": "string"
           },
           "invoice_date": {
-            "type": "string"
+            "type": "string",
+            "description": "Invoice date (YYYY-MM-DD).",
+            "example": "2026-11-12"
           },
           "currency": {
-            "type": "string"
+            "type": "string",
+            "description": "ISO 4217 currency code.",
+            "example": "USD"
           },
           "total_minor": {
-            "type": "number"
+            "type": "integer",
+            "description": "Total, in minor units (cents).",
+            "example": 17320
           },
           "status": {
             "$ref": "#/components/schemas/InvoiceStatus"
           },
           "settlement_allowed": {
-            "type": "boolean"
+            "type": "boolean",
+            "example": true
           },
           "matches": {
             "type": "array",
@@ -3455,7 +4254,9 @@
             }
           },
           "created_at": {
-            "type": "string"
+            "type": "string",
+            "description": "When created happened (ISO 8601, UTC).",
+            "example": "2026-11-10T18:30:00.000Z"
           }
         },
         "required": [
@@ -3471,7 +4272,8 @@
           "matches",
           "created_at"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "A supplier invoice and its three-way match result."
       },
       "InvoiceStatus": {
         "type": "string",
@@ -3480,7 +4282,8 @@
           "DISCREPANCY",
           "DUPLICATE",
           "UNMATCHED"
-        ]
+        ],
+        "description": "Invoice match outcome."
       },
       "InvoiceMatchDto": {
         "type": "object",
@@ -3489,10 +4292,12 @@
             "type": "string"
           },
           "passed": {
-            "type": "boolean"
+            "type": "boolean",
+            "example": true
           },
           "severity": {
-            "anyOf": [
+            "description": "Severity.",
+            "oneOf": [
               {
                 "$ref": "#/components/schemas/Severity"
               },
@@ -3511,7 +4316,8 @@
           "severity",
           "detail"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "One check of the invoice match (amounts, quantities, duplicates)."
       },
       "AnalyzeInvoiceRequest": {
         "type": "object",
@@ -3519,10 +4325,13 @@
           "supplier_id": {
             "type": "string",
             "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "description": "Id of the related supplier.",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "purchase_order_id": {
-            "anyOf": [
+            "description": "Id of the related purchase order.",
+            "oneOf": [
               {
                 "type": "string",
                 "format": "uuid",
@@ -3540,13 +4349,17 @@
           },
           "invoice_date": {
             "type": "string",
-            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "Invoice date (YYYY-MM-DD).",
+            "example": "2026-11-12"
           },
           "currency": {
             "type": "string",
             "enum": [
               "USD"
-            ]
+            ],
+            "description": "ISO 4217 currency code.",
+            "example": "USD"
           },
           "lines": {
             "minItems": 1,
@@ -3556,7 +4369,8 @@
               "type": "object",
               "properties": {
                 "sku": {
-                  "anyOf": [
+                  "description": "Stock-keeping unit code.",
+                  "oneOf": [
                     {
                       "type": "string",
                       "maxLength": 64
@@ -3569,22 +4383,28 @@
                 "description": {
                   "type": "string",
                   "minLength": 1,
-                  "maxLength": 500
+                  "maxLength": 500,
+                  "description": "Free-text description."
                 },
                 "quantity": {
                   "type": "integer",
-                  "exclusiveMinimum": 0,
-                  "maximum": 1000000
+                  "maximum": 1000000,
+                  "example": 1,
+                  "minimum": 1
                 },
                 "unit_price_minor": {
                   "type": "integer",
                   "minimum": 0,
-                  "maximum": 9007199254740991
+                  "maximum": 9007199254740991,
+                  "description": "Unit price, in minor units (cents).",
+                  "example": 17320
                 },
                 "line_total_minor": {
                   "type": "integer",
                   "minimum": 0,
-                  "maximum": 9007199254740991
+                  "maximum": 9007199254740991,
+                  "description": "Line total, in minor units (cents).",
+                  "example": 17320
                 }
               },
               "required": [
@@ -3593,12 +4413,15 @@
                 "unit_price_minor",
                 "line_total_minor"
               ]
-            }
+            },
+            "description": "Line items."
           },
           "total_minor": {
             "type": "integer",
             "minimum": 0,
-            "maximum": 9007199254740991
+            "maximum": 9007199254740991,
+            "description": "Total, in minor units (cents).",
+            "example": 17320
           },
           "notes": {
             "type": "string",
@@ -3612,16 +4435,21 @@
           "currency",
           "lines",
           "total_minor"
-        ]
+        ],
+        "description": "A supplier invoice to match against its purchase order and delivery."
       },
       "AuditEventDto": {
         "type": "object",
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Unique identifier (UUID).",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "sequence": {
-            "type": "number"
+            "type": "integer",
+            "description": "Position in the workspace's audit chain.",
+            "example": 1
           },
           "action": {
             "type": "string"
@@ -3633,13 +4461,16 @@
               "SYSTEM",
               "AGENT",
               "PAYPAL"
-            ]
+            ],
+            "example": "USER"
           },
           "actor_id": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Id of the related actor.",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "entity_type": {
             "type": "string"
@@ -3648,29 +4479,37 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Id of the related entity.",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "data": {
             "type": "object",
-            "additionalProperties": {}
+            "additionalProperties": true
           },
           "hash": {
-            "type": "string"
+            "type": "string",
+            "description": "SHA-256 hash of this audit event."
           },
           "prev_hash": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Hash of the previous audit event (null for the first)."
           },
           "correlation_id": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Request correlation id; quote it to support to find the server logs.",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "created_at": {
-            "type": "string"
+            "type": "string",
+            "description": "When created happened (ISO 8601, UTC).",
+            "example": "2026-11-10T18:30:00.000Z"
           }
         },
         "required": [
@@ -3687,22 +4526,27 @@
           "correlation_id",
           "created_at"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "A tamper-evident audit log entry; each hash covers the previous one."
       },
       "AuditChainVerificationDto": {
         "type": "object",
         "properties": {
           "valid": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether verification passed.",
+            "example": true
           },
           "events_checked": {
-            "type": "number"
+            "type": "integer",
+            "example": 1
           },
           "first_invalid_sequence": {
             "type": [
               "number",
               "null"
-            ]
+            ],
+            "example": 1
           }
         },
         "required": [
@@ -3710,13 +4554,16 @@
           "events_checked",
           "first_invalid_sequence"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "Result of re-verifying the hash-chained audit log."
       },
       "AnalyticsSummaryDto": {
         "type": "object",
         "properties": {
           "currency": {
-            "type": "string"
+            "type": "string",
+            "description": "ISO 4217 currency code.",
+            "example": "USD"
           },
           "budget": {
             "$ref": "#/components/schemas/BudgetDto"
@@ -3725,25 +4572,36 @@
             "type": "object",
             "properties": {
               "approved_spend_minor": {
-                "type": "number"
+                "type": "integer",
+                "description": "Approved spend, in minor units (cents).",
+                "example": 17320
               },
               "captured_spend_minor": {
-                "type": "number"
+                "type": "integer",
+                "description": "Captured spend, in minor units (cents).",
+                "example": 17320
               },
               "refunded_minor": {
-                "type": "number"
+                "type": "integer",
+                "description": "Refunded, in minor units (cents).",
+                "example": 17320
               },
               "orders_paid": {
-                "type": "number"
+                "type": "integer",
+                "example": 1
               },
               "orders_blocked": {
-                "type": "number"
+                "type": "integer",
+                "example": 1
               },
               "pending_approvals": {
-                "type": "number"
+                "type": "integer",
+                "example": 1
               },
               "requests_total": {
-                "type": "number"
+                "type": "integer",
+                "description": "Number of requests.",
+                "example": 1
               }
             },
             "required": [
@@ -3761,19 +4619,25 @@
             "type": "object",
             "properties": {
               "findings_total": {
-                "type": "number"
+                "type": "integer",
+                "description": "Number of findings.",
+                "example": 1
               },
               "blocked_attempts": {
-                "type": "number"
+                "type": "integer",
+                "example": 1
               },
               "prompt_injections_detected": {
-                "type": "number"
+                "type": "integer",
+                "example": 1
               },
               "duplicate_invoices_flagged": {
-                "type": "number"
+                "type": "integer",
+                "example": 1
               },
               "duplicate_captures": {
-                "type": "number"
+                "type": "integer",
+                "example": 1
               }
             },
             "required": [
@@ -3789,13 +4653,16 @@
             "type": "object",
             "properties": {
               "items_low": {
-                "type": "number"
+                "type": "integer",
+                "example": 1
               },
               "items_critical": {
-                "type": "number"
+                "type": "integer",
+                "example": 1
               },
               "items_out": {
-                "type": "number"
+                "type": "integer",
+                "example": 1
               }
             },
             "required": [
@@ -3809,13 +4676,16 @@
             "type": "object",
             "properties": {
               "scheduled": {
-                "type": "number"
+                "type": "number",
+                "example": 1
               },
               "delayed": {
-                "type": "number"
+                "type": "number",
+                "example": 1
               },
               "delivered": {
-                "type": "number"
+                "type": "number",
+                "example": 1
               }
             },
             "required": [
@@ -3831,13 +4701,18 @@
               "type": "object",
               "properties": {
                 "week_start": {
-                  "type": "string"
+                  "type": "string",
+                  "example": "2026-11-12"
                 },
                 "captured_minor": {
-                  "type": "number"
+                  "type": "integer",
+                  "description": "Captured, in minor units (cents).",
+                  "example": 17320
                 },
                 "reserved_minor": {
-                  "type": "number"
+                  "type": "integer",
+                  "description": "Reserved, in minor units (cents).",
+                  "example": 17320
                 }
               },
               "required": [
@@ -3854,13 +4729,17 @@
               "type": "object",
               "properties": {
                 "supplier": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "Supplier."
                 },
                 "captured_minor": {
-                  "type": "number"
+                  "type": "integer",
+                  "description": "Captured, in minor units (cents).",
+                  "example": 17320
                 },
                 "orders": {
-                  "type": "number"
+                  "type": "integer",
+                  "example": 1
                 }
               },
               "required": [
@@ -3878,10 +4757,13 @@
               "type": "object",
               "properties": {
                 "category": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "Product category."
                 },
                 "captured_minor": {
-                  "type": "number"
+                  "type": "integer",
+                  "description": "Captured, in minor units (cents).",
+                  "example": 17320
                 }
               },
               "required": [
@@ -3900,7 +4782,8 @@
                   "$ref": "#/components/schemas/PolicyDecisionKind"
                 },
                 "count": {
-                  "type": "number"
+                  "type": "integer",
+                  "example": 1
                 }
               },
               "required": [
@@ -3919,7 +4802,8 @@
                   "$ref": "#/components/schemas/FindingType"
                 },
                 "count": {
-                  "type": "number"
+                  "type": "integer",
+                  "example": 1
                 }
               },
               "required": [
@@ -3936,20 +4820,23 @@
                 "type": [
                   "number",
                   "null"
-                ]
+                ],
+                "example": 1
               },
               "p90": {
                 "type": [
                   "number",
                   "null"
-                ]
+                ],
+                "example": 1
               }
             },
             "required": [
               "median",
               "p90"
             ],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "description": "Procurement time, in milliseconds."
           }
         },
         "required": [
@@ -3966,19 +4853,23 @@
           "findings_by_type",
           "procurement_time_ms"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "Spend, budget, procurement and security outcomes for the workspace."
       },
       "PayPalNotificationStatusDto": {
         "type": "object",
         "properties": {
           "configured": {
-            "type": "boolean"
+            "type": "boolean",
+            "example": true
           },
           "last_received_at": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "When last received happened (ISO 8601, UTC).",
+            "example": "2026-11-10T18:30:00.000Z"
           },
           "last_event_type": {
             "type": [
@@ -3987,14 +4878,17 @@
             ]
           },
           "received_24h": {
-            "type": "number"
+            "type": "integer",
+            "example": 1
           },
           "unconfirmed_captures_7d": {
-            "type": "number",
-            "description": "Completed captures in the last 7 days with no verified PayPal notification."
+            "type": "integer",
+            "description": "Completed captures in the last 7 days with no verified PayPal notification.",
+            "example": 1
           },
           "rejected_signatures_24h": {
-            "type": "number"
+            "type": "integer",
+            "example": 1
           }
         },
         "required": [
@@ -4015,10 +4909,12 @@
             "type": "object",
             "properties": {
               "open_errors": {
-                "type": "number"
+                "type": "integer",
+                "example": 1
               },
               "sentry": {
-                "type": "boolean"
+                "type": "boolean",
+                "example": true
               }
             },
             "required": [
@@ -4031,13 +4927,17 @@
             "type": "object",
             "properties": {
               "email": {
-                "type": "boolean"
+                "type": "boolean",
+                "description": "Email address.",
+                "example": true
               },
               "webhook": {
-                "type": "boolean"
+                "type": "boolean",
+                "example": true
               },
               "recipients": {
-                "type": "number"
+                "type": "integer",
+                "example": 1
               }
             },
             "required": [
@@ -4051,7 +4951,9 @@
             "type": "object",
             "properties": {
               "enabled": {
-                "type": "boolean"
+                "type": "boolean",
+                "description": "Whether the feature is turned on.",
+                "example": true
               },
               "provider": {
                 "type": "string",
@@ -4059,14 +4961,17 @@
                   "resend",
                   "webhook",
                   "none"
-                ]
+                ],
+                "description": "Provider in use.",
+                "example": "resend"
               }
             },
             "required": [
               "enabled",
               "provider"
             ],
-            "additionalProperties": false
+            "additionalProperties": false,
+            "description": "Email address."
           },
           "paypal_webhooks": {
             "type": "object",
@@ -4075,13 +4980,17 @@
                 "type": [
                   "string",
                   "null"
-                ]
+                ],
+                "description": "When last received happened (ISO 8601, UTC).",
+                "example": "2026-11-10T18:30:00.000Z"
               },
               "received_24h": {
-                "type": "number"
+                "type": "integer",
+                "example": 1
               },
               "rejected_24h": {
-                "type": "number"
+                "type": "integer",
+                "example": 1
               }
             },
             "required": [
@@ -4095,13 +5004,16 @@
             "type": "object",
             "properties": {
               "capture_pending": {
-                "type": "number"
+                "type": "integer",
+                "example": 1
               },
               "oldest_pending_minutes": {
                 "type": [
                   "number",
                   "null"
-                ]
+                ],
+                "description": "Oldest pending, in minutes.",
+                "example": 1
               }
             },
             "required": [
@@ -4118,16 +5030,20 @@
           "paypal_webhooks",
           "payments"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "Platform health for operators: error tracking, alerting, email, webhooks, payments."
       },
       "SystemErrorDto": {
         "type": "object",
         "properties": {
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Unique identifier (UUID).",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "fingerprint": {
-            "type": "string"
+            "type": "string",
+            "description": "Grouping key for identical errors."
           },
           "source": {
             "type": "string",
@@ -4136,7 +5052,9 @@
               "web",
               "job",
               "monitor"
-            ]
+            ],
+            "description": "Where the error came from.",
+            "example": "api"
           },
           "level": {
             "type": "string",
@@ -4144,46 +5062,63 @@
               "warning",
               "error",
               "fatal"
-            ]
+            ],
+            "description": "Severity level.",
+            "example": "warning"
           },
           "code": {
-            "type": "string"
+            "type": "string",
+            "description": "Stable machine-readable code."
           },
           "message": {
-            "type": "string"
+            "type": "string",
+            "description": "Human-readable message (fixed per code)."
           },
           "route": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "API route template or page path."
           },
           "occurrences": {
-            "type": "number"
+            "type": "integer",
+            "description": "How many times this error occurred.",
+            "example": 1
           },
           "first_seen_at": {
-            "type": "string"
+            "type": "string",
+            "description": "When first seen happened (ISO 8601, UTC).",
+            "example": "2026-11-10T18:30:00.000Z"
           },
           "last_seen_at": {
-            "type": "string"
+            "type": "string",
+            "description": "When last seen happened (ISO 8601, UTC).",
+            "example": "2026-11-10T18:30:00.000Z"
           },
           "last_correlation_id": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Id of the related last correlation.",
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           "last_alerted_at": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "When last alerted happened (ISO 8601, UTC).",
+            "example": "2026-11-10T18:30:00.000Z"
           },
           "resolved_at": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "When resolved happened (ISO 8601, UTC).",
+            "example": "2026-11-10T18:30:00.000Z"
           }
         },
         "required": [
@@ -4201,19 +5136,23 @@
           "last_alerted_at",
           "resolved_at"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "description": "A tracked error group (operators only)."
       },
       "AlertTestResponse": {
         "type": "object",
         "properties": {
           "email_recipients": {
-            "type": "number"
+            "type": "integer",
+            "example": 1
           },
           "emails_sent": {
-            "type": "number"
+            "type": "integer",
+            "example": 1
           },
           "webhook_sent": {
-            "type": "boolean"
+            "type": "boolean",
+            "example": true
           }
         },
         "required": [
@@ -4335,7 +5274,7 @@
         "summary": "Sign in (sets httpOnly session cookie)",
         "description": "Sign in (sets httpOnly session cookie).",
         "tags": [
-          "Auth"
+          "Accounts"
         ],
         "parameters": [
           {
@@ -4384,7 +5323,8 @@
                 "password": "correct-horse-battery-staple"
               }
             }
-          }
+          },
+          "description": "Email and password sign-in."
         }
       }
     },
@@ -4394,7 +5334,7 @@
         "summary": "Create a workspace and its owner (sets session cookie)",
         "description": "Create a workspace and its owner (sets session cookie).",
         "tags": [
-          "Auth"
+          "Accounts"
         ],
         "parameters": [
           {
@@ -4447,7 +5387,8 @@
                 "sample_data": true
               }
             }
-          }
+          },
+          "description": "Create a workspace and its first owner."
         }
       }
     },
@@ -4457,7 +5398,7 @@
         "summary": "Email a password reset link (always 202)",
         "description": "Email a password reset link (always 202).",
         "tags": [
-          "Auth"
+          "Accounts"
         ],
         "parameters": [
           {
@@ -4506,7 +5447,8 @@
                 "email": "ada@example.com"
               }
             }
-          }
+          },
+          "description": "Request a password reset email."
         }
       }
     },
@@ -4516,7 +5458,7 @@
         "summary": "Set a new password from a one-time link",
         "description": "Set a new password from a one-time link.",
         "tags": [
-          "Auth"
+          "Accounts"
         ],
         "parameters": [
           {
@@ -4566,7 +5508,8 @@
                 "password": "a-new-strong-passphrase"
               }
             }
-          }
+          },
+          "description": "Set a new password from a one-time reset link."
         }
       }
     },
@@ -4576,7 +5519,7 @@
         "summary": "Change your password (signs out other sessions)",
         "description": "Change your password (signs out other sessions).",
         "tags": [
-          "Auth"
+          "Accounts"
         ],
         "parameters": [
           {
@@ -4584,6 +5527,9 @@
           }
         ],
         "security": [
+          {
+            "secureSession": []
+          },
           {
             "session": []
           }
@@ -4636,7 +5582,8 @@
                 "new_password": "a-new-strong-passphrase"
               }
             }
-          }
+          },
+          "description": "Change the signed-in user's password."
         }
       }
     },
@@ -4694,15 +5641,16 @@
                 "token": "Zm9yLWRvY3MtZXhhbXBsZS1vbmx5LW5vdC1hLXRva2Vu"
               }
             }
-          }
+          },
+          "description": "An invitation link token."
         }
       }
     },
     "/invitations/accept": {
       "post": {
         "operationId": "acceptInvitation",
-        "summary": "Accept an invitation: create the account and sign in",
-        "description": "Accept an invitation: create the account and sign in.",
+        "summary": "Accept an invitation, create the account and sign in",
+        "description": "Accept an invitation, create the account and sign in.",
         "tags": [
           "Team"
         ],
@@ -4714,7 +5662,7 @@
         "security": [],
         "responses": {
           "201": {
-            "description": "Accept an invitation: create the account and sign in",
+            "description": "Accept an invitation, create the account and sign in",
             "content": {
               "application/json": {
                 "schema": {
@@ -4754,7 +5702,8 @@
                 "password": "a-new-strong-passphrase"
               }
             }
-          }
+          },
+          "description": "Accept an invitation: the invitee's name and new password, with the link token."
         }
       }
     },
@@ -4815,7 +5764,8 @@
                 "kind": "render"
               }
             }
-          }
+          },
+          "description": "A browser error reported for error tracking."
         }
       }
     },
@@ -4825,7 +5775,7 @@
         "summary": "Sign out",
         "description": "Sign out.",
         "tags": [
-          "Auth"
+          "Accounts"
         ],
         "parameters": [
           {
@@ -4833,6 +5783,9 @@
           }
         ],
         "security": [
+          {
+            "secureSession": []
+          },
           {
             "session": []
           }
@@ -4862,10 +5815,13 @@
         "summary": "Current user and organization",
         "description": "Current user and organization.",
         "tags": [
-          "Auth"
+          "Accounts"
         ],
         "parameters": [],
         "security": [
+          {
+            "secureSession": []
+          },
           {
             "session": []
           }
@@ -4914,6 +5870,9 @@
         ],
         "parameters": [],
         "security": [
+          {
+            "secureSession": []
+          },
           {
             "session": []
           }
@@ -4967,6 +5926,9 @@
           }
         ],
         "security": [
+          {
+            "secureSession": []
+          },
           {
             "session": []
           }
@@ -5029,7 +5991,8 @@
                 ]
               }
             }
-          }
+          },
+          "description": "A new stock item, including its opening on-hand count."
         }
       }
     },
@@ -5049,8 +6012,10 @@
             "description": "Resource id (UUID).",
             "schema": {
               "type": "string",
-              "format": "uuid"
-            }
+              "format": "uuid",
+              "description": "Resource id (UUID)."
+            },
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           {
             "$ref": "#/components/parameters/Csrf"
@@ -5060,6 +6025,9 @@
           }
         ],
         "security": [
+          {
+            "secureSession": []
+          },
           {
             "session": []
           }
@@ -5119,7 +6087,8 @@
                 "note": "Damaged sleeve"
               }
             }
-          }
+          },
+          "description": "An authorised stock change with a reason."
         }
       }
     },
@@ -5137,6 +6106,9 @@
           }
         ],
         "security": [
+          {
+            "secureSession": []
+          },
           {
             "session": []
           }
@@ -5180,7 +6152,8 @@
                 "demand_multiplier": 1.25
               }
             }
-          }
+          },
+          "description": "Parameters for a reorder forecast."
         }
       }
     },
@@ -5200,14 +6173,19 @@
             "description": "Resource id (UUID).",
             "schema": {
               "type": "string",
-              "format": "uuid"
-            }
+              "format": "uuid",
+              "description": "Resource id (UUID)."
+            },
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           {
             "$ref": "#/components/parameters/Csrf"
           }
         ],
         "security": [
+          {
+            "secureSession": []
+          },
           {
             "session": []
           }
@@ -5259,7 +6237,8 @@
                 "$ref": "#/components/schemas/InventoryItemInput"
               }
             }
-          }
+          },
+          "description": "Editable details of a stock item (quantities change through adjustments)."
         }
       }
     },
@@ -5273,6 +6252,9 @@
         ],
         "parameters": [],
         "security": [
+          {
+            "secureSession": []
+          },
           {
             "session": []
           }
@@ -5326,6 +6308,9 @@
           }
         ],
         "security": [
+          {
+            "secureSession": []
+          },
           {
             "session": []
           }
@@ -5392,7 +6377,8 @@
                 "checkout_eligible": true
               }
             }
-          }
+          },
+          "description": "Fields for creating or updating a supplier."
         }
       }
     },
@@ -5412,11 +6398,16 @@
             "description": "Resource id (UUID).",
             "schema": {
               "type": "string",
-              "format": "uuid"
-            }
+              "format": "uuid",
+              "description": "Resource id (UUID)."
+            },
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           }
         ],
         "security": [
+          {
+            "secureSession": []
+          },
           {
             "session": []
           }
@@ -5472,14 +6463,19 @@
             "description": "Resource id (UUID).",
             "schema": {
               "type": "string",
-              "format": "uuid"
-            }
+              "format": "uuid",
+              "description": "Resource id (UUID)."
+            },
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           {
             "$ref": "#/components/parameters/Csrf"
           }
         ],
         "security": [
+          {
+            "secureSession": []
+          },
           {
             "session": []
           }
@@ -5531,7 +6527,8 @@
                 "$ref": "#/components/schemas/SupplierInput"
               }
             }
-          }
+          },
+          "description": "Fields for creating or updating a supplier."
         }
       }
     },
@@ -5551,14 +6548,19 @@
             "description": "Resource id (UUID).",
             "schema": {
               "type": "string",
-              "format": "uuid"
-            }
+              "format": "uuid",
+              "description": "Resource id (UUID)."
+            },
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           {
             "$ref": "#/components/parameters/Csrf"
           }
         ],
         "security": [
+          {
+            "secureSession": []
+          },
           {
             "session": []
           }
@@ -5621,7 +6623,8 @@
                 "recurring": false
               }
             }
-          }
+          },
+          "description": "Fields for creating or updating a catalog listing."
         }
       }
     },
@@ -5641,8 +6644,10 @@
             "description": "Resource id (UUID).",
             "schema": {
               "type": "string",
-              "format": "uuid"
-            }
+              "format": "uuid",
+              "description": "Resource id (UUID)."
+            },
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           {
             "name": "itemId",
@@ -5651,14 +6656,19 @@
             "description": "itemId id (UUID).",
             "schema": {
               "type": "string",
-              "format": "uuid"
-            }
+              "format": "uuid",
+              "description": "itemId id (UUID)."
+            },
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           {
             "$ref": "#/components/parameters/Csrf"
           }
         ],
         "security": [
+          {
+            "secureSession": []
+          },
           {
             "session": []
           }
@@ -5710,7 +6720,8 @@
                 "$ref": "#/components/schemas/CatalogItemInput"
               }
             }
-          }
+          },
+          "description": "Fields for creating or updating a catalog listing."
         }
       }
     },
@@ -5724,6 +6735,9 @@
         ],
         "parameters": [],
         "security": [
+          {
+            "secureSession": []
+          },
           {
             "session": []
           }
@@ -5769,6 +6783,9 @@
         ],
         "security": [
           {
+            "secureSession": []
+          },
+          {
             "session": []
           }
         ],
@@ -5812,7 +6829,8 @@
                 "role": "MANAGER"
               }
             }
-          }
+          },
+          "description": "Invite an email address with a role."
         }
       }
     },
@@ -5832,14 +6850,19 @@
             "description": "Resource id (UUID).",
             "schema": {
               "type": "string",
-              "format": "uuid"
-            }
+              "format": "uuid",
+              "description": "Resource id (UUID)."
+            },
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           {
             "$ref": "#/components/parameters/Csrf"
           }
         ],
         "security": [
+          {
+            "secureSession": []
+          },
           {
             "session": []
           }
@@ -5898,14 +6921,19 @@
             "description": "Resource id (UUID).",
             "schema": {
               "type": "string",
-              "format": "uuid"
-            }
+              "format": "uuid",
+              "description": "Resource id (UUID)."
+            },
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           {
             "$ref": "#/components/parameters/Csrf"
           }
         ],
         "security": [
+          {
+            "secureSession": []
+          },
           {
             "session": []
           }
@@ -5960,7 +6988,8 @@
                 "role": "VIEWER"
               }
             }
-          }
+          },
+          "description": "A member's new role."
         }
       }
     },
@@ -5980,14 +7009,19 @@
             "description": "Resource id (UUID).",
             "schema": {
               "type": "string",
-              "format": "uuid"
-            }
+              "format": "uuid",
+              "description": "Resource id (UUID)."
+            },
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           {
             "$ref": "#/components/parameters/Csrf"
           }
         ],
         "security": [
+          {
+            "secureSession": []
+          },
           {
             "session": []
           }
@@ -6031,14 +7065,19 @@
             "description": "Resource id (UUID).",
             "schema": {
               "type": "string",
-              "format": "uuid"
-            }
+              "format": "uuid",
+              "description": "Resource id (UUID)."
+            },
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           {
             "$ref": "#/components/parameters/Csrf"
           }
         ],
         "security": [
+          {
+            "secureSession": []
+          },
           {
             "session": []
           }
@@ -6083,6 +7122,9 @@
         ],
         "parameters": [],
         "security": [
+          {
+            "secureSession": []
+          },
           {
             "session": []
           }
@@ -6148,6 +7190,9 @@
         ],
         "security": [
           {
+            "secureSession": []
+          },
+          {
             "session": []
           }
         ],
@@ -6195,7 +7240,8 @@
                 "allow_alternatives": true
               }
             }
-          }
+          },
+          "description": "A natural-language purchasing instruction for the agent."
         }
       }
     },
@@ -6215,11 +7261,16 @@
             "description": "Resource id (UUID).",
             "schema": {
               "type": "string",
-              "format": "uuid"
-            }
+              "format": "uuid",
+              "description": "Resource id (UUID)."
+            },
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           }
         ],
         "security": [
+          {
+            "secureSession": []
+          },
           {
             "session": []
           }
@@ -6269,14 +7320,19 @@
             "description": "Resource id (UUID).",
             "schema": {
               "type": "string",
-              "format": "uuid"
-            }
+              "format": "uuid",
+              "description": "Resource id (UUID)."
+            },
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           {
             "$ref": "#/components/parameters/Csrf"
           }
         ],
         "security": [
+          {
+            "secureSession": []
+          },
           {
             "session": []
           }
@@ -6327,14 +7383,19 @@
             "description": "Resource id (UUID).",
             "schema": {
               "type": "string",
-              "format": "uuid"
-            }
+              "format": "uuid",
+              "description": "Resource id (UUID)."
+            },
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           {
             "$ref": "#/components/parameters/Csrf"
           }
         ],
         "security": [
+          {
+            "secureSession": []
+          },
           {
             "session": []
           }
@@ -6385,8 +7446,10 @@
             "description": "Resource id (UUID).",
             "schema": {
               "type": "string",
-              "format": "uuid"
-            }
+              "format": "uuid",
+              "description": "Resource id (UUID)."
+            },
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           {
             "$ref": "#/components/parameters/Csrf"
@@ -6396,6 +7459,9 @@
           }
         ],
         "security": [
+          {
+            "secureSession": []
+          },
           {
             "session": []
           }
@@ -6461,7 +7527,8 @@
                 ]
               }
             }
-          }
+          },
+          "description": "The owner's approval of one exact proposal, bound to the cart hash they saw."
         }
       }
     },
@@ -6481,14 +7548,19 @@
             "description": "Resource id (UUID).",
             "schema": {
               "type": "string",
-              "format": "uuid"
-            }
+              "format": "uuid",
+              "description": "Resource id (UUID)."
+            },
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           {
             "$ref": "#/components/parameters/Csrf"
           }
         ],
         "security": [
+          {
+            "secureSession": []
+          },
           {
             "session": []
           }
@@ -6535,7 +7607,8 @@
                 "reason": "Not needed this week"
               }
             }
-          }
+          },
+          "description": "Reject one proposal, or every open proposal on the request."
         }
       }
     },
@@ -6549,6 +7622,9 @@
         ],
         "parameters": [],
         "security": [
+          {
+            "secureSession": []
+          },
           {
             "session": []
           }
@@ -6607,6 +7683,9 @@
         ],
         "security": [
           {
+            "secureSession": []
+          },
+          {
             "session": []
           }
         ],
@@ -6649,7 +7728,8 @@
                 "$ref": "#/components/schemas/SpendMandateInput"
               }
             }
-          }
+          },
+          "description": "A new Spend Mandate version (optimistic concurrency on `expected_version`)."
         }
       }
     },
@@ -6669,11 +7749,16 @@
             "description": "Resource id (UUID).",
             "schema": {
               "type": "string",
-              "format": "uuid"
-            }
+              "format": "uuid",
+              "description": "Resource id (UUID)."
+            },
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           }
         ],
         "security": [
+          {
+            "secureSession": []
+          },
           {
             "session": []
           }
@@ -6723,8 +7808,10 @@
             "description": "Resource id (UUID).",
             "schema": {
               "type": "string",
-              "format": "uuid"
-            }
+              "format": "uuid",
+              "description": "Resource id (UUID)."
+            },
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           {
             "$ref": "#/components/parameters/Csrf"
@@ -6734,6 +7821,9 @@
           }
         ],
         "security": [
+          {
+            "secureSession": []
+          },
           {
             "session": []
           }
@@ -6787,8 +7877,10 @@
             "description": "Resource id (UUID).",
             "schema": {
               "type": "string",
-              "format": "uuid"
-            }
+              "format": "uuid",
+              "description": "Resource id (UUID)."
+            },
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           {
             "$ref": "#/components/parameters/Csrf"
@@ -6798,6 +7890,9 @@
           }
         ],
         "security": [
+          {
+            "secureSession": []
+          },
           {
             "session": []
           }
@@ -6859,7 +7954,8 @@
                 "paypal_order_id": "5O190127TN364715T"
               }
             }
-          }
+          },
+          "description": "Capture a PayPal order the buyer approved."
         }
       }
     },
@@ -6879,11 +7975,16 @@
             "description": "Resource id (UUID).",
             "schema": {
               "type": "string",
-              "format": "uuid"
-            }
+              "format": "uuid",
+              "description": "Resource id (UUID)."
+            },
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           }
         ],
         "security": [
+          {
+            "secureSession": []
+          },
           {
             "session": []
           }
@@ -6933,14 +8034,19 @@
             "description": "Resource id (UUID).",
             "schema": {
               "type": "string",
-              "format": "uuid"
-            }
+              "format": "uuid",
+              "description": "Resource id (UUID)."
+            },
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           {
             "$ref": "#/components/parameters/Csrf"
           }
         ],
         "security": [
+          {
+            "secureSession": []
+          },
           {
             "session": []
           }
@@ -6991,8 +8097,10 @@
             "description": "Resource id (UUID).",
             "schema": {
               "type": "string",
-              "format": "uuid"
-            }
+              "format": "uuid",
+              "description": "Resource id (UUID)."
+            },
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           {
             "$ref": "#/components/parameters/Csrf"
@@ -7002,6 +8110,9 @@
           }
         ],
         "security": [
+          {
+            "secureSession": []
+          },
           {
             "session": []
           }
@@ -7059,7 +8170,8 @@
                 "reason": "Damaged on arrival"
               }
             }
-          }
+          },
+          "description": "Refund part or all of a captured payment."
         }
       }
     },
@@ -7096,20 +8208,23 @@
     "/purchase-orders": {
       "get": {
         "operationId": "listPurchaseOrders",
-        "summary": "Order history; optional ?status=PROPOSED,APPROVED (comma-separated)",
-        "description": "Order history; optional ?status=PROPOSED,APPROVED (comma-separated).",
+        "summary": "Purchase order history, optionally filtered by status",
+        "description": "Purchase order history, optionally filtered by status.",
         "tags": [
           "Orders"
         ],
         "parameters": [],
         "security": [
           {
+            "secureSession": []
+          },
+          {
             "session": []
           }
         ],
         "responses": {
           "200": {
-            "description": "Order history; optional ?status=PROPOSED,APPROVED (comma-separated)",
+            "description": "Purchase order history, optionally filtered by status",
             "content": {
               "application/json": {
                 "schema": {
@@ -7168,11 +8283,16 @@
             "description": "Resource id (UUID).",
             "schema": {
               "type": "string",
-              "format": "uuid"
-            }
+              "format": "uuid",
+              "description": "Resource id (UUID)."
+            },
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           }
         ],
         "security": [
+          {
+            "secureSession": []
+          },
           {
             "session": []
           }
@@ -7216,6 +8336,9 @@
         ],
         "parameters": [],
         "security": [
+          {
+            "secureSession": []
+          },
           {
             "session": []
           }
@@ -7273,8 +8396,10 @@
             "description": "Resource id (UUID).",
             "schema": {
               "type": "string",
-              "format": "uuid"
-            }
+              "format": "uuid",
+              "description": "Resource id (UUID)."
+            },
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           {
             "$ref": "#/components/parameters/Csrf"
@@ -7284,6 +8409,9 @@
           }
         ],
         "security": [
+          {
+            "secureSession": []
+          },
           {
             "session": []
           }
@@ -7338,7 +8466,8 @@
                 "$ref": "#/components/schemas/ReceiveDeliveryRequest"
               }
             }
-          }
+          },
+          "description": "Quantities received per purchase order line."
         }
       }
     },
@@ -7358,14 +8487,19 @@
             "description": "Resource id (UUID).",
             "schema": {
               "type": "string",
-              "format": "uuid"
-            }
+              "format": "uuid",
+              "description": "Resource id (UUID)."
+            },
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           {
             "$ref": "#/components/parameters/Csrf"
           }
         ],
         "security": [
+          {
+            "secureSession": []
+          },
           {
             "session": []
           }
@@ -7421,7 +8555,8 @@
                 "reason": "Carrier delay"
               }
             }
-          }
+          },
+          "description": "Move a delivery's expected date, with a reason."
         }
       }
     },
@@ -7435,6 +8570,9 @@
         ],
         "parameters": [],
         "security": [
+          {
+            "secureSession": []
+          },
           {
             "session": []
           }
@@ -7494,6 +8632,9 @@
         ],
         "security": [
           {
+            "secureSession": []
+          },
+          {
             "session": []
           }
         ],
@@ -7536,7 +8677,8 @@
                 "$ref": "#/components/schemas/AnalyzeInvoiceRequest"
               }
             }
-          }
+          },
+          "description": "A supplier invoice to match against its purchase order and delivery."
         }
       }
     },
@@ -7550,6 +8692,9 @@
         ],
         "parameters": [],
         "security": [
+          {
+            "secureSession": []
+          },
           {
             "session": []
           }
@@ -7610,6 +8755,9 @@
         "parameters": [],
         "security": [
           {
+            "secureSession": []
+          },
+          {
             "session": []
           }
         ],
@@ -7668,6 +8816,9 @@
         ],
         "parameters": [],
         "security": [
+          {
+            "secureSession": []
+          },
           {
             "session": []
           }
@@ -7728,6 +8879,9 @@
         "parameters": [],
         "security": [
           {
+            "secureSession": []
+          },
+          {
             "session": []
           }
         ],
@@ -7769,6 +8923,9 @@
         "parameters": [],
         "security": [
           {
+            "secureSession": []
+          },
+          {
             "session": []
           }
         ],
@@ -7808,6 +8965,9 @@
         ],
         "parameters": [],
         "security": [
+          {
+            "secureSession": []
+          },
           {
             "session": []
           }
@@ -7857,6 +9017,9 @@
         "parameters": [],
         "security": [
           {
+            "secureSession": []
+          },
+          {
             "session": []
           }
         ],
@@ -7896,6 +9059,9 @@
         ],
         "parameters": [],
         "security": [
+          {
+            "secureSession": []
+          },
           {
             "session": []
           }
@@ -7961,14 +9127,19 @@
             "description": "Resource id (UUID).",
             "schema": {
               "type": "string",
-              "format": "uuid"
-            }
+              "format": "uuid",
+              "description": "Resource id (UUID)."
+            },
+            "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
           },
           {
             "$ref": "#/components/parameters/Csrf"
           }
         ],
         "security": [
+          {
+            "secureSession": []
+          },
           {
             "session": []
           }
@@ -8024,6 +9195,9 @@
           }
         ],
         "security": [
+          {
+            "secureSession": []
+          },
           {
             "session": []
           }

@@ -1,10 +1,11 @@
-import { writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createGenerator } from "ts-json-schema-generator";
 import { z } from "zod";
 import * as contracts from "@qm/contracts";
 import { ROUTES } from "./api-routes";
+import { enrich } from "./openapi-enrich";
 
 /**
  * Generates docs/openapi.json (OpenAPI 3.1, request bodies from the Zod contracts) and
@@ -227,7 +228,7 @@ const SUCCESS_STATUS: Record<string, string> = {
 
 const TAG_DESCRIPTIONS: Record<string, string> = {
   System: "Public configuration and browser error reports.",
-  Auth: "Sign-up, sign-in (httpOnly session cookie), password reset and change.",
+  Accounts: "Sign-up, sign-in (httpOnly session cookie), password reset and change.",
   Team: "Members, roles and one-time invitation links.",
   Inventory: "Stock levels, adjustments and the reorder forecast.",
   Suppliers: "Suppliers, their fee terms and catalog listings (screened for prompt injection).",
@@ -251,6 +252,24 @@ const openapi = {
       "Autonomous procurement secured by TrustRail. Amounts are integer minor units (cents). Sign in with `POST /auth/login` (or `/auth/signup`): the API sets an httpOnly session cookie. Every mutation requires the header `X-Requested-With: quartermaster`; routes marked idempotent also require an `Idempotency-Key`. Errors share one shape (`ApiError`) with a stable `code`.",
     license: { name: "Apache-2.0", identifier: "Apache-2.0" },
     contact: { name: "Quartermaster", url: "https://github.com/pranavsaji/quartermaster-ai" },
+    // Named environments for APIMatic SDKs and the docs portal (overrides `servers` there).
+    "x-server-configuration": {
+      "default-environment": "hosted",
+      "default-server": "default",
+      environments: [
+        {
+          name: "hosted",
+          description: "Hosted demo (PayPal sandbox)",
+          servers: [{ name: "default", url: "https://quartermaster-web-o0df.onrender.com/api/v1" }],
+        },
+        {
+          name: "local",
+          description: "Local development (`pnpm dev`)",
+          disableTryItOut: true,
+          servers: [{ name: "default", url: "http://localhost:4000/api/v1" }],
+        },
+      ],
+    },
   },
   servers: [
     { url: "https://quartermaster-web-o0df.onrender.com/api/v1", description: "Hosted demo (PayPal sandbox)" },
@@ -263,7 +282,13 @@ const openapi = {
         type: "apiKey",
         in: "cookie",
         name: "qm_session",
-        description: "Session cookie set by sign-in (named `__Host-qm_session` on HTTPS deployments).",
+        description: "Session cookie set by sign-in on local development servers.",
+      },
+      secureSession: {
+        type: "apiKey",
+        in: "cookie",
+        name: "__Host-qm_session",
+        description: "Session cookie set by sign-in on HTTPS deployments (the hosted demo).",
       },
     },
     parameters: {
@@ -352,7 +377,7 @@ for (const r of ROUTES) {
     description: `${r.summary}.${roleNote}${r.idempotent ? " Idempotent: send an `Idempotency-Key`." : ""}`,
     tags: [r.tag],
     parameters: params,
-    ...(r.auth === false ? { security: [] } : { security: [{ session: [] }] }),
+    ...(r.auth === false ? { security: [] } : { security: [{ secureSession: [] }, { session: [] }] }),
     ...(r.role ? { "x-required-role": r.role } : {}),
     responses: {
       ...success,
@@ -372,9 +397,14 @@ for (const r of ROUTES) {
   }
   (openapi.paths[r.path] ??= {})[r.method.toLowerCase()] = op;
 }
+enrich(openapi as unknown as Parameters<typeof enrich>[0]);
 openapi.tags = [...new Set(ROUTES.map((r) => r.tag))].map((name) => ({ name, description: TAG_DESCRIPTIONS[name] ?? name }));
 
-writeFileSync(path.join(root, "docs", "openapi.json"), `${JSON.stringify(openapi, null, 2)}\n`);
+const specJson = `${JSON.stringify(openapi, null, 2)}\n`;
+writeFileSync(path.join(root, "docs", "openapi.json"), specJson);
+// The APIMatic project (SDKs, docs portal, AI context plugin) builds from its own copy.
+mkdirSync(path.join(root, "apimatic", "src", "spec"), { recursive: true });
+writeFileSync(path.join(root, "apimatic", "src", "spec", "openapi.json"), specJson);
 
 const folders = new Map<string, unknown[]>();
 for (const r of ROUTES) {
