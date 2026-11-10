@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SourceLabel } from "@/components/ui/SourceLabel";
-import { humanize } from "@/lib/format";
+import { humanize, num } from "@/lib/format";
 
 export type ComparisonRow = CandidateDto & {
   item_name: string;
@@ -92,18 +92,25 @@ export function CandidateTable({
       {
         field: "item_name",
         headerName: "Item",
-        minWidth: 170,
+        width: 180,
+        minWidth: 160,
         pinned: "left",
+        autoHeight: true,
+        wrapText: true,
         // The first row of each item carries the name in full weight, so the default order reads as
         // groups; later rows repeat it quietly so any re-sort still says which item a row is for.
         cellRenderer: (p: CustomCellRendererProps<Row>) =>
-          p.data ? <span className={p.data.group_start ? "font-medium text-ink" : "text-ink-3"}>{p.data.item_name}</span> : null,
+          p.data ? (
+            <span className={`block py-2 leading-snug ${p.data.group_start ? "font-medium text-ink" : "text-ink-3"}`}>
+              {p.data.item_name}
+            </span>
+          ) : null,
       },
       {
         field: "rank",
         headerName: "Rank",
-        width: 130,
-        minWidth: 110,
+        width: 110,
+        minWidth: 100,
         cellRenderer: (p: CustomCellRendererProps<Row>) =>
           p.data?.best ? (
             <Badge tone="allow" dot label="Best eligible offer">
@@ -120,7 +127,8 @@ export function CandidateTable({
       {
         field: "supplier_name",
         headerName: "Supplier",
-        minWidth: 300,
+        width: 220,
+        minWidth: 200,
         autoHeight: true,
         wrapText: true,
         cellRenderer: (p: CustomCellRendererProps<Row>) =>
@@ -129,7 +137,7 @@ export function CandidateTable({
               <span className="font-medium text-ink">{p.data.supplier_name}</span>
               <span className="flex flex-wrap gap-1">
                 <SourceLabel source={p.data.data_source}>
-                  {p.data.data_source === "SANDBOX_SUPPLIER" ? "Sandbox supplier — PayPal sandbox checkout" : undefined}
+                  {p.data.data_source === "SANDBOX_SUPPLIER" ? "Sandbox supplier" : undefined}
                 </SourceLabel>
                 {!p.data.supplier_approved ? <Badge tone="block">Not approved</Badge> : null}
                 {!p.data.checkout_eligible ? <Badge tone="review">No checkout</Badge> : null}
@@ -140,8 +148,8 @@ export function CandidateTable({
       {
         field: "title",
         headerName: "Product",
-        minWidth: 220,
-        flex: 1,
+        width: 190,
+        minWidth: 170,
         autoHeight: true,
         wrapText: true,
         cellRenderer: (p: CustomCellRendererProps<Row>) =>
@@ -152,24 +160,30 @@ export function CandidateTable({
             </div>
           ) : null,
       },
-      numberColumn<Row>("pack_quantity", "Pack", { width: 90 }),
-      numberColumn<Row>("packs", "Packs", { width: 90 }),
+      numberColumn<Row>("packs", "Packs", {
+        width: 110,
+        headerTooltip: "Packs ordered × units per pack.",
+        valueFormatter: (p) => (p.data ? `${num(p.data.packs)} × ${num(p.data.pack_quantity)}` : "—"),
+      }),
       numberColumn<Row>("units", "Units", { width: 90 }),
-      moneyColumn<Row>("item_subtotal_minor", "Items", cur),
-      moneyColumn<Row>("shipping_minor", "Shipping", cur),
-      moneyColumn<Row>("tax_minor", "Tax", cur),
+      moneyColumn<Row>("item_subtotal_minor", "Items", cur, { width: 105, minWidth: 95 }),
+      moneyColumn<Row>("shipping_minor", "Shipping", cur, { width: 105, minWidth: 95 }),
+      moneyColumn<Row>("tax_minor", "Tax", cur, { width: 105, minWidth: 90 }),
       moneyColumn<Row>("fees_minor", "Fees", cur, {
+        width: 105,
+        minWidth: 90,
         cellClassRules: { "text-block font-medium": (p) => typeof p.value === "number" && p.value > 0 },
       }),
-      moneyColumn<Row>("delivered_total_minor", "Delivered total", cur, { cellClass: rightCell("font-medium"), minWidth: 130 }),
+      moneyColumn<Row>("delivered_total_minor", "Delivered total", cur, { cellClass: rightCell("font-medium"), width: 130, minWidth: 120 }),
       moneyColumn<Row>("delivered_unit_cost_minor", "Delivered / unit", cur, {
         cellClass: rightCell("font-semibold text-ink"),
-        minWidth: 135,
+        width: 135,
+        minWidth: 125,
       }),
       ...(hasMarket
         ? [
             numberColumn<Row>("market_premium_pct", "vs market", {
-              width: 120,
+              width: 110,
               headerTooltip: "Item price per unit compared with the Channel3 market reference for this item.",
               valueFormatter: (p) => (typeof p.value === "number" ? `${p.value > 0 ? "+" : ""}${p.value.toFixed(1)}%` : "No reference"),
               cellClassRules: {
@@ -180,13 +194,14 @@ export function CandidateTable({
           ]
         : []),
       numberColumn<Row>("lead_time_days", "Lead", {
-        width: 90,
+        width: 72,
+        minWidth: 72,
         valueFormatter: (p) => (typeof p.value === "number" ? `${p.value} d` : "—"),
       }),
       {
         field: "eligible",
         headerName: "Eligibility",
-        minWidth: 240,
+        minWidth: 220,
         flex: 1,
         autoHeight: true,
         wrapText: true,
