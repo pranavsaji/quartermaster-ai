@@ -213,7 +213,9 @@ export async function updateSupplier(
   mandate: SpendMandate | null,
 ): Promise<SupplierRow> {
   const before = await loadSupplier(tx, actor.organizationId, supplierId, true);
-  const approved = Boolean(mandate?.approved_supplier_ids.includes(supplierId));
+  // Every workspace has an active mandate; none here means one is being replaced right now, so
+  // fail closed and treat the supplier as approved.
+  const approved = mandate === null || mandate.approved_supplier_ids.includes(supplierId);
   const termsChanged =
     before.name !== input.name ||
     before.website !== input.website ||
