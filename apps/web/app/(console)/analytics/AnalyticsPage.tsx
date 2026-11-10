@@ -1,6 +1,6 @@
 "use client";
 
-import type { AnalyticsSummaryDto, PolicyDecisionKind } from "@qm/contracts";
+import type { AnalyticsSummaryDto, InventoryItemDto, PolicyDecisionKind } from "@qm/contracts";
 import type { AgChartOptions } from "ag-charts-community";
 import { useMemo } from "react";
 import { ChartCard } from "@/components/charts/ChartCard";
@@ -13,11 +13,28 @@ import { StatTile } from "@/components/ui/StatTile";
 import { api } from "@/lib/api";
 import { duration, minorToMajor, money, moneyTick, num, shortDate } from "@/lib/format";
 import { useResource } from "@/lib/hooks";
-import { categoryLabel, DECISION_LABELS, findingLabel, lookup } from "@/lib/labels";
+import { categoryLabel, DECISION_LABELS, findingLabel, lookup, STOCK_LABELS } from "@/lib/labels";
 import type { ChartColors } from "@/lib/theme";
 
 function decisionColors(c: ChartColors): Record<PolicyDecisionKind, string> {
   return { ALLOW: c.allow, REVIEW_REQUIRED: c.review, BLOCK: c.block };
+}
+
+function stockColors(c: ChartColors): Record<InventoryItemDto["status"], string> {
+  return { OK: c.allow, LOW: c.review, CRITICAL: c.block, OUT: c.block };
+}
+
+/** Rows for the stock-cover chart: items with recorded usage, least cover first. */
+export function stockCoverRows(items: readonly InventoryItemDto[]) {
+  return items
+    .filter((i) => i.days_of_cover !== null)
+    .map((i) => ({
+      item: i.name,
+      days: Math.round((i.days_of_cover ?? 0) * 10) / 10,
+      target: i.coverage_days + i.lead_time_days,
+      status: i.status,
+    }))
+    .sort((a, b) => a.days - b.days);
 }
 
 function moneyAxis(currency: string, c: ChartColors) {
@@ -40,7 +57,7 @@ function countAxis(position: "left" | "bottom", max: number, c: ChartColors) {
   };
 }
 
-function useChartOptions(s: AnalyticsSummaryDto | undefined) {
+function useChartOptions(s: AnalyticsSummaryDto | undefined, inventory: InventoryItemDto[] | undefined) {
   return useMemo(() => {
     if (!s) return null;
     const cur = s.currency;
@@ -64,11 +81,18 @@ function useChartOptions(s: AnalyticsSummaryDto | undefined) {
       count: d.count,
       kind: d.decision,
     }));
+    const bySupplier = s.spend_by_supplier.map((r) => ({
+      supplier: r.supplier,
+      captured: minorToMajor(r.captured_minor, cur),
+      captured_minor: r.captured_minor,
+      orders: r.orders,
+    }));
+    const cover = stockCoverRows(inventory ?? []);
     const findings = [...s.findings_by_type].sort((a, b) => b.count - a.count).map((f) => ({ type: findingLabel(f.type), count: f.count }));
 
     const tooltipMoney = (label: string) => ({
       renderer: ({ datum, yKey }: { datum: Record<string, unknown>; yKey: string }) => ({
-        heading: String(datum.week ?? datum.category ?? ""),
+        heading: String(datum.week ?? datum.category ?? datum.supplier ?? ""),
         data: [{ label, value: money(Number(datum[`${yKey}_minor`]), cur) }],
       }),
     });
@@ -119,23 +143,87 @@ function useChartOptions(s: AnalyticsSummaryDto | undefined) {
       legend: { enabled: false },
     });
 
-    const decisionsByKind = (c: ChartColors): AgChartOptions => ({
-      data: decisions,
+    const spendBySupplier = (c: ChartColors): AgChartOptions => ({
+      data: bySupplier,
       series: [
         {
           type: "bar",
-          xKey: "decision",
-          yKey: "count",
-          yName: "Decisions",
+          direction: "horizontal",
+          xKey: "supplier",
+          yKey: "captured",
+          yName: "Captured spend",
+          fill: c.series1,
           cornerRadius: 4,
-          itemStyler: ({ datum }: { datum: { kind: PolicyDecisionKind } }) => ({
-            fill: lookup(decisionColors(c), datum.kind, c.muted),
+          tooltip: tooltipMoney("Captured"),
+        },
+      ],
+      axes: { x: { type: "category", position: "left" }, y: { ...moneyAxis(cur, c), position: "bottom" } },
+      legend: { enabled: false },
+    });
+
+    // Decisions as shares of all TrustRail evaluations; status colours, never the categorical palette.
+    const decisionsByKind = (c: ChartColors): AgChartOptions => ({
+      data: decisions.filter((d) => d.count > 0),
+      series: [
+        {
+          type: "donut",
+          angleKey: "count",
+          legendItemKey: "decision",
+          calloutLabelKey: "decision",
+          innerRadiusRatio: 0.62,
+          fills: decisions.filter((d) => d.count > 0).map((d) => lookup(decisionColors(c), d.kind, c.muted)),
+          strokes: decisions.filter((d) => d.count > 0).map(() => "transparent"),
+          // Counts sit in the callouts (not on the sectors), so they never depend on fill contrast.
+          calloutLabel: {
+            color: c.text,
+            formatter: ({ datum }: { datum: { decision: string; count: number } }) => `${datum.decision} (${datum.count})`,
+          },
+          innerLabels: [
+            { text: num(decisions.reduce((a, d) => a + d.count, 0)), fontSize: 20, color: c.text },
+            { text: "evaluations", fontSize: 11, color: c.text },
+          ],
+        },
+      ],
+      legend: { enabled: true, position: "bottom" },
+    });
+
+    // Days of cover per item, coloured by stock status, against each item's target (lead time +
+    // days of cover to order): bars below the line are what the agent will restock.
+    const stockCover = (c: ChartColors): AgChartOptions => ({
+      data: cover,
+      series: [
+        {
+          type: "bar",
+          xKey: "item",
+          yKey: "days",
+          yName: "Days of cover",
+          cornerRadius: 4,
+          itemStyler: ({ datum }: { datum: { status: InventoryItemDto["status"] } }) => ({
+            fill: lookup(stockColors(c), datum.status, c.muted),
           }),
           label: { enabled: true, placement: "outside-end", color: c.text },
         },
+        {
+          type: "line",
+          xKey: "item",
+          yKey: "target",
+          yName: "Target cover",
+          stroke: c.text,
+          strokeWidth: 1.5,
+          lineDash: [4, 4],
+          marker: { enabled: true, size: 6, fill: c.text, stroke: c.text },
+        },
       ],
-      axes: { x: { type: "category", position: "bottom" }, y: countAxis("left", Math.max(0, ...decisions.map((d) => d.count)), c) },
-      legend: { enabled: false },
+      axes: {
+        x: { type: "category", position: "bottom" },
+        y: {
+          type: "number",
+          position: "left",
+          gridLine: { style: [{ stroke: c.grid, lineDash: [] }] },
+          label: { formatter: ({ value }: { value: number }) => `${value} d` },
+        },
+      },
+      legend: { position: "top", enabled: true },
     });
 
     const findingsByType = (c: ChartColors): AgChartOptions => ({
@@ -156,14 +244,29 @@ function useChartOptions(s: AnalyticsSummaryDto | undefined) {
       legend: { enabled: false },
     });
 
-    return { weekly, byCategory, decisions, findings, spendByWeek, spendByCategory, decisionsByKind, findingsByType };
-  }, [s]);
+    return {
+      weekly,
+      byCategory,
+      bySupplier,
+      decisions,
+      findings,
+      cover,
+      spendByWeek,
+      spendByCategory,
+      spendBySupplier,
+      decisionsByKind,
+      findingsByType,
+      stockCover,
+    };
+  }, [s, inventory]);
 }
 
 export function AnalyticsPage() {
   const summary = useResource((signal, { refresh }) => api.analytics.summary({ signal, fresh: refresh }), []);
+  // Stock cover comes from the live inventory; the page still renders if this one call fails.
+  const inventory = useResource((signal) => api.inventory.list({ signal }).then((r) => r.items), []);
   const s = summary.data;
-  const charts = useChartOptions(s);
+  const charts = useChartOptions(s, inventory.data);
   const cur = s?.currency ?? "USD";
 
   return (
@@ -256,6 +359,18 @@ export function AnalyticsPage() {
               ]}
             />
             <ChartCard
+              title="Spend by supplier"
+              description="Captured spend net of refunds, per supplier."
+              options={charts.spendBySupplier}
+              rows={charts.bySupplier}
+              emptyTitle="No captured spend yet"
+              table={[
+                { label: "Supplier", value: (r) => r.supplier },
+                { label: "Orders", value: (r) => num(r.orders), numeric: true },
+                { label: "Captured", value: (r) => money(r.captured_minor, cur), numeric: true },
+              ]}
+            />
+            <ChartCard
               title="Spend by category"
               description="Captured spend per product category."
               options={charts.spendByCategory}
@@ -267,9 +382,10 @@ export function AnalyticsPage() {
             />
             <ChartCard
               title="Policy decisions by kind"
-              description="Every TrustRail evaluation: allow, review required, or block."
+              description="Share of TrustRail evaluations that were allowed, needed review, or were blocked."
               options={charts.decisionsByKind}
-              rows={charts.decisions}
+              rows={charts.decisions.filter((d) => d.count > 0)}
+              emptyTitle="No policy decisions yet"
               table={[
                 { label: "Decision", value: (r) => r.decision },
                 { label: "Count", value: (r) => num(r.count), numeric: true },
@@ -284,6 +400,19 @@ export function AnalyticsPage() {
               table={[
                 { label: "Type", value: (r) => r.type },
                 { label: "Count", value: (r) => num(r.count), numeric: true },
+              ]}
+            />
+            <ChartCard
+              title="Days of stock cover"
+              description="Per item, coloured by stock status, against its target cover (lead time plus days to order). Items without recorded usage are left out."
+              options={charts.stockCover}
+              rows={charts.cover}
+              emptyTitle="No usage recorded yet"
+              table={[
+                { label: "Item", value: (r) => r.item },
+                { label: "Status", value: (r) => lookup(STOCK_LABELS, r.status, r.status) },
+                { label: "Days of cover", value: (r) => num(r.days), numeric: true },
+                { label: "Target", value: (r) => num(r.target), numeric: true },
               ]}
             />
           </div>

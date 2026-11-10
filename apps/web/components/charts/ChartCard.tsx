@@ -3,7 +3,9 @@
 import {
   BarSeriesModule,
   CategoryAxisModule,
+  DonutSeriesModule,
   LegendModule,
+  LineSeriesModule,
   ModuleRegistry,
   NumberAxisModule,
   type AgChartOptions,
@@ -17,8 +19,9 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useChartColors, type ChartColors } from "@/lib/theme";
 
-// Only what the analytics bar charts use (AllCommunityModule was a 1.2 MB chunk).
-ModuleRegistry.registerModules([BarSeriesModule, CategoryAxisModule, NumberAxisModule, LegendModule]);
+// Only what the analytics charts use (AllCommunityModule was a 1.2 MB chunk): bars, the decisions
+// donut, and the stock-cover target line.
+ModuleRegistry.registerModules([BarSeriesModule, DonutSeriesModule, LineSeriesModule, CategoryAxisModule, NumberAxisModule, LegendModule]);
 
 /**
  * Chart theme from the design tokens (`--color-chart-*` etc. in globals.css).
