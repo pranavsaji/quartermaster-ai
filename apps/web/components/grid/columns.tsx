@@ -72,3 +72,6 @@ export function statusColumn<T, S extends string>(
     ...extra,
   };
 }
+
+/** Cell class for a column people can edit in place (see `.qm-editable` in globals.css). */
+export const EDITABLE_CELL = "qm-editable";
