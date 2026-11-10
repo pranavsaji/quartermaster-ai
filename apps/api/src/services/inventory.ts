@@ -1,11 +1,19 @@
-import { and, eq, gte, inArray, sql } from "drizzle-orm";
-import type { ForecastRunDto, InventoryAdjustmentRequest, InventoryItemDto, ProductCategory } from "@qm/contracts";
+import { and, eq, gte, inArray, ne, sql } from "drizzle-orm";
+import type {
+  CreateInventoryItemRequest,
+  ForecastRunDto,
+  InventoryAdjustmentRequest,
+  InventoryItemDto,
+  InventoryItemInput,
+  ProductCategory,
+} from "@qm/contracts";
 import {
   consumptionHistory,
   deliveries,
   forecastRuns,
   goodsReceipts,
   inventoryItems,
+  organizations,
   purchaseOrderItems,
   purchaseOrders,
   stockMovements,
@@ -15,6 +23,7 @@ import {
 import { averageDailyUsage, daysOfCover, forecast, stockStatus, type ForecastItemInput, type ForecastLine } from "@qm/quartermaster";
 import { conflict, notFound } from "../errors";
 import { appendAudit } from "./audit";
+import { localDate } from "./budget";
 
 const HISTORY_DAYS = 14;
 const DEFAULT_LEAD_TIME_DAYS = 2;
@@ -212,6 +221,19 @@ export async function adjustInventory(
     note: args.input.note ?? null,
     createdBy: args.userId,
   });
+  if (args.input.reason === "CONSUMPTION" && args.input.quantity_delta < 0) {
+    // Recorded usage feeds the forecast, so a new workspace's forecast learns from real counts.
+    const [org] = await tx.select({ tz: organizations.timezone }).from(organizations).where(eq(organizations.id, args.organizationId));
+    const day = localDate(args.now, org?.tz ?? "UTC").date;
+    const used = -args.input.quantity_delta;
+    await tx
+      .insert(consumptionHistory)
+      .values({ organizationId: args.organizationId, inventoryItemId: item.id, day, quantity: used, dataSource: "USER_ENTERED" })
+      .onConflictDoUpdate({
+        target: [consumptionHistory.inventoryItemId, consumptionHistory.day],
+        set: { quantity: sql`${consumptionHistory.quantity} + ${used}` },
+      });
+  }
   await appendAudit(tx, {
     organizationId: args.organizationId,
     action: "inventory.adjusted",
@@ -222,5 +244,106 @@ export async function adjustInventory(
     data: { sku: item.sku, delta: args.input.quantity_delta, reason: args.input.reason, on_hand: next },
   });
   const [loaded] = await loadItems(tx, args.organizationId, args.now, [item.id]);
+  return toInventoryDto(loaded!);
+}
+
+async function assertSkuFree(tx: DbOrTx, organizationId: string, sku: string, exceptId?: string): Promise<void> {
+  const [clash] = await tx
+    .select({ id: inventoryItems.id })
+    .from(inventoryItems)
+    .where(
+      and(
+        eq(inventoryItems.organizationId, organizationId),
+        eq(inventoryItems.sku, sku),
+        ...(exceptId ? [ne(inventoryItems.id, exceptId)] : []),
+      ),
+    );
+  if (clash) throw conflict("SKU_EXISTS", "A stock item with this SKU already exists.");
+}
+
+async function assertSupplier(tx: DbOrTx, organizationId: string, supplierId: string | null): Promise<void> {
+  if (!supplierId) return;
+  const [s] = await tx
+    .select({ id: suppliers.id })
+    .from(suppliers)
+    .where(and(eq(suppliers.id, supplierId), eq(suppliers.organizationId, organizationId)));
+  if (!s) throw conflict("SUPPLIER_NOT_FOUND", "The preferred supplier does not exist in this workspace.");
+}
+
+const itemValues = (input: InventoryItemInput) => ({
+  sku: input.sku,
+  name: input.name,
+  category: input.category,
+  unit: input.unit,
+  safetyStock: input.safety_stock,
+  coverageDays: input.coverage_days,
+  leadTimeDaysOverride: input.lead_time_days_override,
+  preferredSupplierId: input.preferred_supplier_id,
+  searchQuery: input.search_query,
+  keywords: [...new Set(input.keywords)],
+});
+
+/** Adds a stock item. Its opening quantity is recorded as a count so stock history adds up. */
+export async function createInventoryItem(
+  tx: DbOrTx,
+  args: { organizationId: string; userId: string; input: CreateInventoryItemRequest; now: Date },
+): Promise<InventoryItemDto> {
+  const { input } = args;
+  await assertSkuFree(tx, args.organizationId, input.sku);
+  await assertSupplier(tx, args.organizationId, input.preferred_supplier_id);
+  const [row] = await tx
+    .insert(inventoryItems)
+    .values({ organizationId: args.organizationId, ...itemValues(input), onHand: input.on_hand, dataSource: "USER_ENTERED" })
+    .returning();
+  if (input.on_hand > 0) {
+    await tx.insert(stockMovements).values({
+      organizationId: args.organizationId,
+      inventoryItemId: row!.id,
+      quantityDelta: input.on_hand,
+      reason: "COUNT_CORRECTION",
+      note: "Opening stock",
+      createdBy: args.userId,
+    });
+  }
+  await appendAudit(tx, {
+    organizationId: args.organizationId,
+    action: "inventory.item_created",
+    actorType: "USER",
+    actorId: args.userId,
+    entityType: "inventory_item",
+    entityId: row!.id,
+    data: { sku: input.sku, on_hand: input.on_hand, safety_stock: input.safety_stock },
+  });
+  const [loaded] = await loadItems(tx, args.organizationId, args.now, [row!.id]);
+  return toInventoryDto(loaded!);
+}
+
+/** Updates an item's details. Stock levels change only through adjustments and deliveries. */
+export async function updateInventoryItem(
+  tx: DbOrTx,
+  args: { organizationId: string; userId: string; itemId: string; input: InventoryItemInput; now: Date },
+): Promise<InventoryItemDto> {
+  const [before] = await tx
+    .select()
+    .from(inventoryItems)
+    .where(and(eq(inventoryItems.id, args.itemId), eq(inventoryItems.organizationId, args.organizationId)))
+    .for("update");
+  if (!before) throw notFound("Inventory item");
+  await assertSkuFree(tx, args.organizationId, args.input.sku, before.id);
+  await assertSupplier(tx, args.organizationId, args.input.preferred_supplier_id);
+  await tx
+    .update(inventoryItems)
+    .set({ ...itemValues(args.input), updatedAt: args.now })
+    .where(eq(inventoryItems.id, before.id));
+  await appendAudit(tx, {
+    organizationId: args.organizationId,
+    action: "inventory.item_updated",
+    actorType: "USER",
+    actorId: args.userId,
+    entityType: "inventory_item",
+    entityId: before.id,
+    data: { sku: args.input.sku, safety_stock: { from: before.safetyStock, to: args.input.safety_stock } },
+  });
+  const [loaded] = await loadItems(tx, args.organizationId, args.now, [before.id]);
   return toInventoryDto(loaded!);
 }
