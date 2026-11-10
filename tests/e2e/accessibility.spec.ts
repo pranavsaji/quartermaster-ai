@@ -32,10 +32,30 @@ test("the sign-in page has no moderate-or-worse accessibility violations", async
 
 test("console pages have no moderate-or-worse accessibility violations", async ({ page }) => {
   await signIn(page);
-  for (const path of ["/", "/inventory", "/procurement", "/approvals", "/mandate", "/security", "/orders", "/analytics"]) {
+  for (const path of [
+    "/",
+    "/inventory",
+    "/procurement",
+    "/approvals",
+    "/mandate",
+    "/security",
+    "/orders",
+    "/analytics",
+    "/suppliers",
+    "/team",
+    "/account",
+  ]) {
     await page.goto(path);
     await expect(page.locator("main")).toBeVisible();
     // Let grids and charts finish rendering before scanning.
+    await page.waitForLoadState("networkidle");
+    await audit(page, path);
+  }
+});
+
+test("the public account pages have no moderate-or-worse accessibility violations", async ({ page }) => {
+  for (const path of ["/signup", "/forgot-password", "/reset-password", "/invite"]) {
+    await page.goto(path);
     await page.waitForLoadState("networkidle");
     await audit(page, path);
   }

@@ -53,8 +53,14 @@ test("owner researches a request, sees TrustRail block the injected supplier, ap
   await expect(page.getByText(/Intent Certificate/i).first()).toBeVisible({ timeout: 30_000 });
   await page.getByRole("button", { name: "Verify" }).first().click();
   await expect(page.getByText("Certificate is valid.").first()).toBeVisible({ timeout: 30_000 });
-  // PayPal is not configured in this environment: the UI must say so rather than fake a checkout.
-  await expect(page.getByText(/PayPal sandbox not configured/i).first()).toBeVisible();
+  // Without PayPal credentials the UI must say so rather than fake a checkout; with sandbox
+  // credentials (a local .env) the real PayPal button is offered instead.
+  await expect(
+    page
+      .getByText(/PayPal sandbox not configured/i)
+      .or(page.locator("paypal-button"))
+      .first(),
+  ).toBeVisible();
 
   expect(consoleErrors.filter((e) => !/favicon|Download the React DevTools/.test(e))).toEqual([]);
 });
