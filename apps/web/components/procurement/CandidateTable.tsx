@@ -33,6 +33,9 @@ export function comparisonRows(
   market: readonly MarketReferenceDto[] = [],
 ): ComparisonRow[] {
   const reference = new Map(market.map((m) => [m.inventory_item_id, m.reference_unit_price_minor]));
+  // An offer the agent could actually buy: eligible, and not from a quarantined source (a listing
+  // caught carrying instructions for AI agents is never the "best offer", however cheap).
+  const usable = (c: { eligible: boolean; quarantined: boolean }) => c.eligible && !c.quarantined;
   const rows = candidates
     .map((c) => {
       const ref = reference.get(c.inventory_item_id) ?? null;
@@ -48,7 +51,7 @@ export function comparisonRows(
     .sort(
       (a, b) =>
         a.item_name.localeCompare(b.item_name) ||
-        Number(b.eligible) - Number(a.eligible) ||
+        Number(usable(b)) - Number(usable(a)) ||
         a.delivered_unit_cost_minor - b.delivered_unit_cost_minor,
     );
   const seen = new Set<string>();
@@ -56,8 +59,8 @@ export function comparisonRows(
     if (!seen.has(r.inventory_item_id)) {
       seen.add(r.inventory_item_id);
       r.group_start = true;
-      // Sorted eligible-first and cheapest-first, so the first eligible row of an item is its best.
-      r.best = r.eligible;
+      // Sorted usable-first and cheapest-first, so the first usable row of an item is its best.
+      r.best = usable(r);
     }
   }
   return rows;

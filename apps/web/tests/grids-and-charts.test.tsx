@@ -155,6 +155,14 @@ describe("supplier comparison", () => {
     expect(rows[2]!.market_premium_pct).toBeNull();
   });
 
+  it("never marks a quarantined offer as best, even when it is eligible and cheapest", () => {
+    // In the real run QuickServe is an approved supplier (eligible) whose listing is quarantined.
+    const trap = { ...candidates[2]!, eligible: true, ineligible_reasons: [] };
+    const rows = comparisonRows([trap, candidates[3]!], names);
+    expect(rows.map((r) => r.id)).toEqual(["box-harbor", "box-quick"]);
+    expect(rows.filter((r) => r.best).map((r) => r.id)).toEqual(["box-harbor"]);
+  });
+
   it("never marks a best offer for an item with no eligible offer", () => {
     const rows = comparisonRows([candidates[2]!], names);
     expect(rows[0]).toMatchObject({ best: false, group_start: true });
