@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CircuitBreaker, isProviderFailureStatus } from "../circuit-breaker";
 import { redactSecrets } from "../redact";
 
 /**
@@ -15,6 +16,14 @@ export interface Channel3Config {
   fetch?: typeof fetch;
   /** Structured logger. Receives counts only, never listing content. */
   log?: (event: string, data: Record<string, unknown>) => void;
+  /**
+   * Consecutive provider failures (network, timeout, 429, 5xx) before searches are skipped for
+   * `breakerCooldownMs` (research then uses cached listings at once). 0 disables it.
+   */
+  breakerThreshold?: number;
+  breakerCooldownMs?: number;
+  /** Clock for the breaker (tests). */
+  now?: () => number;
 }
 
 export interface Channel3Price {
@@ -63,6 +72,8 @@ export class Channel3Error extends Error {
   constructor(
     message: string,
     readonly status: number | null,
+    /** True when the search was skipped because the circuit breaker is open (nothing was sent). */
+    readonly circuitOpen = false,
   ) {
     super(message);
     this.name = "Channel3Error";
@@ -73,20 +84,48 @@ export class Channel3Client {
   private readonly baseUrl: string;
   private readonly fetchImpl: typeof fetch;
   private readonly timeoutMs: number;
+  private readonly breaker: CircuitBreaker;
 
   constructor(private readonly config: Channel3Config) {
     this.baseUrl = config.baseUrl ?? "https://api.trychannel3.com";
     this.fetchImpl = config.fetch ?? fetch;
     this.timeoutMs = config.timeoutMs ?? 10_000;
+    this.breaker = new CircuitBreaker({
+      threshold: config.breakerThreshold ?? 3,
+      cooldownMs: config.breakerCooldownMs ?? 120_000,
+      now: config.now,
+      onChange: (state, failures) => config.log?.(state === "open" ? "channel3.circuit_open" : "channel3.circuit_closed", { failures }),
+    });
+  }
+
+  /** `closed` (searches go through), `open` (searches are skipped) or `half_open` (one trial allowed). */
+  get circuitState() {
+    return this.breaker.state;
+  }
+
+  async search(params: Channel3SearchParams): Promise<Channel3SearchResponse> {
+    if (!this.config.apiKey) throw new Channel3Error("Channel3 is not configured (CHANNEL3_API_KEY).", null);
+    if (params.signal?.aborted) throw new Channel3Error("Channel3 request aborted", null);
+    if (!this.breaker.allow()) throw new Channel3Error("Channel3 skipped: circuit open after repeated provider failures", null, true);
+    try {
+      const result = await this.searchOnce(params);
+      this.breaker.success();
+      return result;
+    } catch (err) {
+      if (params.signal?.aborted) this.breaker.neutral();
+      else if (err instanceof Channel3Error && isProviderFailureStatus(err.status)) this.breaker.failure();
+      // A 4xx or a malformed body: Channel3 answered, so it is reachable.
+      else this.breaker.success();
+      throw err;
+    }
   }
 
   get enabled(): boolean {
     return Boolean(this.config.apiKey);
   }
 
-  async search(params: Channel3SearchParams): Promise<Channel3SearchResponse> {
-    if (!this.config.apiKey) throw new Channel3Error("Channel3 is not configured (CHANNEL3_API_KEY).", null);
-    if (params.signal?.aborted) throw new Channel3Error("Channel3 request aborted", null);
+  private async searchOnce(params: Channel3SearchParams): Promise<Channel3SearchResponse> {
+    const apiKey = this.config.apiKey!;
     const filters: Record<string, unknown> = {};
     if (params.inStockOnly !== false) filters.availability = ["InStock"];
     if (params.minPrice !== undefined || params.maxPrice !== undefined) {
@@ -99,7 +138,7 @@ export class Channel3Client {
     try {
       const res = await this.fetchImpl(`${this.baseUrl}/v1/search`, {
         method: "POST",
-        headers: { "x-api-key": this.config.apiKey, "Content-Type": "application/json", Accept: "application/json" },
+        headers: { "x-api-key": apiKey, "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({ query: params.query.slice(0, 200), limit: Math.min(Math.max(params.limit ?? 10, 1), 30), filters }),
         signal: params.signal ? AbortSignal.any([timeout, params.signal]) : timeout,
       });

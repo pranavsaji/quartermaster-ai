@@ -6,6 +6,27 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Operations
+
+- The web proxy waits up to 120 s for the API (`experimental.proxyTimeout`; Next's default of 30 s cut
+  off research runs).
+- Notifications can go by email to each workspace's owners (`NOTIFY_CHANNEL=zapier|email|both`), and
+  failed deliveries are tracked as a `NOTIFY_FAILED` warning group. `APP_BASE_URL` is required in
+  production.
+- Sweeper liveness: `/readyz` reports the last sweep's age and `monitor.sweeper_stale` alerts when
+  sweeps stop. `/readyz` answers 503 while draining and bounds its database check at 2 s.
+- `render.yaml` matches the live Starter deployment: pre-deploy migrate + seed, single-process start
+  commands, `maxShutdownDelaySeconds: 90`, memory flags, the sweeper inside the API.
+- Production no longer migrates on boot (`MIGRATE_ON_BOOT`); migrations take a PostgreSQL advisory lock.
+- Circuit breaker for OpenAI and Channel3 (3 failures → 120 s of immediate deterministic fallback); one
+  jittered retry of idempotent PayPal calls on 429/5xx.
+- Retention: the sweeper purges webhook events, agent tool steps, stale error groups and expired
+  one-time links after `RETENTION_DAYS` (90); evidence is never purged.
+- Faster request detail and analytics (independent reads run concurrently; the summary is cached 30 s
+  per workspace). The Bryntum module is served from a versioned, immutable URL.
+- CI builds the MCP server. The operations runbook covers rollback, backups (RPO/RTO and a restore
+  drill), uptime checks and the release process.
+
 Hardening after the November 2026 audit of the domain packages and test suite.
 
 ### Security

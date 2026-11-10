@@ -62,6 +62,7 @@ export interface MarketResearchResult {
  */
 export function marketSearchFailure(err: unknown): string {
   if (!(err instanceof Channel3Error)) return "Market search failed; using cached listings.";
+  if (err.circuitOpen) return "Market search is paused after repeated Channel3 failures; using cached listings.";
   if (err.status === null) return "Market search did not complete (network error or deadline); using cached listings.";
   if (err.status === 401 || err.status === 403) return "Market search was not authorised by Channel3; using cached listings.";
   if (err.status === 429) return "Market search was rate limited by Channel3; using cached listings.";

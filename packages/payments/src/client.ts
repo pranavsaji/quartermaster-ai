@@ -21,6 +21,11 @@ export interface PayPalConfig {
   fetch?: typeof fetch;
   /** Optional structured logger. Never receives secrets or tokens. */
   log?: (event: string, data: Record<string, unknown>) => void;
+  /**
+   * Base delay before the single retry of an idempotent call that PayPal answered with 429 or 5xx
+   * (jittered to 50–150 % of this). Defaults to 400 ms; 0 retries at once.
+   */
+  retryDelayMs?: number;
 }
 
 export const PAYPAL_API_BASE = {
@@ -198,7 +203,7 @@ export class PayPalClient {
   ): Promise<T> {
     const token = await this.getAccessToken();
     const started = Date.now();
-    const res = await this.rawFetch(operation, path, {
+    const init: RequestInit = {
       method,
       headers: {
         Authorization: `Bearer ${token}`,
@@ -207,7 +212,19 @@ export class PayPalClient {
         ...extraHeaders,
       },
       body: body === undefined ? undefined : JSON.stringify(body),
-    });
+    };
+    let res = await this.rawFetch(operation, path, init);
+    // One jittered retry when PayPal is throttling or failing, only for calls that are safe to
+    // repeat: reads, and writes carrying a PayPal-Request-Id (PayPal replays the original outcome
+    // instead of acting twice). Network errors and timeouts are never retried here: they are
+    // ambiguous outcomes that the payment services reconcile explicitly.
+    if (isRetryableStatus(res.status) && isIdempotent(method, extraHeaders)) {
+      const base = this.config.retryDelayMs ?? 400;
+      const delay = Math.round(base * (0.5 + Math.random()));
+      this.config.log?.("paypal.retry", { operation, status: res.status, delay_ms: delay });
+      if (delay > 0) await new Promise((r) => setTimeout(r, delay));
+      res = await this.rawFetch(operation, path, init);
+    }
     const text = res.text;
     let parsed: unknown = null;
     try {
@@ -244,6 +261,16 @@ export class PayPalClient {
       clearTimeout(timer);
     }
   }
+}
+
+/** 429 (throttled) and 5xx (PayPal-side failure) are worth one more attempt. */
+export function isRetryableStatus(status: number): boolean {
+  return status === 429 || status >= 500;
+}
+
+/** Reads, and writes that carry a PayPal-Request-Id, can be repeated without acting twice. */
+export function isIdempotent(method: string, headers: Record<string, string>): boolean {
+  return method.toUpperCase() === "GET" || Object.keys(headers).some((h) => h.toLowerCase() === "paypal-request-id");
 }
 
 interface RawResponse {

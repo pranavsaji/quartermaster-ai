@@ -204,6 +204,7 @@ describe("housekeeping", () => {
         refundsReconciled: 0,
         sessionsPurged: 0,
         idempotencyPurged: 0,
+        retentionPurged: 0,
         errors: 0,
       });
       expect(await remaining([ids.expired], sessions)).toEqual([ids.expired]);

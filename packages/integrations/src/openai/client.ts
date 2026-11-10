@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CircuitBreaker, isProviderFailureStatus } from "../circuit-breaker";
 import { redactSecrets } from "../redact";
 
 /**
@@ -15,6 +16,14 @@ export interface OpenAIConfig {
   fetch?: typeof fetch;
   /** Structured logger for failures and fallbacks. Never receives prompts, outputs or keys. */
   log?: (event: string, data: Record<string, unknown>) => void;
+  /**
+   * Consecutive provider failures (network, timeout, 429, 5xx) before calls are skipped for
+   * `breakerCooldownMs` (callers then use their deterministic fallback at once). 0 disables it.
+   */
+  breakerThreshold?: number;
+  breakerCooldownMs?: number;
+  /** Clock for the breaker (tests). */
+  now?: () => number;
 }
 
 export interface StructuredCallParams<T = unknown> {
@@ -45,7 +54,9 @@ export type OpenAIFailure =
   | "invalid_output"
   | "invalid_response"
   | "aborted"
-  | "network";
+  | "network"
+  /** Skipped without calling the provider: the circuit breaker is open after repeated failures. */
+  | "unavailable";
 
 /**
  * `message` is for logs only: it may carry a short, redacted provider reason. Client-facing text
@@ -90,11 +101,23 @@ export class OpenAIClient {
   private readonly fetchImpl: typeof fetch;
   private readonly timeoutMs: number;
   private tokensUsed = 0;
+  private readonly breaker: CircuitBreaker;
 
   constructor(private readonly config: OpenAIConfig) {
     this.baseUrl = config.baseUrl ?? "https://api.openai.com/v1";
     this.fetchImpl = config.fetch ?? fetch;
     this.timeoutMs = config.timeoutMs ?? 20_000;
+    this.breaker = new CircuitBreaker({
+      threshold: config.breakerThreshold ?? 3,
+      cooldownMs: config.breakerCooldownMs ?? 120_000,
+      now: config.now,
+      onChange: (state, failures) => config.log?.(state === "open" ? "openai.circuit_open" : "openai.circuit_closed", { failures }),
+    });
+  }
+
+  /** `closed` (calls go through), `open` (calls are skipped) or `half_open` (one trial call allowed). */
+  get circuitState() {
+    return this.breaker.state;
   }
 
   get enabled(): boolean {
@@ -115,8 +138,17 @@ export class OpenAIClient {
   }
 
   async structured<T>(params: StructuredCallParams<T>): Promise<StructuredResult<T>> {
+    // Not configured and already-aborted calls never reach the provider, so they bypass the breaker.
+    const guarded = Boolean(this.config.apiKey) && !params.signal?.aborted;
+    if (guarded && !this.breaker.allow()) {
+      const e = new OpenAIError("OpenAI skipped: circuit open after repeated provider failures", null, "unavailable");
+      this.config.log?.("openai.request_failed", { name: params.name, kind: e.kind, status: e.status });
+      throw e;
+    }
     try {
-      return await this.call(params);
+      const result = await this.call(params);
+      if (guarded) this.breaker.success();
+      return result;
     } catch (err) {
       const e =
         err instanceof OpenAIError
@@ -124,6 +156,12 @@ export class OpenAIClient {
           : params.signal?.aborted
             ? new OpenAIError("OpenAI request aborted", null, "aborted")
             : new OpenAIError(`OpenAI request failed: ${redactSecrets(err instanceof Error ? err.message : String(err))}`, null, "network");
+      if (guarded) {
+        if (e.kind === "network" || (e.kind === "http" && isProviderFailureStatus(e.status))) this.breaker.failure();
+        // The provider answered (a 4xx, or an unusable model output): it is up.
+        else if (e.kind === "aborted") this.breaker.neutral();
+        else this.breaker.success();
+      }
       this.config.log?.("openai.request_failed", { name: params.name, kind: e.kind, status: e.status });
       throw e;
     }

@@ -33,11 +33,18 @@ const nextConfig: NextConfig = {
   typescript: { ignoreBuildErrors: process.env.NEXT_SKIP_TYPECHECK === "1" },
   poweredByHeader: false,
   transpilePackages: ["@qm/contracts"],
+  // The /api rewrite proxies with a 30 s default timeout, shorter than a research run (up to
+  // AGENT_DEADLINE_MS, 45 s, plus planning); allow 120 s, matching the API's request timeout.
+  experimental: { proxyTimeout: 120_000 },
   async rewrites() {
     return [{ source: "/api/:path*", destination: `${apiUrl}/api/:path*` }];
   },
   async headers() {
-    return [{ source: "/:path*", headers: securityHeaders }];
+    return [
+      { source: "/:path*", headers: securityHeaders },
+      // Bryntum's module is copied under its version (scripts/copy-bryntum.mjs): an upgrade changes the URL.
+      { source: "/vendor/bryntum/:version/:file*", headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }] },
+    ];
   },
 };
 

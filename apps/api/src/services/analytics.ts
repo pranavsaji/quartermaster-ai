@@ -40,27 +40,70 @@ export function minorSum(value: string | number | null | undefined): number {
   return n;
 }
 
-/** Business and security outcomes, computed from the system of record. */
+/**
+ * Per-process cache of each organisation's summary for ANALYTICS_CACHE_SECONDS (wall-clock), so a
+ * dashboard polled by several tabs runs the aggregate queries once. Bounded: the oldest entry is
+ * evicted first.
+ */
+const summaryCache = new Map<string, { expiresAt: number; value: Promise<AnalyticsSummaryDto> }>();
+const SUMMARY_CACHE_MAX = 500;
+
+/** Drops cached summaries (all, or one organisation's). */
+export function clearAnalyticsCache(organizationId?: string): void {
+  if (organizationId) summaryCache.delete(organizationId);
+  else summaryCache.clear();
+}
+
+/** Business and security outcomes, computed from the system of record (cached briefly per organisation). */
 export async function analyticsSummary(ctx: AppContext, organizationId: string): Promise<AnalyticsSummaryDto> {
+  const ttlMs = ctx.config.analyticsCacheSeconds * 1000;
+  if (ttlMs <= 0) return computeAnalyticsSummary(ctx, organizationId);
+  const hit = summaryCache.get(organizationId);
+  if (hit && hit.expiresAt > Date.now()) return hit.value;
+  // Concurrent requests share one computation; a failure is not cached.
+  const value = computeAnalyticsSummary(ctx, organizationId);
+  summaryCache.delete(organizationId);
+  summaryCache.set(organizationId, { expiresAt: Date.now() + ttlMs, value });
+  if (summaryCache.size > SUMMARY_CACHE_MAX) summaryCache.delete(summaryCache.keys().next().value!);
+  value.catch(() => {
+    if (summaryCache.get(organizationId)?.value === value) summaryCache.delete(organizationId);
+  });
+  return value;
+}
+
+async function computeAnalyticsSummary(ctx: AppContext, organizationId: string): Promise<AnalyticsSummaryDto> {
   const now = ctx.now();
   const db = ctx.db;
-  const [org] = await db.select().from(organizations).where(eq(organizations.id, organizationId));
-  const mandate = await getActiveMandateRow(db, organizationId);
-  const account = await currentAccount(db, {
-    organizationId,
-    timeZone: org!.timezone,
-    currency: org!.currency,
-    weeklyLimitMinor: mandate?.weeklyBudgetMinor ?? 0,
-    now,
-    lock: false,
-  });
+  const [[org], mandate] = await Promise.all([
+    db.select().from(organizations).where(eq(organizations.id, organizationId)),
+    getActiveMandateRow(db, organizationId),
+  ]);
 
   // Every figure is an aggregate computed in PostgreSQL: the cost does not grow with history
   // loaded into the API process. Sums of minor units are `bigint` in PostgreSQL, which the driver
   // returns as a string (it may exceed 2^53), so they are typed as strings and converted with
   // `minorSum`; counts are cast to `int`, which arrives as a number.
   const settled = inArray(paymentAttempts.status, [...SETTLED_PAYMENT_STATUSES]);
-  const [paymentTotals] = await db
+  // The reads are independent, so they run concurrently. The budget account comes first within its
+  // own chain: reading it may open the current week's row, which the weekly series then includes.
+  const since = new Date(now.getTime() - 56 * 86_400_000).toISOString().slice(0, 10);
+  const accountAndWeeks = (async () => {
+    const account = await currentAccount(db, {
+      organizationId,
+      timeZone: org!.timezone,
+      currency: org!.currency,
+      weeklyLimitMinor: mandate?.weeklyBudgetMinor ?? 0,
+      now,
+      lock: false,
+    });
+    const weeks = await db
+      .select()
+      .from(budgetAccounts)
+      .where(and(eq(budgetAccounts.organizationId, organizationId), gte(budgetAccounts.periodStart, since)))
+      .orderBy(budgetAccounts.periodStart);
+    return { account, weeks };
+  })();
+  const paymentTotalsQuery = db
     .select({
       captured: sql<string>`coalesce(sum(${paymentAttempts.capturedAmountMinor}), 0)::bigint`,
       refunded: sql<string>`coalesce(sum(${paymentAttempts.refundedAmountMinor}), 0)::bigint`,
@@ -69,7 +112,7 @@ export async function analyticsSummary(ctx: AppContext, organizationId: string):
     })
     .from(paymentAttempts)
     .where(and(eq(paymentAttempts.organizationId, organizationId), settled));
-  const poByStatus = await db
+  const poByStatusQuery = db
     .select({
       status: purchaseOrders.status,
       n: sql<number>`count(*)::int`,
@@ -78,35 +121,27 @@ export async function analyticsSummary(ctx: AppContext, organizationId: string):
     .from(purchaseOrders)
     .where(eq(purchaseOrders.organizationId, organizationId))
     .groupBy(purchaseOrders.status);
-  const [requestCount] = await db
+  const requestCountQuery = db
     .select({ n: sql<number>`count(*)::int` })
     .from(purchaseRequests)
     .where(eq(purchaseRequests.organizationId, organizationId));
-  const findingRows = await db
+  const findingRowsQuery = db
     .select({ type: securityFindings.type, n: sql<number>`count(*)::int` })
     .from(securityFindings)
     .where(eq(securityFindings.organizationId, organizationId))
     .groupBy(securityFindings.type);
-  const decisionRows = await db
+  const decisionRowsQuery = db
     .select({ decision: policyDecisions.decision, stage: policyDecisions.stage, n: sql<number>`count(*)::int` })
     .from(policyDecisions)
     .where(eq(policyDecisions.organizationId, organizationId))
     .groupBy(policyDecisions.decision, policyDecisions.stage);
-  const deliveryRows = await db
+  const deliveryRowsQuery = db
     .select({ status: deliveries.status, n: sql<number>`count(*)::int` })
     .from(deliveries)
     .where(eq(deliveries.organizationId, organizationId))
     .groupBy(deliveries.status);
-  const inventory = await listInventory(db, organizationId, now);
 
-  const since = new Date(now.getTime() - 56 * 86_400_000).toISOString().slice(0, 10);
-  const weeks = await db
-    .select()
-    .from(budgetAccounts)
-    .where(and(eq(budgetAccounts.organizationId, organizationId), gte(budgetAccounts.periodStart, since)))
-    .orderBy(budgetAccounts.periodStart);
-
-  const categoryRows = await db
+  const categoryRowsQuery = db
     .select({ category: purchaseOrderItems.category, total: sql<string>`coalesce(sum(${purchaseOrderItems.lineTotalMinor}), 0)::bigint` })
     .from(purchaseOrderItems)
     .innerJoin(paymentAttempts, eq(paymentAttempts.purchaseOrderId, purchaseOrderItems.purchaseOrderId))
@@ -114,7 +149,7 @@ export async function analyticsSummary(ctx: AppContext, organizationId: string):
     .groupBy(purchaseOrderItems.category);
 
   // Captured spend (net of refunds) per supplier, largest first.
-  const supplierRows = await db
+  const supplierRowsQuery = db
     .select({
       supplier: suppliers.name,
       total: sql<string>`coalesce(sum(coalesce(${paymentAttempts.capturedAmountMinor}, 0) - ${paymentAttempts.refundedAmountMinor}), 0)::bigint`,
@@ -127,12 +162,38 @@ export async function analyticsSummary(ctx: AppContext, organizationId: string):
     .groupBy(suppliers.name);
 
   // Procurement time: request creation to payment completion, in one joined query.
-  const durationRows = await db
+  const durationRowsQuery = db
     .select({ ms: sql<number>`(extract(epoch from (${paymentAttempts.completedAt} - ${purchaseRequests.createdAt})) * 1000)::float8` })
     .from(paymentAttempts)
     .innerJoin(purchaseOrders, eq(purchaseOrders.id, paymentAttempts.purchaseOrderId))
     .innerJoin(purchaseRequests, eq(purchaseRequests.id, purchaseOrders.requestId))
     .where(and(eq(paymentAttempts.organizationId, organizationId), settled, isNotNull(paymentAttempts.completedAt)));
+
+  const [
+    { account, weeks },
+    [paymentTotals],
+    poByStatus,
+    [requestCount],
+    findingRows,
+    decisionRows,
+    deliveryRows,
+    inventory,
+    categoryRows,
+    supplierRows,
+    durationRows,
+  ] = await Promise.all([
+    accountAndWeeks,
+    paymentTotalsQuery,
+    poByStatusQuery,
+    requestCountQuery,
+    findingRowsQuery,
+    decisionRowsQuery,
+    deliveryRowsQuery,
+    listInventory(db, organizationId, now),
+    categoryRowsQuery,
+    supplierRowsQuery,
+    durationRowsQuery,
+  ]);
   const durations = durationRows.map((d) => Math.round(Number(d.ms)));
 
   const poCount = (statuses: readonly string[]) => poByStatus.filter((r) => statuses.includes(r.status)).reduce((a, r) => a + r.n, 0);

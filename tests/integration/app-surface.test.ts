@@ -46,7 +46,15 @@ describe("probes", () => {
   it("reports readiness with the configured integrations", async () => {
     const res = await api().get("/readyz");
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ status: "ready", database: h.ctx.database.driver, paypal: false, channel3: false, ai: true });
+    expect(res.body).toEqual({
+      status: "ready",
+      database: h.ctx.database.driver,
+      paypal: false,
+      channel3: false,
+      ai: true,
+      sweeper: "unknown",
+      last_sweep_age_seconds: null,
+    });
   });
 
   it("reports 503 without details when the database is unreachable", async () => {
