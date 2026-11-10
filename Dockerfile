@@ -4,7 +4,7 @@
 # Build:  docker build -t quartermaster-api .
 # Run:    docker run --env-file .env -p 4000:4000 quartermaster-api
 
-FROM node:22-bookworm-slim@sha256:5ec23b7c622b00547753bc6ffd78085dd868a68aeb41c8e0a1418f033e13d96d AS build
+FROM node:26-bookworm-slim@sha256:add5c17c14752c54d2f3d519ec46a3815684d41c33f198bcb09fb998f7dcbf68 AS build
 WORKDIR /app
 RUN corepack enable
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json .npmrc* ./
@@ -23,7 +23,7 @@ RUN pnpm --filter @qm/api build \
  && pnpm --filter @qm/api deploy --prod --legacy /out \
  && cp -r packages/database/migrations /out/migrations
 
-FROM node:22-bookworm-slim@sha256:5ec23b7c622b00547753bc6ffd78085dd868a68aeb41c8e0a1418f033e13d96d
+FROM node:26-bookworm-slim@sha256:add5c17c14752c54d2f3d519ec46a3815684d41c33f198bcb09fb998f7dcbf68
 ENV NODE_ENV=production QM_MIGRATIONS_DIR=/app/migrations
 WORKDIR /app
 # The application files stay owned by root and read-only to the runtime user, so a compromised
