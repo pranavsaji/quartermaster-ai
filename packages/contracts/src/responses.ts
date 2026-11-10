@@ -86,9 +86,12 @@ export interface InvitationCreatedResponse {
   email_sent: boolean;
 }
 
-/** `POST /members/:id/password-reset`: a one-time link the owner passes on. */
+/**
+ * `POST /members/:id/password-reset` (managers and viewers only). When the link was emailed to the
+ * member, `reset_url` is null; otherwise it is the one-time link for the owner to pass on.
+ */
 export interface ResetLinkResponse {
-  reset_url: string;
+  reset_url: string | null;
   expires_at: string;
   email_sent: boolean;
 }
