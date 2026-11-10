@@ -16,6 +16,7 @@ import {
   purchaseOrders,
   purchaseRequests,
   securityFindings,
+  suppliers,
 } from "@qm/database";
 import type { AppContext } from "../context";
 import { currentAccount, toBudgetDto } from "./budget";
@@ -112,6 +113,19 @@ export async function analyticsSummary(ctx: AppContext, organizationId: string):
     .where(and(eq(paymentAttempts.organizationId, organizationId), settled, eq(purchaseOrderItems.kind, "PRODUCT")))
     .groupBy(purchaseOrderItems.category);
 
+  // Captured spend (net of refunds) per supplier, largest first.
+  const supplierRows = await db
+    .select({
+      supplier: suppliers.name,
+      total: sql<string>`coalesce(sum(coalesce(${paymentAttempts.capturedAmountMinor}, 0) - ${paymentAttempts.refundedAmountMinor}), 0)::bigint`,
+      orders: sql<number>`count(*)::int`,
+    })
+    .from(paymentAttempts)
+    .innerJoin(purchaseOrders, eq(purchaseOrders.id, paymentAttempts.purchaseOrderId))
+    .innerJoin(suppliers, eq(suppliers.id, purchaseOrders.supplierId))
+    .where(and(eq(paymentAttempts.organizationId, organizationId), settled))
+    .groupBy(suppliers.name);
+
   // Procurement time: request creation to payment completion, in one joined query.
   const durationRows = await db
     .select({ ms: sql<number>`(extract(epoch from (${paymentAttempts.completedAt} - ${purchaseRequests.createdAt})) * 1000)::float8` })
@@ -158,6 +172,9 @@ export async function analyticsSummary(ctx: AppContext, organizationId: string):
       delivered: deliveryCount(["DELIVERED"]),
     },
     spend_by_week: weeks.map((w) => ({ week_start: w.periodStart, captured_minor: w.spentMinor, reserved_minor: w.reservedMinor })),
+    spend_by_supplier: supplierRows
+      .map((r) => ({ supplier: r.supplier, captured_minor: minorSum(r.total), orders: r.orders }))
+      .sort((a, b) => b.captured_minor - a.captured_minor),
     spend_by_category: categoryRows.map((c) => ({ category: c.category ?? "uncategorized", captured_minor: minorSum(c.total) })),
     decisions_by_kind: (["ALLOW", "REVIEW_REQUIRED", "BLOCK"] as PolicyDecisionKind[]).map((d) => ({
       decision: d,

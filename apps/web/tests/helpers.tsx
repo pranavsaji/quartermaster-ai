@@ -206,6 +206,7 @@ export function analyticsSummary(overrides: Partial<AnalyticsSummaryDto> = {}): 
     inventory: { items_low: 2, items_critical: 1, items_out: 0 },
     deliveries: { scheduled: 1, delayed: 0, delivered: 1 },
     spend_by_week: [],
+    spend_by_supplier: [],
     spend_by_category: [],
     decisions_by_kind: [],
     findings_by_type: [],

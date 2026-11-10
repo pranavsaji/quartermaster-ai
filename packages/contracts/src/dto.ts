@@ -516,6 +516,8 @@ export interface AnalyticsSummaryDto {
   inventory: { items_low: number; items_critical: number; items_out: number };
   deliveries: { scheduled: number; delayed: number; delivered: number };
   spend_by_week: { week_start: string; captured_minor: number; reserved_minor: number }[];
+  /** Captured spend net of refunds, per supplier, largest first. */
+  spend_by_supplier: { supplier: string; captured_minor: number; orders: number }[];
   spend_by_category: { category: string; captured_minor: number }[];
   decisions_by_kind: { decision: PolicyDecisionKind; count: number }[];
   findings_by_type: { type: FindingType; count: number }[];

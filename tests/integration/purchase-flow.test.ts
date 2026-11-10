@@ -296,6 +296,7 @@ describe("end-to-end purchasing journey", () => {
   it("reports measurable outcomes", async () => {
     const a = (await owner.get("/analytics/summary")).body;
     expect(a.totals.captured_spend_minor).toBe(17_320);
+    expect(a.spend_by_supplier).toEqual([{ supplier: "Harbor Restaurant Supply", captured_minor: 17_320, orders: 1 }]);
     expect(a.security.duplicate_captures).toBe(0);
     expect(a.security.blocked_attempts).toBeGreaterThanOrEqual(1);
     expect(a.security.prompt_injections_detected).toBeGreaterThanOrEqual(1);
