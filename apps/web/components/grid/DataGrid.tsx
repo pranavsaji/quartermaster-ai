@@ -149,6 +149,17 @@ export interface GridTools {
   actions?: React.ReactNode;
 }
 
+/**
+ * A cell as CSV text that spreadsheets will not run as a formula. Supplier names, listings and
+ * invoice notes are outside input, so text starting with = + - @ or a tab/CR is prefixed with a
+ * quote (OWASP CSV injection guidance). Plain numbers and money such as "-$5.00" are left alone.
+ */
+export function csvSafe(value: unknown): string {
+  const text = value === null || value === undefined ? "" : typeof value === "string" ? value : JSON.stringify(value);
+  if (!/^[=+\-@\t\r]/.test(text) || /^-?\$?[\d.,]+$/.test(text)) return text;
+  return `'${text}`;
+}
+
 /** Columns that hold buttons or links: never exported or filtered. */
 const isControlColumn = (c: ColDef<unknown>) => c.colId === "actions" || c.colId === "select" || c.context?.control === true;
 
@@ -207,7 +218,7 @@ export function DataGrid<T extends { id: string }>({
       fileName: `${exportFileName}.csv`,
       columnKeys: keys,
       // Export what people see (formatted money, dates, labels), not raw minor units or enums.
-      processCellCallback: (p) => (p.column.getColDef().valueFormatter ? p.formatValue(p.value) : (p.value as string)),
+      processCellCallback: (p) => csvSafe(p.column.getColDef().valueFormatter ? p.formatValue(p.value) : p.value),
     });
   }, [exportFileName]);
 
