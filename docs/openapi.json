@@ -10,7 +10,12 @@
   },
   "servers": [
     {
-      "url": "http://localhost:4000/api/v1"
+      "url": "https://quartermaster-web-o0df.onrender.com/api/v1",
+      "description": "Hosted demo (PayPal sandbox)"
+    },
+    {
+      "url": "http://localhost:4000/api/v1",
+      "description": "Local development"
     }
   ],
   "components": {

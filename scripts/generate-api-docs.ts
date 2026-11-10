@@ -20,7 +20,10 @@ const openapi = {
       "Autonomous procurement secured by TrustRail. Amounts are integer minor units. Mutations require `X-Requested-With: quartermaster`; routes marked idempotent require an `Idempotency-Key` header. Response shapes are defined in packages/contracts/src/dto.ts.",
     license: { name: "Apache-2.0" },
   },
-  servers: [{ url: "http://localhost:4000/api/v1" }],
+  servers: [
+    { url: "https://quartermaster-web-o0df.onrender.com/api/v1", description: "Hosted demo (PayPal sandbox)" },
+    { url: "http://localhost:4000/api/v1", description: "Local development" },
+  ],
   components: {
     securitySchemes: { session: { type: "apiKey", in: "cookie", name: "qm_session" } },
     parameters: {
