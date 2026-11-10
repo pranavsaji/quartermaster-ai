@@ -4,7 +4,7 @@ import type { ColDef } from "ag-grid-community";
 import type { CustomCellRendererProps } from "ag-grid-react";
 import type { InventoryItemDto } from "@qm/contracts";
 import { useCallback, useMemo } from "react";
-import { ActionCell, controlColumn } from "@/components/grid/ActionCell";
+import { ActionCell, RowAction, controlColumn } from "@/components/grid/ActionCell";
 import { DataGrid } from "@/components/grid/DataGrid";
 import { EDITABLE_CELL, numberColumn, statusColumn, rightCell } from "@/components/grid/columns";
 import { useInlineEditor, wholeNumberParser } from "@/components/grid/editing";
@@ -122,14 +122,14 @@ export function InventoryGrid({
           p.data ? (
             <ActionCell eGridCell={p.eGridCell}>
               {canAdjust ? (
-                <Button size="sm" variant="secondary" onClick={() => p.data && onAdjust(p.data)} aria-label={`Adjust ${p.data.name}`}>
+                <RowAction onClick={() => p.data && onAdjust(p.data)} aria-label={`Adjust ${p.data.name}`}>
                   Adjust
-                </Button>
+                </RowAction>
               ) : null}
               {editable ? (
-                <Button size="sm" variant="ghost" onClick={() => p.data && onEdit(p.data)} aria-label={`Edit details of ${p.data.name}`}>
+                <RowAction onClick={() => p.data && onEdit(p.data)} aria-label={`Edit details of ${p.data.name}`}>
                   Edit
-                </Button>
+                </RowAction>
               ) : null}
             </ActionCell>
           ) : null,

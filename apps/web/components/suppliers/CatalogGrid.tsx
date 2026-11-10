@@ -4,7 +4,7 @@ import type { ColDef, EditableCallbackParams } from "ag-grid-community";
 import type { CustomCellRendererProps } from "ag-grid-react";
 import type { CatalogItemDto } from "@qm/contracts";
 import { useCallback, useMemo } from "react";
-import { ActionCell, controlColumn } from "@/components/grid/ActionCell";
+import { ActionCell, RowAction, controlColumn } from "@/components/grid/ActionCell";
 import { DataGrid } from "@/components/grid/DataGrid";
 import { EDITABLE_CELL, moneyColumn, numberColumn, rightCell } from "@/components/grid/columns";
 import { moneyParser, useInlineEditor, wholeNumberParser } from "@/components/grid/editing";
@@ -168,9 +168,9 @@ export function CatalogGrid({
         cellRenderer: (p: CustomCellRendererProps<CatalogItemDto>) =>
           p.data ? (
             <ActionCell eGridCell={p.eGridCell}>
-              <Button size="sm" variant="secondary" onClick={() => p.data && onEdit(p.data)} aria-label={`Edit ${p.data.sku}`}>
+              <RowAction onClick={() => p.data && onEdit(p.data)} aria-label={`Edit ${p.data.sku}`}>
                 Edit
-              </Button>
+              </RowAction>
             </ActionCell>
           ) : null,
       });

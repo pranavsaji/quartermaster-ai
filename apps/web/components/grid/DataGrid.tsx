@@ -100,20 +100,27 @@ export const gridTheme = themeQuartz.withParams({
   fontFamily: "inherit",
   fontSize: 13,
   headerFontSize: 12,
-  headerFontWeight: 500,
+  headerFontWeight: 600,
   foregroundColor: cssColor("ink"),
   textColor: cssColor("ink"),
-  headerTextColor: cssColor("ink-2"),
+  headerTextColor: cssColor("ink-3"),
   backgroundColor: cssColor("surface"),
-  headerBackgroundColor: cssColor("canvas"),
+  // A whisper of the canvas, so the header reads as a header without a grey slab.
+  headerBackgroundColor: `color-mix(in srgb, ${cssColor("canvas")} 70%, ${cssColor("surface")})`,
   borderColor: cssColor("line"),
   rowBorder: { color: cssColor("line") },
+  // No vertical rules: columns are separated by alignment and space, not lines.
+  columnBorder: false,
+  headerColumnBorder: false,
+  headerColumnResizeHandleColor: "transparent",
   accentColor: cssColor("accent"),
-  rowHoverColor: `color-mix(in srgb, ${cssColor("accent-soft")} 60%, ${cssColor("surface")})`,
+  rowHoverColor: `color-mix(in srgb, ${cssColor("accent-soft")} 55%, ${cssColor("surface")})`,
   selectedRowBackgroundColor: cssColor("accent-soft"),
-  wrapperBorderRadius: 12,
+  wrapperBorderRadius: 10,
   borderRadius: 6,
   spacing: 7,
+  cellHorizontalPaddingScale: 1.1,
+  iconSize: 14,
   rowHeight: 44,
   headerHeight: 40,
   browserColorScheme: "light",
@@ -239,14 +246,27 @@ export function DataGrid<T extends { id: string }>({
               <label htmlFor={searchId} className="sr-only">
                 Search {ariaLabel.toLowerCase()}
               </label>
-              <input
-                id={searchId}
-                type="search"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search…"
-                className="h-8 w-56 rounded-md border border-line-strong bg-surface px-2.5 text-[13px] text-ink placeholder:text-ink-4 focus:border-accent focus:outline-none"
-              />
+              <div className="relative">
+                <svg
+                  aria-hidden
+                  viewBox="0 0 20 20"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={1.8}
+                  className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-ink-4"
+                >
+                  <circle cx="8.5" cy="8.5" r="5.5" />
+                  <path d="m13 13 4 4" strokeLinecap="round" />
+                </svg>
+                <input
+                  id={searchId}
+                  type="search"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search"
+                  className="h-8 w-60 rounded-md border border-line-strong bg-surface pr-2.5 pl-8 text-[13px] text-ink shadow-xs placeholder:text-ink-4 focus:border-accent focus:ring-3 focus:ring-accent/15 focus:outline-none"
+                />
+              </div>
             </>
           ) : null}
           <span className="text-[12.5px] text-ink-3 tnum" aria-live="polite">
@@ -276,7 +296,7 @@ export function DataGrid<T extends { id: string }>({
           getRowId={getRowId}
           loading={rows === undefined}
           domLayout={autoHeight ? "autoHeight" : "normal"}
-          overlayNoRowsTemplate={`<span class="text-[13px] text-ink-3">${escapeHtml(emptyMessage)}</span>`}
+          overlayNoRowsTemplate={`<span class="qm-grid-empty">${escapeHtml(emptyMessage)}</span>`}
           quickFilterText={toolbar ? search : undefined}
           initialState={initialState}
           onStateUpdated={stateKey ? onStateUpdated : undefined}

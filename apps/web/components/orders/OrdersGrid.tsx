@@ -5,12 +5,11 @@ import type { CustomCellRendererProps } from "ag-grid-react";
 import type { DeliveryDto, PurchaseOrderDto } from "@qm/contracts";
 import Link from "next/link";
 import { useMemo } from "react";
-import { ActionCell, controlColumn } from "@/components/grid/ActionCell";
+import { ActionCell, RowAction, controlColumn } from "@/components/grid/ActionCell";
 import { DataGrid } from "@/components/grid/DataGrid";
 import { TOTALS_ROW_ID, totalsRowClass, useFilteredRows } from "@/components/grid/use-filtered-rows";
 import { dateTimeColumn, moneyColumn, statusColumn } from "@/components/grid/columns";
 import { StatusBadge } from "@/components/ui/Badge";
-import { Button } from "@/components/ui/Button";
 import { date, dateTime } from "@/lib/format";
 import { DELIVERY_STATUS_TONES, OPEN_DELIVERY_STATUSES, PAYMENT_STATUS_TONES, PO_STATUS_TONES } from "@/lib/labels";
 
@@ -145,18 +144,18 @@ export function OrdersGrid({
             <ActionCell eGridCell={p.eGridCell}>
               {canManage && open ? (
                 <>
-                  <Button size="sm" variant="secondary" onClick={() => onReceive(row)} aria-label={`Mark ${row.number} received`}>
+                  <RowAction onClick={() => onReceive(row)} aria-label={`Mark ${row.number} received`}>
                     Receive
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => onDelay(row)} aria-label={`Report delay for ${row.number}`}>
+                  </RowAction>
+                  <RowAction onClick={() => onDelay(row)} aria-label={`Report delay for ${row.number}`}>
                     Delay
-                  </Button>
+                  </RowAction>
                 </>
               ) : null}
               {canInvoice ? (
-                <Button size="sm" variant="ghost" onClick={() => onInvoice(row)} aria-label={`Analyze an invoice for ${row.number}`}>
+                <RowAction onClick={() => onInvoice(row)} aria-label={`Analyze an invoice for ${row.number}`}>
                   Invoice
-                </Button>
+                </RowAction>
               ) : null}
             </ActionCell>
           );

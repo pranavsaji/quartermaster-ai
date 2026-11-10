@@ -26,13 +26,13 @@ export function SourceLabel({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded border px-1.5 py-px font-mono text-[10.5px] font-medium tracking-wide uppercase",
+        "inline-flex items-center gap-1 rounded-md border px-1.5 py-px text-[11px] leading-4 font-medium whitespace-nowrap",
         lookup(STYLES, source, STYLES.SYNTHETIC),
         className,
       )}
     >
       <svg viewBox="0 0 16 16" fill="currentColor" className="size-2.5" aria-hidden>
-        <circle cx="8" cy="8" r="4" />
+        <circle cx="8" cy="8" r="3.5" />
       </svg>
       <span>
         <span className="sr-only">Data source: </span>

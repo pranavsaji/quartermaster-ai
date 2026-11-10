@@ -49,7 +49,7 @@ export function SuppliersGrid({ suppliers, currency }: { suppliers: SupplierDto[
               <Link href={`/suppliers/${p.data.id}`} className="font-medium text-ink hover:text-accent hover:underline">
                 {p.data.name}
               </Link>
-              {p.data.website ? <span className="max-w-64 truncate text-[11.5px] text-ink-3">{p.data.website}</span> : null}
+              {p.data.website ? <span className="max-w-64 truncate text-[11.5px] text-ink-3">{hostOf(p.data.website)}</span> : null}
             </ActionCell>
           ) : null,
       },
@@ -103,4 +103,13 @@ export function SuppliersGrid({ suppliers, currency }: { suppliers: SupplierDto[
       tools={{ exportFileName: "suppliers" }}
     />
   );
+}
+
+/** "https://sandbox-suppliers.example/harbor" -> "sandbox-suppliers.example": the part people recognise. */
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
 }
