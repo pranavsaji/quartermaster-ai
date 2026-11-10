@@ -76,6 +76,43 @@ const EnvSchema = z.object({
 
   ZAPIER_WEBHOOK_URL: z.string().url().optional(),
 
+  /** Anyone may create a workspace (POST /auth/signup). */
+  SIGNUP_ENABLED: bool(true),
+  /** Sign-ups per client IP per hour. */
+  SIGNUP_RATE_LIMIT_PER_HOUR: z.coerce.number().int().min(1).max(100_000).optional(),
+  INVITATION_TTL_DAYS: z.coerce.number().int().min(1).max(30).default(7),
+  PASSWORD_RESET_TTL_MINUTES: z.coerce
+    .number()
+    .int()
+    .min(10)
+    .max(24 * 60)
+    .default(60),
+  /** Show the shared sample-workspace accounts on the sign-in page. Defaults to off in production. */
+  SAMPLE_ACCOUNTS_HINT: optionalBool(),
+
+  /** Email over HTTPS: Resend, or a JSON webhook (e.g. Zapier "Email by Zapier"). */
+  RESEND_API_KEY: z.string().optional(),
+  EMAIL_WEBHOOK_URL: z.string().url().optional(),
+  EMAIL_FROM: z.string().min(3).max(200).default("Quartermaster <onboarding@resend.dev>"),
+
+  /** Comma-separated emails of platform operators (system-wide error tracking). */
+  OPERATOR_EMAILS: z.string().default(""),
+  /** Comma-separated recipients of operational alerts (needs email configured). */
+  ALERT_EMAILS: z.string().default(""),
+  /** Slack-compatible incoming webhook (`{ text }`) for operational alerts. */
+  ALERT_WEBHOOK_URL: z.string().url().optional(),
+  /** Minimum minutes between repeat alerts for the same error. */
+  ALERT_COOLDOWN_MINUTES: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(24 * 60)
+    .default(30),
+  /** Optional: also forward errors to Sentry. */
+  SENTRY_DSN: z.string().url().optional(),
+  /** Release identifier attached to error reports (Render sets RENDER_GIT_COMMIT). */
+  RENDER_GIT_COMMIT: z.string().max(64).optional(),
+
   AGENT_MAX_RESEARCH_CALLS: z.coerce.number().int().min(1).max(50).default(8),
   AGENT_DEADLINE_MS: z.coerce.number().int().min(2000).max(120_000).default(45_000),
   AGENT_TOKEN_BUDGET: z.coerce.number().int().min(500).max(200_000).default(12_000),
@@ -118,6 +155,22 @@ export interface AppConfig {
   channel3: { apiKey: string | null; baseUrl?: string };
   openai: { apiKey: string | null; model: string; baseUrl?: string };
   zapierWebhookUrl: string | null;
+  accounts: {
+    signupEnabled: boolean;
+    signupPerHour: number;
+    invitationTtlDays: number;
+    passwordResetTtlMinutes: number;
+    sampleAccountsHint: boolean;
+  };
+  email: { resendApiKey: string | null; webhookUrl: string | null; from: string };
+  monitoring: {
+    operatorEmails: string[];
+    alertEmails: string[];
+    alertWebhookUrl: string | null;
+    alertCooldownMinutes: number;
+    sentryDsn: string | null;
+    release: string | null;
+  };
   agent: { maxResearchCalls: number; deadlineMs: number; tokenBudget: number; marketReferenceMaxAgeHours: number };
   sweeperIntervalSeconds: number;
   shutdownGraceMs: number;
@@ -155,6 +208,21 @@ export function parseTrustProxy(raw: string): number | string[] {
     );
   }
   return entries;
+}
+
+/** Lower-cased, de-duplicated addresses from a comma-separated list; malformed entries are refused. */
+export function emailList(raw: string): string[] {
+  const list = [
+    ...new Set(
+      raw
+        .split(",")
+        .map((v) => v.trim().toLowerCase())
+        .filter(Boolean),
+    ),
+  ];
+  const bad = list.filter((v) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v));
+  if (bad.length) throw new Error(`Invalid configuration: not an email address: ${bad.map((b) => b.slice(0, 40)).join(", ")}`);
+  return list;
 }
 
 export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
@@ -237,6 +305,22 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
     channel3: { apiKey: e.CHANNEL3_API_KEY ?? null, baseUrl: e.CHANNEL3_BASE_URL },
     openai: { apiKey: e.OPENAI_API_KEY ?? null, model: e.OPENAI_MODEL, baseUrl: e.OPENAI_BASE_URL },
     zapierWebhookUrl: e.ZAPIER_WEBHOOK_URL ?? null,
+    accounts: {
+      signupEnabled: e.SIGNUP_ENABLED,
+      signupPerHour: e.SIGNUP_RATE_LIMIT_PER_HOUR ?? (e.NODE_ENV === "test" ? 1000 : 5),
+      invitationTtlDays: e.INVITATION_TTL_DAYS,
+      passwordResetTtlMinutes: e.PASSWORD_RESET_TTL_MINUTES,
+      sampleAccountsHint: e.SAMPLE_ACCOUNTS_HINT ?? !production,
+    },
+    email: { resendApiKey: e.RESEND_API_KEY ?? null, webhookUrl: e.EMAIL_WEBHOOK_URL ?? null, from: e.EMAIL_FROM },
+    monitoring: {
+      operatorEmails: emailList(e.OPERATOR_EMAILS),
+      alertEmails: emailList(e.ALERT_EMAILS),
+      alertWebhookUrl: e.ALERT_WEBHOOK_URL ?? null,
+      alertCooldownMinutes: e.ALERT_COOLDOWN_MINUTES,
+      sentryDsn: e.SENTRY_DSN ?? null,
+      release: e.RENDER_GIT_COMMIT?.slice(0, 12) ?? null,
+    },
     agent: {
       maxResearchCalls: e.AGENT_MAX_RESEARCH_CALLS,
       deadlineMs: e.AGENT_DEADLINE_MS,

@@ -1,10 +1,11 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { Database, DatabaseHandle } from "@qm/database";
-import { Channel3Client, Notifier, OpenAIClient } from "@qm/integrations";
+import { Channel3Client, Mailer, Notifier, OpenAIClient, SentryForwarder } from "@qm/integrations";
 import { PayPalClient } from "@qm/payments";
 import type { SigningKey } from "@qm/trustrail";
 import type { AppConfig } from "./config";
 import type { Logger } from "./logger";
+import { ErrorTracker } from "./services/monitoring/tracker";
 
 export interface AppContext {
   config: AppConfig;
@@ -15,6 +16,10 @@ export interface AppContext {
   channel3: Channel3Client;
   openai: OpenAIClient;
   notifier: Notifier;
+  /** Transactional email (invitations, password resets, alerts). */
+  mailer: Mailer;
+  /** Error tracking and operator alerting. */
+  errors: ErrorTracker;
   signingKey: SigningKey;
   /** Clock indirection so tests can control time. */
   now: () => Date;
@@ -25,6 +30,8 @@ export interface ContextOverrides {
   paypalFetch?: typeof fetch;
   channel3Fetch?: typeof fetch;
   openaiFetch?: typeof fetch;
+  /** Email provider, alert webhook and Sentry calls. */
+  monitoringFetch?: typeof fetch;
   now?: () => Date;
 }
 
@@ -62,6 +69,34 @@ export function buildContext(
     fetch: overrides.fetch,
     log: (event, data) => log.warn({ ...data, event }, "notifier"),
   });
+  const now = overrides.now ?? (() => new Date());
+  const mailer = new Mailer({
+    resendApiKey: config.email.resendApiKey,
+    webhookUrl: config.email.webhookUrl,
+    from: config.email.from,
+    fetch: overrides.monitoringFetch ?? overrides.fetch,
+    log: (event, data) => log.warn({ ...data, event }, "mailer"),
+  });
+  const sentry = new SentryForwarder({
+    dsn: config.monitoring.sentryDsn,
+    environment: config.env,
+    release: config.monitoring.release,
+    fetch: overrides.monitoringFetch ?? overrides.fetch,
+  });
+  const errors = new ErrorTracker({
+    db: database.db,
+    log,
+    now,
+    mailer,
+    sentry,
+    fetch: overrides.monitoringFetch ?? overrides.fetch,
+    appBaseUrl: config.appBaseUrl,
+    environment: config.env,
+    release: config.monitoring.release,
+    alertEmails: config.monitoring.alertEmails,
+    alertWebhookUrl: config.monitoring.alertWebhookUrl,
+    cooldownMinutes: config.monitoring.alertCooldownMinutes,
+  });
   return {
     config,
     log,
@@ -71,8 +106,10 @@ export function buildContext(
     channel3,
     openai,
     notifier,
+    mailer,
+    errors,
     signingKey,
-    now: overrides.now ?? (() => new Date()),
+    now,
   };
 }
 
