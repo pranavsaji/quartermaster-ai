@@ -48,6 +48,8 @@ import type {
   RefundRequest,
   RejectRequest,
   SecurityFindingDto,
+  RedTeamRequest,
+  RedTeamResultDto,
   SessionResponse,
   SignupRequest,
   SpendMandateInput,
@@ -260,6 +262,8 @@ export const api = {
     audit: (q?: PageQuery, o?: Signal) => get<Page<AuditEventDto>>("/security/audit", { ...o, query: pageQuery(q) }),
     verifyAudit: (o?: Signal) => get<AuditChainVerificationDto>("/security/audit/verify", o),
     paypalNotifications: (o?: Signal) => get<{ status: PayPalNotificationStatusDto }>("/security/paypal-notifications", o),
+    /** Evaluates a hostile listing; stores nothing, so it is safe to call repeatedly. */
+    redTeam: (body: RedTeamRequest) => post<RedTeamResultDto>("/security/red-team", body),
   },
 
   /** Platform operators only (SessionUser.operator); everyone else gets 403. */

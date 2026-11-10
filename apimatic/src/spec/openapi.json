@@ -4438,6 +4438,310 @@
         ],
         "description": "A supplier invoice to match against its purchase order and delivery."
       },
+      "RedTeamResultDto": {
+        "type": "object",
+        "properties": {
+          "detection": {
+            "type": "object",
+            "properties": {
+              "quarantined": {
+                "type": "boolean",
+                "description": "Flagged by prompt-injection screening: withheld from the agent and blocked by TrustRail.",
+                "example": true
+              },
+              "suspicious": {
+                "type": "boolean",
+                "example": true
+              },
+              "score": {
+                "type": "number",
+                "example": 1
+              },
+              "severity": {
+                "$ref": "#/components/schemas/Severity"
+              },
+              "signals": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "rule": {
+                      "type": "string"
+                    },
+                    "excerpt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "rule",
+                    "excerpt"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "quarantined",
+              "suspicious",
+              "score",
+              "severity",
+              "signals"
+            ],
+            "additionalProperties": false
+          },
+          "worst_case": {
+            "type": "object",
+            "properties": {
+              "supplier": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Unique identifier (UUID).",
+                    "example": "0f8fad5b-d9cb-469f-a165-70867728950e"
+                  },
+                  "name": {
+                    "type": "string",
+                    "description": "Display name.",
+                    "example": "Harbor Restaurant Supply"
+                  },
+                  "approved": {
+                    "type": "boolean",
+                    "description": "Approved in the current Spend Mandate.",
+                    "example": true
+                  },
+                  "active": {
+                    "type": "boolean",
+                    "description": "Whether the record is in use.",
+                    "example": true
+                  }
+                },
+                "required": [
+                  "id",
+                  "name",
+                  "approved",
+                  "active"
+                ],
+                "additionalProperties": false,
+                "description": "Supplier."
+              },
+              "cart": {
+                "type": "object",
+                "properties": {
+                  "lines": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "description": "Kind of entry."
+                        },
+                        "description": {
+                          "type": "string",
+                          "description": "Free-text description."
+                        },
+                        "quantity": {
+                          "type": "integer",
+                          "example": 1
+                        },
+                        "line_total_minor": {
+                          "type": "integer",
+                          "description": "Line total, in minor units (cents).",
+                          "example": 17320
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "description",
+                        "quantity",
+                        "line_total_minor"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "description": "Line items."
+                  },
+                  "total_minor": {
+                    "type": "integer",
+                    "description": "Total, in minor units (cents).",
+                    "example": 17320
+                  },
+                  "currency": {
+                    "type": "string",
+                    "description": "ISO 4217 currency code.",
+                    "example": "USD"
+                  }
+                },
+                "required": [
+                  "lines",
+                  "total_minor",
+                  "currency"
+                ],
+                "additionalProperties": false
+              },
+              "decision": {
+                "$ref": "#/components/schemas/PolicyDecisionKind"
+              },
+              "violations": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                      "description": "Stable machine-readable code."
+                    },
+                    "severity": {
+                      "type": "string",
+                      "enum": [
+                        "BLOCK",
+                        "REVIEW"
+                      ],
+                      "description": "Severity.",
+                      "example": "BLOCK"
+                    },
+                    "message": {
+                      "type": "string",
+                      "description": "Human-readable message (fixed per code)."
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "severity",
+                    "message"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "approvable": {
+                "type": "boolean",
+                "description": "Whether an owner could approve it at all (a BLOCK cannot be approved by anyone).",
+                "example": true
+              },
+              "mandate_version": {
+                "type": "number",
+                "example": 1
+              }
+            },
+            "required": [
+              "supplier",
+              "cart",
+              "decision",
+              "violations",
+              "approvable",
+              "mandate_version"
+            ],
+            "additionalProperties": false,
+            "description": "The worst case: the agent was fully fooled and proposed exactly what the listing asked for."
+          },
+          "bound": {
+            "type": "object",
+            "properties": {
+              "per_order_limit_minor": {
+                "type": "integer",
+                "description": "Per order limit, in minor units (cents).",
+                "example": 17320
+              },
+              "weekly_remaining_minor": {
+                "type": "integer",
+                "description": "Weekly remaining, in minor units (cents).",
+                "example": 17320
+              },
+              "human_approval_required": {
+                "type": "boolean",
+                "description": "An owner must approve every purchase (always true).",
+                "example": true
+              },
+              "currency": {
+                "type": "string",
+                "description": "ISO 4217 currency code.",
+                "example": "USD"
+              }
+            },
+            "required": [
+              "per_order_limit_minor",
+              "weekly_remaining_minor",
+              "human_approval_required",
+              "currency"
+            ],
+            "additionalProperties": false,
+            "description": "The ceiling a hijacked agent works under, from the active Spend Mandate."
+          }
+        },
+        "required": [
+          "detection",
+          "worst_case",
+          "bound"
+        ],
+        "additionalProperties": false,
+        "description": "Result of a red-team run: what detection saw, and what TrustRail decides if the agent obeyed the listing anyway."
+      },
+      "RedTeamRequest": {
+        "type": "object",
+        "properties": {
+          "listing_text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "supplier_id": {
+            "description": "Id of the related supplier.",
+            "oneOf": [
+              {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "food_packaging",
+              "cleaning_supplies",
+              "cooking_ingredients",
+              "beverages",
+              "kitchen_equipment",
+              "alcohol",
+              "gift_cards",
+              "services"
+            ],
+            "description": "Product category.",
+            "example": "food_packaging"
+          },
+          "unit_price_minor": {
+            "type": "integer",
+            "maximum": 100000000,
+            "description": "Unit price, in minor units (cents).",
+            "example": 17320,
+            "minimum": 1
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10000,
+            "example": 1
+          },
+          "recurring": {
+            "type": "boolean",
+            "description": "A recurring subscription rather than a one-off purchase.",
+            "example": true
+          }
+        },
+        "required": [
+          "listing_text",
+          "supplier_id",
+          "category",
+          "unit_price_minor",
+          "quantity"
+        ]
+      },
       "AuditEventDto": {
         "type": "object",
         "properties": {
@@ -8741,6 +9045,67 @@
           "429": {
             "$ref": "#/components/responses/TooManyRequests"
           }
+        }
+      }
+    },
+    "/security/red-team": {
+      "post": {
+        "operationId": "createSecurityRedTeam",
+        "summary": "Red-team TrustRail with your own hostile listing (evaluated only, nothing stored)",
+        "description": "Red-team TrustRail with your own hostile listing (evaluated only, nothing stored).",
+        "tags": [
+          "Security"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "security": [
+          {
+            "secureSession": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Red-team TrustRail with your own hostile listing (evaluated only, nothing stored)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RedTeamResultDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "429": {
+            "$ref": "#/components/responses/TooManyRequests"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RedTeamRequest"
+              }
+            }
+          },
+          "description": "Red-team TrustRail with your own hostile listing (evaluated only, nothing stored)"
         }
       }
     },

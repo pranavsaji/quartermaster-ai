@@ -71,6 +71,13 @@ export const Icons = {
       <path d="M6.8 9V6.5a3.2 3.2 0 1 1 6.4 0V9M10 12.3v1.8" />
     </Base>
   ),
+  redteam: (p: SVGProps<SVGSVGElement>) => (
+    <Base {...p}>
+      <circle cx="10" cy="10" r="6" />
+      <circle cx="10" cy="10" r="2.2" />
+      <path d="M10 2v3M10 15v3M2 10h3M15 10h3" />
+    </Base>
+  ),
   analytics: (p: SVGProps<SVGSVGElement>) => (
     <Base {...p}>
       <path d="M3 17h14" />

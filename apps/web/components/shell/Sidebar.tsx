@@ -32,6 +32,7 @@ const NAV: { heading: string; items: NavItem[] }[] = [
     items: [
       { href: "/mandate", label: "Spend mandate", icon: "mandate" },
       { href: "/security", label: "Security center", icon: "security" },
+      { href: "/red-team", label: "Red-team TrustRail", icon: "redteam" },
       { href: "/analytics", label: "Analytics", icon: "analytics" },
     ],
   },

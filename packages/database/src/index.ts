@@ -8,6 +8,7 @@ export {
   ensureOperatorAccounts,
   DEMO_CREDENTIALS,
   DEMO_ORG_NAME,
+  ADVERSARIAL_LISTING_TEXT,
   OPERATIONS_ORG_NAME,
   type OperatorSeedOutcome,
 } from "./seed";

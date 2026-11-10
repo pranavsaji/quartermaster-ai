@@ -2261,6 +2261,52 @@
           ]
         },
         {
+          "name": "Red-team TrustRail with your own hostile listing (evaluated only, nothing stored)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Requested-With",
+                "value": "quartermaster"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/security/red-team",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "security",
+                "red-team"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"status is not a server error\", () => pm.expect(pm.response.code).to.be.below(500));"
+                ]
+              }
+            }
+          ]
+        },
+        {
           "name": "Policy decisions",
           "request": {
             "method": "GET",

@@ -5,6 +5,7 @@ import {
   PaginationQuery,
   PurchaseOrdersQuery,
   ReceiveDeliveryRequest,
+  RedTeamRequest,
   SecurityEventsQuery,
   SpendMandateInput,
 } from "@qm/contracts";
@@ -17,6 +18,7 @@ import { delayDelivery, listDeliveries, receiveDelivery } from "../../services/f
 import { analyzeAndRecordInvoice, listInvoices } from "../../services/invoices";
 import { getActiveMandateRow, toMandateDto, updateMandate } from "../../services/mandates";
 import { listOrders, loadOrder, orderDtos } from "../../services/orders";
+import { redTeamListing } from "../../services/red-team";
 import { listAuditEvents, listDecisions, listFindings } from "../../services/security";
 import { actorOf, requireRole } from "../middleware/auth";
 import { asyncHandler, param, parse } from "../middleware/errors";
@@ -144,6 +146,15 @@ export function operationsRoutes(ctx: AppContext): Router {
     requireRole("MANAGER"),
     asyncHandler(async (req, res) => {
       res.json(await verifyAuditChain(ctx.db, req.user!.organizationId));
+    }),
+  );
+
+  r.post(
+    "/security/red-team",
+    // Pure evaluation (nothing stored, no model, no PayPal), so every member may try attacks;
+    // the global API rate limit bounds how often.
+    asyncHandler(async (req, res) => {
+      res.json(await redTeamListing(ctx, req.user!.organizationId, parse(RedTeamRequest, req.body)));
     }),
   );
 

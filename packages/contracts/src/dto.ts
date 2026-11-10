@@ -611,3 +611,30 @@ export interface OpsHealthDto {
   paypal_webhooks: { last_received_at: string | null; received_24h: number; rejected_24h: number };
   payments: { capture_pending: number; oldest_pending_minutes: number | null };
 }
+
+/** Result of a red-team run: what detection saw, and what TrustRail decides if the agent obeyed the listing anyway. */
+export interface RedTeamResultDto {
+  detection: {
+    quarantined: boolean;
+    suspicious: boolean;
+    score: number;
+    severity: Severity;
+    signals: { rule: string; excerpt: string }[];
+  };
+  /** The worst case: the agent was fully fooled and proposed exactly what the listing asked for. */
+  worst_case: {
+    supplier: { id: string | null; name: string; approved: boolean; active: boolean };
+    cart: {
+      lines: { kind: string; description: string; quantity: number; line_total_minor: number }[];
+      total_minor: number;
+      currency: string;
+    };
+    decision: PolicyDecisionKind;
+    violations: { code: string; severity: "BLOCK" | "REVIEW"; message: string }[];
+    /** Whether an owner could approve it at all (a BLOCK cannot be approved by anyone). */
+    approvable: boolean;
+    mandate_version: number;
+  };
+  /** The ceiling a hijacked agent works under, from the active Spend Mandate. */
+  bound: { per_order_limit_minor: number; weekly_remaining_minor: number; human_approval_required: boolean; currency: string };
+}

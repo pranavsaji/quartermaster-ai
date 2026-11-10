@@ -2,6 +2,7 @@ import type { ZodType } from "zod";
 import {
   AcceptInvitationRequest,
   AnalyzeInvoiceRequest,
+  RedTeamRequest,
   ApproveRequest,
   CapturePaymentRequest,
   CatalogItemInput,
@@ -499,6 +500,14 @@ export const ROUTES: RouteSpec[] = [
     summary: "TrustRail findings and evidence",
     tag: "Security",
     response: "Page<SecurityFindingDto>",
+  },
+  {
+    method: "POST",
+    path: "/security/red-team",
+    summary: "Red-team TrustRail with your own hostile listing (evaluated only, nothing stored)",
+    tag: "Security",
+    body: RedTeamRequest,
+    response: "RedTeamResultDto",
   },
   { method: "GET", path: "/security/decisions", summary: "Policy decisions", tag: "Security", response: "Page<PolicyDecisionDto>" },
   { method: "GET", path: "/security/audit", summary: "Hash-chained audit log", tag: "Security", response: "Page<AuditEventDto>" },

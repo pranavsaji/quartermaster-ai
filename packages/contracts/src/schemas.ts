@@ -398,3 +398,19 @@ export const ErrorsQuery = PaginationQuery.extend({
   status: z.enum(["OPEN", "RESOLVED", "ALL"]).default("OPEN"),
 });
 export type ErrorsQuery = z.infer<typeof ErrorsQuery>;
+
+/**
+ * Red-team TrustRail: a supplier listing written by the caller, and the purchase a fully hijacked
+ * agent would make from it. Evaluated only (nothing is stored or sent to a model or to PayPal).
+ */
+export const RedTeamRequest = z.object({
+  /** The listing text: untrusted by design. */
+  listing_text: z.string().trim().min(1).max(4000),
+  /** An existing supplier of the workspace, or null for a supplier the owner has never seen. */
+  supplier_id: z.string().uuid().nullable(),
+  category: z.enum(PRODUCT_CATEGORIES),
+  unit_price_minor: z.number().int().positive().max(100_000_000),
+  quantity: z.number().int().min(1).max(10_000),
+  recurring: z.boolean().optional(),
+});
+export type RedTeamRequest = z.infer<typeof RedTeamRequest>;
