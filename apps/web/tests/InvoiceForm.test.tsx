@@ -19,6 +19,9 @@ const suppliers: SupplierDto[] = [
     tax_rate_bps: 0,
     fee_terms: [],
     website: null,
+    description: null,
+    quarantined: false,
+    catalog_items: 0,
     data_source: "SANDBOX_SUPPLIER",
   },
 ];

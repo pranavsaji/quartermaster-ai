@@ -55,6 +55,8 @@ export const PUBLIC_CONFIG: PublicConfig = {
   paypal: { enabled: true, client_id: "sb-client", sdk_url: "https://www.sandbox.paypal.com/web-sdk/v6/core", environment: "sandbox" },
   market_data: { provider: "channel3", enabled: true },
   ai: { enabled: false, mode: "DETERMINISTIC_FALLBACK" },
+  accounts: { signup_enabled: true, email_enabled: false },
+  sample_accounts_hint: false,
 };
 
 export function payment(overrides: Partial<PaymentDto> = {}): PaymentDto {
@@ -85,6 +87,7 @@ export function sessionUser(role: Role = "OWNER", overrides: Partial<SessionUser
     name: "Dana Owner",
     role,
     organization: { id: "org-1", name: "Demo Bistro", timezone: "America/New_York", currency: "USD" },
+    operator: false,
     ...overrides,
   };
 }
@@ -277,6 +280,9 @@ export function inventoryItem(overrides: Partial<InventoryItemDto> = {}): Invent
     status: "OK",
     preferred_supplier_id: null,
     data_source: "SYNTHETIC",
+    search_query: "disposable takeout food containers 32 oz",
+    keywords: ["takeaway", "containers"],
+    lead_time_days_override: null,
     ...overrides,
   };
 }

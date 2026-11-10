@@ -14,6 +14,12 @@ describe("loginRedirectFor", () => {
     expect(loginRedirectFor("/login", "?next=%2Forders", false)).toBeNull();
   });
 
+  it("lets signed-out visitors open sign-up, password reset and invitation links", () => {
+    for (const path of ["/signup", "/forgot-password", "/reset-password", "/invite"]) expect(loginRedirectFor(path, "", false)).toBeNull();
+    expect(loginRedirectFor("/team", "", false)).toBe("/login?next=%2Fteam");
+    expect(loginRedirectFor("/signup-admin", "", false)).toBe("/login?next=%2Fsignup-admin");
+  });
+
   it("produces a next value that the login form accepts", () => {
     const url = new URL(loginRedirectFor("/security", "?tab=audit", false)!, "https://app.example");
     expect(safeNext(url.searchParams.get("next"), "https://app.example")).toBe("/security?tab=audit");
