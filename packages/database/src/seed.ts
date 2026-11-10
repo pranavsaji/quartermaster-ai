@@ -1,4 +1,5 @@
 import { eq, sql } from "drizzle-orm";
+import { DEFAULT_ALLOWED_CATEGORIES } from "@qm/contracts";
 import type { Database, DbOrTx } from "./client";
 import { hashPassword } from "./passwords";
 import * as s from "./schema";
@@ -379,4 +380,69 @@ export async function seedSampleWorkspace(tx: DbOrTx, args: { organizationId: st
     maxQuantityMultipleOfNeed: 2,
     createdBy: args.ownerId,
   });
+}
+
+/** Spend Mandate v1 for a workspace without sample data: conservative, no suppliers approved yet. */
+export async function insertStarterMandate(tx: DbOrTx, args: { organizationId: string; ownerId: string; currency: string }): Promise<void> {
+  await tx.insert(s.spendMandates).values({
+    organizationId: args.organizationId,
+    version: 1,
+    status: "ACTIVE",
+    currency: args.currency,
+    weeklyBudgetMinor: 50_000,
+    perOrderLimitMinor: 25_000,
+    autoApprovalLimitMinor: 0,
+    humanApprovalRequired: true,
+    approvedSupplierIds: [],
+    allowedCategories: [...DEFAULT_ALLOWED_CATEGORIES],
+    maxMarketPricePremiumPct: 10,
+    marketPriceAction: "REVIEW",
+    duplicateWindowHours: 24,
+    duplicateAction: "REVIEW",
+    subscriptionsAllowed: false,
+    certificateTtlMinutes: 30,
+    maxQuantityMultipleOfNeed: 2,
+    createdBy: args.ownerId,
+  });
+}
+
+export const OPERATIONS_ORG_NAME = "Platform operations";
+
+export type OperatorSeedOutcome = "created" | "existing" | "skipped_registered" | "skipped_no_password";
+
+/**
+ * Creates the platform-operator accounts named in OPERATOR_EMAILS, each in its own empty
+ * "Platform operations" workspace, with the deployer's OPERATOR_PASSWORD. Operator status is a
+ * database flag only this function sets, so nobody becomes an operator by signing up with an
+ * operator's address first: an address that already has an ordinary account is left alone.
+ */
+export async function ensureOperatorAccounts(
+  db: Database,
+  args: { emails: string[]; password: string | undefined },
+): Promise<Record<string, OperatorSeedOutcome>> {
+  const out: Record<string, OperatorSeedOutcome> = {};
+  for (const raw of args.emails) {
+    const email = raw.trim().toLowerCase();
+    const [user] = await db
+      .select()
+      .from(s.users)
+      .where(sql`lower(${s.users.email}) = ${email}`);
+    if (user) {
+      out[email] = user.operator ? "existing" : "skipped_registered";
+      continue;
+    }
+    if (!args.password || args.password.length < 12) {
+      out[email] = "skipped_no_password";
+      continue;
+    }
+    const passwordHash = await hashPassword(args.password);
+    await db.transaction(async (tx) => {
+      const [org] = await tx.insert(s.organizations).values({ name: OPERATIONS_ORG_NAME }).returning();
+      const [created] = await tx.insert(s.users).values({ email, name: "Platform operator", passwordHash, operator: true }).returning();
+      await tx.insert(s.memberships).values({ organizationId: org!.id, userId: created!.id, role: "OWNER" });
+      await insertStarterMandate(tx, { organizationId: org!.id, ownerId: created!.id, currency: org!.currency });
+    });
+    out[email] = "created";
+  }
+  return out;
 }

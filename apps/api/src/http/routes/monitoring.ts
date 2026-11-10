@@ -4,16 +4,15 @@ import { ErrorsQuery } from "@qm/contracts";
 import { systemErrors } from "@qm/database";
 import type { AppContext } from "../../context";
 import { AppError, notFound } from "../../errors";
-import { isOperator } from "../../services/auth";
 import { opsHealth, paypalNotificationStatus } from "../../services/monitoring/status";
 import { toSystemErrorDto } from "../../services/monitoring/tracker";
 import { decodeCursor, encodeCursor } from "../../services/pagination";
 import { asyncHandler, param, parse } from "../middleware/errors";
 
 /** System-wide error tracking is for platform operators (OPERATOR_EMAILS), not workspace owners. */
-export function requireOperator(ctx: AppContext): RequestHandler {
+export function requireOperator(): RequestHandler {
   return (req, _res, next) => {
-    if (!req.user || !isOperator(ctx, req.user.email)) {
+    if (!req.user?.operator) {
       return next(new AppError(403, "OPERATOR_REQUIRED", "This page is for platform operators."));
     }
     next();
@@ -31,7 +30,7 @@ export function monitoringRoutes(ctx: AppContext): Router {
   );
 
   const ops = Router();
-  ops.use(requireOperator(ctx));
+  ops.use(requireOperator());
 
   ops.get(
     "/health",

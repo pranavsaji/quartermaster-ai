@@ -21,6 +21,7 @@ export interface AuthenticatedUser {
   role: Role;
   organizationId: string;
   sessionId: string;
+  operator: boolean;
 }
 
 export function hashToken(token: string): string {
@@ -138,13 +139,16 @@ export async function sessionUser(ctx: AppContext, userId: string, organizationI
     name: row.user.name,
     role: row.role,
     organization: { id: row.org.id, name: row.org.name, timezone: row.org.timezone, currency: row.org.currency },
-    operator: isOperator(ctx, row.user.email),
+    operator: isOperator(ctx, row.user),
   };
 }
 
-/** Platform operators are named by email in OPERATOR_EMAILS. */
-export function isOperator(ctx: AppContext, email: string): boolean {
-  return ctx.config.monitoring.operatorEmails.includes(email.toLowerCase());
+/**
+ * Platform operators: accounts the deploy-time seed created with the operator flag, whose address
+ * is still listed in OPERATOR_EMAILS (removing it from the list revokes access).
+ */
+export function isOperator(ctx: AppContext, user: { email: string; operator: boolean }): boolean {
+  return user.operator && ctx.config.monitoring.operatorEmails.includes(user.email.toLowerCase());
 }
 
 /** Resolves a session token to the user and their role in the session's organization. */
@@ -168,6 +172,7 @@ export async function authenticate(ctx: AppContext, token: string): Promise<Auth
     role: row.role,
     organizationId: row.session.organizationId,
     sessionId: row.session.id,
+    operator: isOperator(ctx, row.user),
   };
 }
 

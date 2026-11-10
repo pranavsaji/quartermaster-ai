@@ -59,6 +59,11 @@ export const users = pgTable(
     disabled: boolean("disabled").notNull().default(false),
     failedLogins: integer("failed_logins").notNull().default(0),
     lockedUntil: ts("locked_until"),
+    /**
+     * Platform operator (sees system-wide error tracking). Set only by the deploy-time seed for
+     * addresses in OPERATOR_EMAILS that it created itself, never by sign-up or invitation.
+     */
+    operator: boolean("operator").notNull().default(false),
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex("users_email_uq").on(sql`lower(${t.email})`)],

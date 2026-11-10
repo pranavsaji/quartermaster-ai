@@ -1,19 +1,13 @@
 import { and, eq, isNull, ne, sql } from "drizzle-orm";
-import {
-  DEFAULT_ALLOWED_CATEGORIES,
-  type ChangePasswordRequest,
-  type ResetLinkResponse,
-  type ResetPasswordRequest,
-  type SignupRequest,
-} from "@qm/contracts";
+import type { ChangePasswordRequest, ResetLinkResponse, ResetPasswordRequest, SignupRequest } from "@qm/contracts";
 import {
   hashPassword,
+  insertStarterMandate,
   memberships,
   organizations,
   passwordResetTokens,
   seedSampleWorkspace,
   sessions,
-  spendMandates,
   users,
   verifyPassword,
   type DbOrTx,
@@ -34,32 +28,13 @@ export async function findUserByEmail(db: DbOrTx, email: string): Promise<UserRo
   return user ?? null;
 }
 
+/** Operator addresses are reserved for accounts the deploy-time seed creates. */
+export function isReservedAddress(ctx: AppContext, email: string): boolean {
+  return ctx.config.monitoring.operatorEmails.includes(email.trim().toLowerCase());
+}
+
 export const emailInUse = () =>
   conflict("EMAIL_IN_USE", "An account with this email already exists. Sign in, or reset your password if you have forgotten it.");
-
-/** Spend Mandate v1 for a workspace created without sample data: conservative, no suppliers approved yet. */
-async function insertStarterMandate(tx: DbOrTx, organizationId: string, ownerId: string, currency: string): Promise<void> {
-  await tx.insert(spendMandates).values({
-    organizationId,
-    version: 1,
-    status: "ACTIVE",
-    currency,
-    weeklyBudgetMinor: 50_000,
-    perOrderLimitMinor: 25_000,
-    autoApprovalLimitMinor: 0,
-    humanApprovalRequired: true,
-    approvedSupplierIds: [],
-    allowedCategories: [...DEFAULT_ALLOWED_CATEGORIES],
-    maxMarketPricePremiumPct: 10,
-    marketPriceAction: "REVIEW",
-    duplicateWindowHours: 24,
-    duplicateAction: "REVIEW",
-    subscriptionsAllowed: false,
-    certificateTtlMinutes: 30,
-    maxQuantityMultipleOfNeed: 2,
-    createdBy: ownerId,
-  });
-}
 
 /**
  * Creates a workspace (organisation), its first owner and Spend Mandate v1, optionally with the
@@ -70,7 +45,7 @@ export async function signup(ctx: AppContext, input: SignupRequest, meta: Sessio
   const passwordHash = await hashPassword(input.password);
   const now = ctx.now();
   const out = await ctx.db.transaction(async (tx) => {
-    if (await findUserByEmail(tx, input.email)) throw emailInUse();
+    if (isReservedAddress(ctx, input.email) || (await findUserByEmail(tx, input.email))) throw emailInUse();
     const [org] = await tx
       .insert(organizations)
       .values({ name: input.organization_name, timezone: input.timezone, currency: "USD" })
@@ -78,7 +53,7 @@ export async function signup(ctx: AppContext, input: SignupRequest, meta: Sessio
     const [user] = await tx.insert(users).values({ email: input.email, name: input.name, passwordHash, createdAt: now }).returning();
     await tx.insert(memberships).values({ organizationId: org!.id, userId: user!.id, role: "OWNER", createdAt: now });
     if (input.sample_data) await seedSampleWorkspace(tx, { organizationId: org!.id, ownerId: user!.id, now });
-    else await insertStarterMandate(tx, org!.id, user!.id, org!.currency);
+    else await insertStarterMandate(tx, { organizationId: org!.id, ownerId: user!.id, currency: org!.currency });
     await appendAudit(tx, {
       organizationId: org!.id,
       action: "organization.created",
@@ -239,11 +214,16 @@ export async function issueMemberResetLink(
   memberUserId: string,
 ): Promise<ResetLinkResponse> {
   const [member] = await ctx.db
-    .select({ user: users })
+    .select({ user: users, role: memberships.role })
     .from(memberships)
     .innerJoin(users, eq(users.id, memberships.userId))
     .where(and(eq(memberships.organizationId, actor.organizationId), eq(memberships.userId, memberUserId)));
   if (!member || member.user.disabled) throw notFound("Member");
+  // A reset link takes over the account it names. Owners may issue one only for managers and
+  // viewers; other owners and operators reset their own passwords by email.
+  if (member.role === "OWNER" || member.user.operator) {
+    throw new AppError(403, "RESET_LINK_NOT_ALLOWED", "Owners reset their own password with “Forgot password” or from their account page.");
+  }
   const { token, expiresAt } = await ctx.db.transaction(async (tx) => {
     const issued = await issueResetToken(ctx, tx, memberUserId, actor.id);
     await appendAudit(tx, {
@@ -259,5 +239,6 @@ export async function issueMemberResetLink(
   });
   const url = linkWithToken(ctx.config.appBaseUrl, "/reset-password", token);
   const sent = await ctx.mailer.send(passwordResetEmail({ to: member.user.email, url, expiresAt, issuedByOwner: true }));
-  return { reset_url: url, expires_at: expiresAt.toISOString(), email_sent: sent.sent };
+  // When the member received it by email, the owner never sees the link itself.
+  return { reset_url: sent.sent ? null : url, expires_at: expiresAt.toISOString(), email_sent: sent.sent };
 }

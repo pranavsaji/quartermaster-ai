@@ -15,7 +15,7 @@ import type { AppContext } from "../../context";
 import { AppError, conflict, notFound } from "../../errors";
 import { appendAudit } from "../audit";
 import { hashToken, newToken, openSession, sessionUser, type SessionMeta } from "../auth";
-import { emailInUse, findUserByEmail } from "./accounts";
+import { emailInUse, findUserByEmail, isReservedAddress } from "./accounts";
 import { invitationEmail, linkWithToken } from "./emails";
 
 type InvitationRow = typeof invitations.$inferSelect;
@@ -79,6 +79,7 @@ export async function createInvitation(
   const token = newToken();
   const expiresAt = new Date(now.getTime() + ctx.config.accounts.invitationTtlDays * 86_400_000);
   const out = await ctx.db.transaction(async (tx) => {
+    if (isReservedAddress(ctx, input.email)) throw emailInUse();
     const existing = await findUserByEmail(tx, input.email);
     if (existing) {
       const [member] = await tx
