@@ -12,12 +12,13 @@ pnpm monorepo, TypeScript (strict, ESM, `moduleResolution: Bundler`). Node ≥ 2
 - `pnpm docs:api` regenerates `docs/openapi.json` + Postman from `scripts/api-routes.ts` (CI fails on drift).
 - Real Postgres: `docker compose up -d`, then `HARNESS_DATABASE_URL=… pnpm vitest run tests/integration --no-file-parallelism`.
 - `pnpm db:generate` after editing `packages/database/src/schema.ts` (commit the new migration).
+- `pnpm --silent mcp` — stdio MCP server (`apps/mcp`, env `QM_API_URL`/`QM_EMAIL`/`QM_PASSWORD`; `--silent` keeps stdout clean); `pnpm mcp:demo` drives it against a running stack. See `docs/mcp.md`.
 
 ## Invariants — do not break
 
 - Money is integer minor units everywhere; decimal strings only in `packages/payments/src/orders.ts`.
 - `packages/trustrail` and `packages/quartermaster` stay pure (no DB, network, clock). Pass `now` in.
-- Only `services/payments/` calls PayPal capture, and only after `guardCapture`. Never add a payment tool to `AGENT_TOOLS`.
+- Only `services/payments/` calls PayPal capture, and only after `guardCapture`. Never add a payment tool to `AGENT_TOOLS`, nor an approve/pay/refund/mandate/supplier-approval tool to `apps/mcp` (it only calls existing API routes; untrusted text goes out through `fenceUntrusted`).
 - `transitionPayment` (services/payments/shared.ts) is the only writer of `payment_attempts.status`. Once PayPal returns a capture, a local failure must leave the payment CAPTURE_PENDING (never revert or report failure).
 - Policy facts come from the database (`services/policy.ts`), never from agent/model output. Model output is sanitised (`sanitizeIntent`) and untrusted text is fenced (`fenceUntrusted`).
 - Proposals (`purchase_orders` + items) are immutable; changes mean a new proposal. Certificates bind the cart hash.
@@ -33,4 +34,4 @@ pnpm monorepo, TypeScript (strict, ESM, `moduleResolution: Bundler`). Node ≥ 2
 
 ## Layout
 
-`apps/api/src/{http,services,services/payments,jobs,cli}` · `apps/web` · `packages/{contracts,trustrail,quartermaster,payments,integrations,database}` · `tests/{unit,adversarial,integration,helpers}` · `docs/`.
+`apps/api/src/{http,services,services/payments,jobs,cli}` · `apps/web` · `apps/mcp` · `packages/{contracts,trustrail,quartermaster,payments,integrations,database}` · `tests/{unit,adversarial,integration,helpers}` · `docs/`.

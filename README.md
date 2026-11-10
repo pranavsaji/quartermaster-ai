@@ -132,6 +132,17 @@ The language model **never** touches money. It interprets the owner's request an
 
 Detail: [docs/security-model.md](docs/security-model.md) · Architecture: [docs/architecture.md](docs/architecture.md) · How it relates to Google's Agent Payments Protocol: [docs/ap2.md](docs/ap2.md)
 
+## Use TrustRail from any agent (MCP)
+
+TrustRail is not tied to Quartermaster's own agent. `apps/mcp` is a stdio [MCP](https://modelcontextprotocol.io) server that lets Claude Desktop, Cursor, ChatGPT connectors or any other MCP client read the Spend Mandate and inventory, create and research purchase requests, and get TrustRail's verdict (allowed or blocked, reason codes, quarantined sources). It has no approve, pay, capture, refund or mandate-edit tool: the agent proposes, and the owner approves the exact cart and pays in the app. Run it as a MANAGER, whom the API itself refuses approval and payment.
+
+```bash
+pnpm dev                                   # the stack
+QM_PASSWORD=your-demo-user-password pnpm mcp:demo   # an MCP client walks mandate → create → research → evaluate
+```
+
+Claude Desktop configuration, tool list and the security model: [docs/mcp.md](docs/mcp.md).
+
 ---
 
 ## Repository layout
@@ -140,6 +151,7 @@ Detail: [docs/security-model.md](docs/security-model.md) · Architecture: [docs/
 apps/
   api/                 Express API — orchestration, TrustRail enforcement, protected PayPal gateway
   web/                 Next.js app — overview, procurement workspace, approvals, mandate, security center, orders, analytics
+  mcp/                 MCP server — any MCP agent can propose purchases through TrustRail (never approve or pay)
 packages/
   contracts/           Zod request schemas, response DTOs, money helpers (shared by API and web)
   trustrail/           Canonical encoding, cart hashing, policy engine, injection detection, certificates, capture guard
