@@ -141,3 +141,35 @@ paypal-button {
 .ag-cell.qm-saving {
   opacity: 0.6;
 }
+
+/* Bryntum delivery schedule: app font and quiet supplier badges inside the Svalbard light theme. */
+.qm-scheduler .b-scheduler {
+  font-family: inherit;
+  font-size: 13px;
+}
+.qm-sched-supplier {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.qm-sched-name {
+  font-weight: 500;
+}
+.qm-sched-badge {
+  border: 1px solid var(--color-line-strong);
+  border-radius: 999px;
+  padding: 0 6px;
+  font-size: 11px;
+  color: var(--color-ink-3);
+}
+.qm-sched-tip {
+  display: grid;
+  gap: 2px;
+  font-size: 12.5px;
+}
+/* The shaded "originally due" day is one column wide: its label would wrap into fragments. The
+   delivery's tooltip and the list view state the original date instead; the shading stays. */
+.qm-scheduler .b-sch-resource-time-range {
+  font-size: 0;
+  color: transparent;
+}

@@ -15,6 +15,8 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@bryntum/scheduler": "npm:@bryntum/scheduler-trial@7.3.8",
+    "@bryntum/scheduler-react": "7.3.8",
     "@qm/contracts": "workspace:*",
     "ag-charts-community": "^14.3.0",
     "ag-charts-react": "^14.3.0",

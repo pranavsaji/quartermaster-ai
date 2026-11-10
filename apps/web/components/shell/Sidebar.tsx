@@ -24,6 +24,7 @@ const NAV: { heading: string; items: NavItem[] }[] = [
       { href: "/inventory", label: "Inventory", icon: "inventory" },
       { href: "/suppliers", label: "Suppliers", icon: "suppliers" },
       { href: "/orders", label: "Orders & invoices", icon: "orders" },
+      { href: "/deliveries", label: "Delivery schedule", icon: "schedule" },
     ],
   },
   {

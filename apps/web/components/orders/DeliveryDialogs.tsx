@@ -156,12 +156,15 @@ export function ReceiveDialog({
 export function DelayDialog({
   target,
   timeZone,
+  initialDate = "",
   onClose,
   onDone,
 }: {
   target: DeliveryTarget;
   /** The organisation's IANA zone: "today" is the restaurant's today. */
   timeZone?: string;
+  /** Pre-filled new date (YYYY-MM-DD), e.g. where a delivery was dropped on the schedule. */
+  initialDate?: string;
   onClose: () => void;
   onDone: (delivery: DeliveryDto) => void;
 }) {
@@ -170,7 +173,7 @@ export function DelayDialog({
   // and a delivery can't be expected in the past.
   const dayAfterExpected = addDaysIso(target.delivery.expected_date, 1);
   const earliest = dayAfterExpected > today ? dayAfterExpected : today;
-  const [newDate, setNewDate] = useState("");
+  const [newDate, setNewDate] = useState(initialDate);
   const [reason, setReason] = useState("");
   const [errors, setErrors] = useState<{ date?: string; reason?: string }>({});
   const { containerRef, focusFirstError, attempt } = useErrorFocus();

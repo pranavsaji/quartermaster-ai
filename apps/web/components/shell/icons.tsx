@@ -51,6 +51,12 @@ export const Icons = {
       <path d="M12 2.5v3h3M7.5 9.5h5M7.5 12.5h5M7.5 15h3" />
     </Base>
   ),
+  schedule: (p: SVGProps<SVGSVGElement>) => (
+    <Base {...p}>
+      <rect x="3" y="4" width="14" height="13" rx="2" />
+      <path d="M3 8h14M7 2.5v3M13 2.5v3M6 11.5h4M8 14.5h5" />
+    </Base>
+  ),
   mandate: (p: SVGProps<SVGSVGElement>) => (
     <Base {...p}>
       <path d="M4 5h12M4 10h12M4 15h12" />
