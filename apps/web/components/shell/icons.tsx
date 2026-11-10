@@ -71,6 +71,32 @@ export const Icons = {
       <path d="M5.5 14V9.5M10 14V5M14.5 14v-6" />
     </Base>
   ),
+  suppliers: (p: SVGProps<SVGSVGElement>) => (
+    <Base {...p}>
+      <path d="M2.5 6.5h9v7h-9z" />
+      <path d="M11.5 9h3l2.5 2.5v2h-5.5" />
+      <circle cx="5.5" cy="14.5" r="1.4" />
+      <circle cx="14" cy="14.5" r="1.4" />
+    </Base>
+  ),
+  team: (p: SVGProps<SVGSVGElement>) => (
+    <Base {...p}>
+      <circle cx="7.5" cy="7" r="2.6" />
+      <path d="M2.8 16c.6-2.6 2.4-4 4.7-4s4.1 1.4 4.7 4" />
+      <path d="M13 4.6a2.4 2.4 0 0 1 0 4.8M14.6 12.2c1.4.5 2.3 1.8 2.6 3.8" />
+    </Base>
+  ),
+  account: (p: SVGProps<SVGSVGElement>) => (
+    <Base {...p}>
+      <circle cx="10" cy="7.5" r="3" />
+      <path d="M4.5 16.5c.8-2.8 2.9-4.3 5.5-4.3s4.7 1.5 5.5 4.3" />
+    </Base>
+  ),
+  system: (p: SVGProps<SVGSVGElement>) => (
+    <Base {...p}>
+      <path d="M2.5 10h3l2-4.5 3 9 2-4.5h5" />
+    </Base>
+  ),
   menu: (p: SVGProps<SVGSVGElement>) => (
     <Base {...p}>
       <path d="M3.5 6h13M3.5 10h13M3.5 14h13" />

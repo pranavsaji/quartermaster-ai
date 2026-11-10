@@ -5,6 +5,7 @@ import { useId, useState, type ReactNode } from "react";
 import { AuditLog } from "@/components/security/AuditLog";
 import { DecisionsGrid } from "@/components/security/DecisionsGrid";
 import { FindingsGrid } from "@/components/security/FindingsGrid";
+import { PayPalNotificationsCard } from "@/components/security/PayPalNotificationsCard";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Select } from "@/components/ui/Field";
@@ -66,6 +67,7 @@ export function SecurityPage() {
   );
   const decisions = usePagedResource((cursor, signal) => api.security.decisions({ limit: 100, cursor }, { signal }), []);
   const audit = usePagedResource((cursor, signal) => api.security.audit({ limit: 100, cursor }, { signal }), []);
+  const notifications = useResource((signal) => api.security.paypalNotifications({ signal }), []);
 
   const s = summary.data?.security;
   // While a new severity filter loads, show the loading state rather than the previous filter's rows.
@@ -76,13 +78,14 @@ export function SecurityPage() {
     audit: { state: audit, node: <AuditLog events={audit.items} /> },
   };
   const active = panels[tab];
-  const refreshing = summary.refreshing || findings.refreshing || decisions.refreshing || audit.refreshing;
+  const refreshing = summary.refreshing || findings.refreshing || decisions.refreshing || audit.refreshing || notifications.refreshing;
 
   function refreshAll() {
     summary.reload();
     findings.reload();
     decisions.reload();
     audit.reload();
+    notifications.reload();
   }
 
   return (
@@ -105,6 +108,16 @@ export function SecurityPage() {
           loading={<SecurityTiles totals={undefined} />}
         >
           <SecurityTiles totals={s} />
+        </ResourceView>
+      </div>
+
+      <div className="mb-6">
+        <ResourceView
+          resource={notifications}
+          hasData={Boolean(notifications.data)}
+          errorTitle="Couldn't load the PayPal notification status"
+        >
+          <PayPalNotificationsCard status={notifications.data?.status} />
         </ResourceView>
       </div>
 

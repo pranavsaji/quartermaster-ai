@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useSession } from "@/components/session/SessionProvider";
 import { cn } from "@/components/ui/cn";
 import { Icons, type IconName } from "./icons";
 
@@ -9,6 +10,8 @@ interface NavItem {
   href: string;
   label: string;
   icon: IconName;
+  /** Only platform operators see this entry (the API refuses everyone else anyway). */
+  operatorOnly?: boolean;
 }
 
 const NAV: { heading: string; items: NavItem[] }[] = [
@@ -19,6 +22,7 @@ const NAV: { heading: string; items: NavItem[] }[] = [
       { href: "/procurement", label: "Procurement", icon: "procurement" },
       { href: "/approvals", label: "Approvals", icon: "approvals" },
       { href: "/inventory", label: "Inventory", icon: "inventory" },
+      { href: "/suppliers", label: "Suppliers", icon: "suppliers" },
       { href: "/orders", label: "Orders & invoices", icon: "orders" },
     ],
   },
@@ -28,6 +32,14 @@ const NAV: { heading: string; items: NavItem[] }[] = [
       { href: "/mandate", label: "Spend mandate", icon: "mandate" },
       { href: "/security", label: "Security center", icon: "security" },
       { href: "/analytics", label: "Analytics", icon: "analytics" },
+    ],
+  },
+  {
+    heading: "Workspace",
+    items: [
+      { href: "/team", label: "Team", icon: "team" },
+      { href: "/account", label: "Your account", icon: "account" },
+      { href: "/system", label: "System health", icon: "system", operatorOnly: true },
     ],
   },
 ];
@@ -59,9 +71,11 @@ export function Brand() {
 
 export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname() ?? "/";
+  const { user } = useSession();
+  const groups = NAV.map((g) => ({ ...g, items: g.items.filter((i) => !i.operatorOnly || user.operator) }));
   return (
-    <nav aria-label="Primary" className="flex flex-col gap-6">
-      {NAV.map((group) => (
+    <nav aria-label="Primary" className="flex min-h-0 flex-col gap-6 overflow-y-auto">
+      {groups.map((group) => (
         <div key={group.heading}>
           <p className="mb-1.5 px-2.5 text-[11px] font-semibold tracking-[0.06em] text-ink-4 uppercase">{group.heading}</p>
           <ul className="space-y-0.5">
