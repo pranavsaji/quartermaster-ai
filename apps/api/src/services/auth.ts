@@ -53,17 +53,7 @@ export async function login(ctx: AppContext, email: string, password: string, me
   const ok = await verifyPassword(password, user.passwordHash);
   if (user.lockedUntil && user.lockedUntil > now) throw invalid;
   if (!ok) {
-    // One atomic statement, so concurrent failures cannot overwrite each other's count or
-    // clear a lock another request just set. SET expressions all see the pre-update row.
-    const lockUntil = new Date(now.getTime() + LOCKOUT_MINUTES * 60_000);
-    const reachesLimit = sql`${users.failedLogins} + 1 >= ${MAX_FAILED_LOGINS}`;
-    await ctx.db
-      .update(users)
-      .set({
-        failedLogins: sql`case when ${reachesLimit} then 0 else ${users.failedLogins} + 1 end`,
-        lockedUntil: sql`case when ${reachesLimit} then ${lockUntil.toISOString()}::timestamptz else ${users.lockedUntil} end`,
-      })
-      .where(eq(users.id, user.id));
+    await recordFailedPassword(ctx, user.id);
     throw invalid;
   }
 
@@ -90,6 +80,24 @@ export async function login(ctx: AppContext, email: string, password: string, me
     return opened;
   });
   return { ...session, user: await sessionUser(ctx, user.id, membership.organizationId) };
+}
+
+/**
+ * Counts a wrong password against the account (sign-in and password change share the counter);
+ * MAX_FAILED_LOGINS in a row lock it for LOCKOUT_MINUTES. One atomic statement, so concurrent
+ * failures cannot overwrite each other's count or clear a lock another request just set (SET
+ * expressions all see the pre-update row).
+ */
+export async function recordFailedPassword(ctx: AppContext, userId: string): Promise<void> {
+  const lockUntil = new Date(ctx.now().getTime() + LOCKOUT_MINUTES * 60_000);
+  const reachesLimit = sql`${users.failedLogins} + 1 >= ${MAX_FAILED_LOGINS}`;
+  await ctx.db
+    .update(users)
+    .set({
+      failedLogins: sql`case when ${reachesLimit} then 0 else ${users.failedLogins} + 1 end`,
+      lockedUntil: sql`case when ${reachesLimit} then ${lockUntil.toISOString()}::timestamptz else ${users.lockedUntil} end`,
+    })
+    .where(eq(users.id, userId));
 }
 
 export interface SessionMeta {

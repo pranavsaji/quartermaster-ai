@@ -160,9 +160,21 @@ export function authRoutes(ctx: AppContext): Router {
     }),
   );
 
+  // Per account, on top of the shared lockout counter.
+  const changeLimiter = rateLimit({
+    windowMs: 15 * 60_000,
+    ...limiterStore(ctx, "password-change"),
+    limit: test ? 1000 : 10,
+    standardHeaders: "draft-8",
+    legacyHeaders: false,
+    keyGenerator: (req) => `user|${req.user?.id ?? ""}`,
+    message: { error: { code: "RATE_LIMITED", message: "Too many attempts. Try again later." } },
+  });
+
   r.post(
     "/auth/password/change",
     sessionAuth(ctx),
+    changeLimiter,
     asyncHandler(async (req, res) => {
       const u = req.user!;
       await changePassword(
