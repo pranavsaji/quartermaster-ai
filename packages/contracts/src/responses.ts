@@ -95,3 +95,16 @@ export interface ResetLinkResponse {
   expires_at: string;
   email_sent: boolean;
 }
+
+/** `POST /webhooks/paypal`: acknowledgement PayPal receives for a verified event. */
+export interface WebhookAckResponse {
+  received: true;
+  outcome: "PROCESSED" | "IGNORED" | "DUPLICATE";
+}
+
+/** `POST /ops/alerts/test`: where the test alert went. */
+export interface AlertTestResponse {
+  email_recipients: number;
+  emails_sent: number;
+  webhook_sent: boolean;
+}

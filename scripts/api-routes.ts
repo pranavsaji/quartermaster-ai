@@ -393,7 +393,7 @@ export const ROUTES: RouteSpec[] = [
     role: "OWNER",
     idempotent: true,
     body: SpendMandateInput,
-    response: "{ mandate, budget, revoked_certificates }",
+    response: "MandateUpdateResponse",
   },
   {
     method: "GET",
@@ -410,7 +410,7 @@ export const ROUTES: RouteSpec[] = [
     tag: "Payments",
     role: "OWNER",
     idempotent: true,
-    response: "{ payment: PaymentDto, paypal_order_id }",
+    response: "PayPalOrderResponse",
   },
   {
     method: "POST",
@@ -449,7 +449,7 @@ export const ROUTES: RouteSpec[] = [
     summary: "PayPal webhook receiver (signature-verified)",
     tag: "Payments",
     auth: false,
-    response: "{ received: true, outcome }",
+    response: "WebhookAckResponse",
   },
 
   {
@@ -538,6 +538,6 @@ export const ROUTES: RouteSpec[] = [
     path: "/ops/alerts/test",
     summary: "Send a test alert to every configured channel",
     tag: "Operations",
-    response: "{ email_recipients, emails_sent, webhook_sent }",
+    response: "AlertTestResponse",
   },
 ];
