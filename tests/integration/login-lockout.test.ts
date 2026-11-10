@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import request from "supertest";
-import { DEMO_CREDENTIALS, users } from "@qm/database";
+import { DEMO_CREDENTIALS, knownLoginAddresses, users } from "@qm/database";
 import { login } from "../../apps/api/src/services/auth";
 import { AppError } from "../../apps/api/src/errors";
 import { MAX_FAILED_LOGINS } from "../../apps/api/src/services/auth";
@@ -47,6 +47,11 @@ describe("sign-in lockout", () => {
   });
 
   it("answers a locked account exactly like an unknown email", async () => {
+    // A lock does not stop an address the user has signed in from before. Other test files on a shared
+    // PostgreSQL database sign this user in from the same loopback address, so forget those first:
+    // this case is about a stranger's address.
+    const [manager] = await h.ctx.db.select().from(users).where(eq(users.email, DEMO_CREDENTIALS.manager.email));
+    await h.ctx.db.delete(knownLoginAddresses).where(eq(knownLoginAddresses.userId, manager!.id));
     const locked = await httpLogin(DEMO_CREDENTIALS.manager.email, PASSWORD);
     const unknown = await httpLogin("nobody-here@example.com", PASSWORD);
     expect(locked.status).toBe(401);

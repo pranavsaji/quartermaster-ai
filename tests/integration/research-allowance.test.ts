@@ -24,7 +24,9 @@ beforeAll(async () => {
       openaiCalls++;
       return new Response(JSON.stringify({ error: { message: "unavailable" } }), { status: 500 });
     },
-    extraEnv: { RESEARCH_DAILY_RUNS_PER_ORG: "1", RESEARCH_DAILY_RUNS_GLOBAL: "50", RESEARCH_DAILY_TOKENS_GLOBAL: "1000000" },
+    // Only the per-organisation cap is under test. The global counters are shared by every test file
+    // on a shared PostgreSQL database (all harnesses run on the same simulated day), so they get headroom.
+    extraEnv: { RESEARCH_DAILY_RUNS_PER_ORG: "1", RESEARCH_DAILY_RUNS_GLOBAL: "1000000", RESEARCH_DAILY_TOKENS_GLOBAL: "1000000000" },
   });
   owner = await h.agent("owner");
 });
@@ -96,7 +98,7 @@ describe("daily research allowance", () => {
       h.clock.now = new Date(saved.getTime() + 2 * 86_400_000);
       owner = await h.agent("owner");
       const orgId = (await owner.get("/auth/me")).body.user.organization.id as string;
-      await recordModelTokens(h.ctx, orgId, 1_000_000);
+      await recordModelTokens(h.ctx, orgId, h.ctx.config.security.research.dailyTokensGlobal);
       const c3 = channel3.calls.length;
       const r = await restock("ING-CANOLA");
       expect(channel3.calls.length).toBe(c3);
