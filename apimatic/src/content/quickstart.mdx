@@ -1,0 +1,73 @@
+---
+title: Quickstart
+description: Sign in and ask the procurement agent to restock, with the generated TypeScript SDK
+---
+
+This walk-through uses the TypeScript SDK in
+[`apimatic/sdk/typescript`](https://github.com/pranavsaji/quartermaster-ai/tree/main/apimatic/sdk/typescript).
+The complete script is
+[`apimatic/examples/quickstart.mjs`](https://github.com/pranavsaji/quartermaster-ai/blob/main/apimatic/examples/quickstart.mjs).
+
+## 1. Build the SDK
+
+```bash
+cd apimatic/sdk/typescript
+npm install && npm run build
+```
+
+## 2. Sign in
+
+Sign-in returns the user and sets the session cookie. Read the cookie from the response headers,
+then create a client that sends it.
+
+```ts
+import { QuartermasterAiTrustRailApiClient, ServerEnvironment } from "quartermaster-ai-trust-rail-api";
+
+const anonymous = new QuartermasterAiTrustRailApiClient({ serverEnvironment: ServerEnvironment.Hosted });
+const signedIn = await anonymous.accountsApi.login({ xRequestedWith: "quartermaster", body: { email, password } }).asApiResult();
+if (!signedIn.ok) throw new Error(signedIn.error.message);
+
+const token = signedIn.headers
+  .getSetCookie()
+  .map((c) => /qm_session=([^;]+)/.exec(c)?.[1])
+  .find(Boolean);
+const client = new QuartermasterAiTrustRailApiClient({ serverEnvironment: ServerEnvironment.Hosted, secureSession: token });
+```
+
+Use `ServerEnvironment.Local` with `session: token` against a local API (`pnpm dev`).
+
+## 3. Read stock and the Spend Mandate
+
+```ts
+const { items } = await client.inventoryApi.listInventory();
+const { mandate, budget } = await client.trustRail.getSpendMandate();
+console.log(`${budget.remainingMinor / 100} left of ${budget.limitMinor / 100} this week`);
+```
+
+## 4. Ask the agent
+
+```ts
+import { randomUUID } from "node:crypto";
+
+const request = await client.procurement.createProcurementRequest({
+  xRequestedWith: "quartermaster",
+  idempotencyKey: randomUUID(),
+  body: { instruction: "We're expecting a busy weekend. Restock takeaway containers and cooking oil without exceeding $300." },
+});
+const researched = await client.procurement.researchProcurementRequest({ id: request.id, xRequestedWith: "quartermaster" });
+
+for (const p of researched.proposals) {
+  console.log(p.status, p.supplierName, p.totalMinor / 100);
+  for (const v of p.policyDecision?.violations ?? []) console.log("  ", v.code, v.message);
+}
+```
+
+On the sample data this prints TrustRail blocking QuickServe Packaging Co. with
+`QUARANTINED_SOURCE` (its listing tells AI agents to skip approval) and `UNAUTHORIZED_LINE_ITEM`
+(a hidden $24.50 "priority service charge"), and proposing Harbor Restaurant Supply for $173.20.
+
+## 5. Approve and pay
+
+Approval (`approveProcurementRequest`) needs the **owner** role and the cart hash the owner saw.
+Payment then goes through PayPal's checkout in the browser, so open the request in the web app to
+finish. The API never lets an agent pay on its own.

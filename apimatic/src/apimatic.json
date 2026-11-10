@@ -1,0 +1,21 @@
+{
+  "$schema": "https://cdn.jsdelivr.net/npm/@apimatic/cli@2/apimatic.schema.json",
+  "schemaVersion": 1,
+  "portal": {
+    "site": {},
+    "brand": {
+      "logo": { "light": "static/images/logo.svg", "dark": "static/images/logo.svg" },
+      "favicon": "static/images/logo.svg",
+      "colors": {},
+      "colorMode": "both"
+    },
+    "navigation": {
+      "links": [
+        { "label": "Live demo", "url": "https://quartermaster-web-o0df.onrender.com" },
+        { "label": "GitHub", "url": "https://github.com/pranavsaji/quartermaster-ai" }
+      ]
+    },
+    "ai": { "pageActions": true }
+  },
+  "languages": { "typescript": {}, "python": {} }
+}

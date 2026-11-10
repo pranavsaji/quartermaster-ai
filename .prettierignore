@@ -12,3 +12,6 @@ packages/database/migrations
 docs/openapi.json
 postman
 apps/web/next-env.d.ts
+apimatic/sdk
+apimatic/portal
+apimatic/src/spec

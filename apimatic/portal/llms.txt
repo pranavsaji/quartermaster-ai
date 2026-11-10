@@ -1,0 +1,83 @@
+# Docs
+
+- Home
+  - [Quartermaster API](/): AI procurement for restaurants, with deterministic spend controls (TrustRail) and PayPal sandbox payments
+  - [Quickstart](/quickstart): Sign in and ask the procurement agent to restock, with the generated TypeScript SDK
+- SDKs
+  - [SDKs](/sdks): Client libraries for this API.
+  - [TypeScript SDK](/sdks/typescript): Install and start using the TypeScript SDK.
+  - [Python SDK](/sdks/python): Install and start using the Python SDK.
+- API Reference
+  - System: Public configuration and browser error reports.
+    - [Feature flags and PayPal client id](/api/openapi/system/getPublicConfig): Feature flags and PayPal client id.
+    - [Report a browser error to error tracking](/api/openapi/system/reportClientError): Report a browser error to error tracking.
+  - Accounts: Sign-up, sign-in (httpOnly session cookie), password reset and change.
+    - [Sign in (sets httpOnly session cookie)](/api/openapi/accounts/login): Sign in (sets httpOnly session cookie).
+    - [Create a workspace and its owner (sets session cookie)](/api/openapi/accounts/signup): Create a workspace and its owner (sets session cookie).
+    - [Email a password reset link (always 202)](/api/openapi/accounts/requestPasswordReset): Email a password reset link (always 202).
+    - [Set a new password from a one-time link](/api/openapi/accounts/resetPassword): Set a new password from a one-time link.
+    - [Change your password (signs out other sessions)](/api/openapi/accounts/changePassword): Change your password (signs out other sessions).
+    - [Sign out](/api/openapi/accounts/logout): Sign out.
+    - [Current user and organization](/api/openapi/accounts/getCurrentUser): Current user and organization.
+  - Team: Members, roles and one-time invitation links.
+    - [Preview an invitation from its link token](/api/openapi/team/lookupInvitation): Preview an invitation from its link token.
+    - [Accept an invitation, create the account and sign in](/api/openapi/team/acceptInvitation): Accept an invitation, create the account and sign in.
+    - [Members, and open invitations for owners](/api/openapi/team/listMembers): Members, and open invitations for owners.
+    - [Invite someone (returns the one-time link; emailed when email is configured)](/api/openapi/team/inviteMember): Invite someone (returns the one-time link; emailed when email is configured). Requires the OWNER role.
+    - [Revoke an open invitation](/api/openapi/team/revokeInvitation): Revoke an open invitation. Requires the OWNER role.
+    - [Change a member's role (a workspace keeps at least one owner)](/api/openapi/team/updateMemberRole): Change a member's role (a workspace keeps at least one owner). Requires the OWNER role.
+    - [Remove a member](/api/openapi/team/removeMember): Remove a member. Requires the OWNER role.
+    - [Issue a one-time password reset link for a member](/api/openapi/team/issueMemberResetLink): Issue a one-time password reset link for a member. Requires the OWNER role.
+  - Inventory: Stock levels, adjustments and the reorder forecast.
+    - [Current stock, usage and alerts](/api/openapi/inventory/listInventory): Current stock, usage and alerts.
+    - [Add a stock item](/api/openapi/inventory/createInventoryItem): Add a stock item. Requires the MANAGER role.
+    - [Record an authorized stock change](/api/openapi/inventory/adjustInventoryItem): Record an authorized stock change. Requires the MANAGER role. Idempotent: send an `Idempotency-Key`.
+    - [Calculate reorder recommendations](/api/openapi/inventory/forecastInventory): Calculate reorder recommendations. Requires the MANAGER role.
+    - [Update a stock item's details (not its quantity)](/api/openapi/inventory/updateInventoryItem): Update a stock item's details (not its quantity). Requires the MANAGER role.
+  - Suppliers: Suppliers, their fee terms and catalog listings (screened for prompt injection).
+    - [Suppliers with mandate approval and catalog size](/api/openapi/suppliers/listSuppliers): Suppliers with mandate approval and catalog size.
+    - [Add a supplier (owners approve it in the Spend Mandate)](/api/openapi/suppliers/createSupplier): Add a supplier (owners approve it in the Spend Mandate). Requires the MANAGER role.
+    - [Supplier with its catalog](/api/openapi/suppliers/getSupplier): Supplier with its catalog.
+    - [Update a supplier](/api/openapi/suppliers/updateSupplier): Update a supplier. Requires the MANAGER role.
+    - [Add a catalog listing (screened for prompt injection)](/api/openapi/suppliers/createCatalogItem): Add a catalog listing (screened for prompt injection). Requires the MANAGER role.
+    - [Update a catalog listing](/api/openapi/suppliers/updateCatalogItem): Update a catalog listing. Requires the MANAGER role.
+  - Procurement: Natural-language requests, agent research, TrustRail evaluation and owner approval.
+    - [List procurement requests](/api/openapi/procurement/listProcurementRequests): List procurement requests.
+    - [Submit a natural-language request](/api/openapi/procurement/createProcurementRequest): Submit a natural-language request. Requires the MANAGER role. Idempotent: send an `Idempotency-Key`.
+    - [Request with forecast, market evidence, candidates, proposals and TrustRail decisions](/api/openapi/procurement/getProcurementRequest): Request with forecast, market evidence, candidates, proposals and TrustRail decisions.
+    - [Run forecasting, Channel3 research, comparison, planning and TrustRail evaluation](/api/openapi/procurement/researchProcurementRequest): Run forecasting, Channel3 research, comparison, planning and TrustRail evaluation. Requires the MANAGER role.
+    - [Re-run TrustRail on open proposals](/api/openapi/procurement/evaluateProcurementRequest): Re-run TrustRail on open proposals. Requires the MANAGER role.
+    - [Approve an exact cart, sign an Intent Certificate and reserve budget](/api/openapi/procurement/approveProcurementRequest): Approve an exact cart, sign an Intent Certificate and reserve budget. Requires the OWNER role. Idempotent: send an `Idempotency-Key`.
+    - [Reject one proposal (purchase_order_id) or every open proposal](/api/openapi/procurement/rejectProcurementRequest): Reject one proposal (purchase_order_id) or every open proposal. Requires the OWNER role.
+  - Trust Rail: TrustRail
+    - [Active Spend Mandate and weekly budget](/api/openapi/trustrail/getSpendMandate): Active Spend Mandate and weekly budget.
+    - [Publish a new mandate version (revokes approvals if tightened)](/api/openapi/trustrail/updateSpendMandate): Publish a new mandate version (revokes approvals if tightened). Requires the OWNER role. Idempotent: send an `Idempotency-Key`.
+    - [Verify an Intent Certificate against the live cart](/api/openapi/trustrail/verifyIntentCertificate): Verify an Intent Certificate against the live cart.
+  - Payments: Intent Certificates and PayPal (sandbox) orders, captures and refunds.
+    - [Create (or return) the PayPal sandbox order for an intent](/api/openapi/payments/createPayPalOrder): Create (or return) the PayPal sandbox order for an intent. Requires the OWNER role. Idempotent: send an `Idempotency-Key`.
+    - [Guarded capture of an approved PayPal order](/api/openapi/payments/capturePayment): Guarded capture of an approved PayPal order. Requires the OWNER role. Idempotent: send an `Idempotency-Key`.
+    - [Verified payment state](/api/openapi/payments/getPayment): Verified payment state.
+    - [Re-read the PayPal order and apply its state (never captures)](/api/openapi/payments/syncPayment): Re-read the PayPal order and apply its state (never captures). Requires the OWNER role.
+    - [Owner-authorized refund](/api/openapi/payments/refundPayment): Owner-authorized refund. Requires the OWNER role. Idempotent: send an `Idempotency-Key`.
+    - [PayPal webhook receiver (signature-verified)](/api/openapi/payments/receivePayPalWebhook): PayPal webhook receiver (signature-verified).
+  - Orders: Purchase orders, deliveries and invoices.
+    - [Purchase order history, optionally filtered by status](/api/openapi/orders/listPurchaseOrders): Purchase order history, optionally filtered by status.
+    - [One purchase order](/api/openapi/orders/getPurchaseOrder): One purchase order.
+    - [Synthetic deliveries](/api/openapi/orders/listDeliveries): Synthetic deliveries.
+    - [Confirm goods receipt (updates inventory)](/api/openapi/orders/receiveDelivery): Confirm goods receipt (updates inventory). Requires the MANAGER role. Idempotent: send an `Idempotency-Key`.
+    - [Record a supplier delay](/api/openapi/orders/delayDelivery): Record a supplier delay. Requires the MANAGER role.
+    - [Recorded invoices](/api/openapi/orders/listInvoices): Recorded invoices.
+    - [Three-way match and duplicate detection](/api/openapi/orders/analyzeInvoice): Three-way match and duplicate detection. Requires the MANAGER role. Idempotent: send an `Idempotency-Key`.
+  - Security: Findings, policy decisions, the hash-chained audit log and PayPal notification health.
+    - [TrustRail findings and evidence](/api/openapi/security/listSecurityFindings): TrustRail findings and evidence.
+    - [Policy decisions](/api/openapi/security/listPolicyDecisions): Policy decisions.
+    - [Hash-chained audit log](/api/openapi/security/listAuditEvents): Hash-chained audit log.
+    - [Verify the audit hash chain](/api/openapi/security/verifyAuditChain): Verify the audit hash chain. Requires the MANAGER role.
+    - [Whether PayPal's signed notifications are arriving](/api/openapi/security/getPayPalNotificationStatus): Whether PayPal's signed notifications are arriving.
+  - Analytics: Spend, budget and security outcomes.
+    - [Business and security outcomes](/api/openapi/analytics/getAnalyticsSummary): Business and security outcomes.
+  - Operations: Platform health and error tracking (operators only).
+    - [Platform health (operators)](/api/openapi/operations/getPlatformHealth): Platform health (operators).
+    - [Tracked error groups (operators)](/api/openapi/operations/listTrackedErrors): Tracked error groups (operators).
+    - [Resolve an error group; it reopens and alerts if it recurs](/api/openapi/operations/resolveTrackedError): Resolve an error group; it reopens and alerts if it recurs.
+    - [Send a test alert to every configured channel](/api/openapi/operations/sendTestAlert): Send a test alert to every configured channel.

@@ -1,0 +1,5 @@
+{
+  "title": "Home",
+  "tabs": ["apimatic:sdks", "apimatic:api"],
+  "pages": ["index", "quickstart", "..."]
+}
