@@ -23,6 +23,11 @@ The rules cap the video at three minutes, and judges may score on the video alon
 
 ## If you have spare seconds
 
+- **Bryntum delivery schedule:** open **Delivery schedule** and drag a delivery a few days later. The delay
+  dialog opens with the new date, and the bar turns amber once it is saved.
+- **APIMatic:** show <https://quartermaster-api-docs.onrender.com> (API reference with TypeScript and
+  Python samples), or run `node apimatic/examples/quickstart.mjs` to show TrustRail's verdicts from the SDK.
+
 - **AG Grid as the workspace:** on Inventory, type a new On hand count into the grid. It saves, flashes, and the
   status recalculates. Then search "gloves" in the toolbar and click **Export CSV**.
 

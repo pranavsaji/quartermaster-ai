@@ -4,7 +4,7 @@
 
 Quartermaster is an AI procurement assistant for restaurants and cafés. It watches inventory, forecasts what to reorder, compares suppliers on true delivered cost, and prepares purchases — then pays through **PayPal** only after **TrustRail** has proven the purchase is within the owner's rules and the owner has approved the exact cart.
 
-**Live demo (PayPal sandbox):** <https://quartermaster-web-o0df.onrender.com>. Judges: see [For judges](#for-judges).
+**Live demo (PayPal sandbox):** <https://quartermaster-web-o0df.onrender.com> · **API docs and SDKs (APIMatic):** <https://quartermaster-api-docs.onrender.com>. Judges: see [For judges](#for-judges).
 
 > A restaurant owner says: _"We're expecting a busy weekend. Restock takeaway containers and cooking oil without exceeding $300."_
 > Quartermaster forecasts 25% higher demand, finds that the cheapest supplier's listing contains a hidden prompt injection and an undisclosed $24.50 "priority service charge", watches TrustRail block that cart, re-plans to compliant suppliers ($278.20 total), and — after the owner approves — completes a PayPal sandbox checkout bound to an Ed25519-signed Intent Certificate.
@@ -86,12 +86,12 @@ schemas from the Zod contracts, stable `operationId`s and named environments. A 
 SDKs cannot drift from what the server sends. APIMatic's validator and Redocly both pass it with
 no errors.
 
-| Output               | Where                                                                                                               |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| TypeScript SDK       | [`apimatic/sdk/typescript`](apimatic/sdk/typescript): typed client, both session cookies, Hosted/Local environments |
-| Python SDK           | [`apimatic/sdk/python`](apimatic/sdk/python): sync and async clients                                                |
-| API docs portal      | [`apimatic/portal`](apimatic/portal): API reference with SDK samples, a quickstart, `llms.txt` for coding agents    |
-| Runnable quickstarts | [`apimatic/examples`](apimatic/examples): sign in, read stock and the mandate, ask the agent to restock             |
+| Output               | Where                                                                                                                                                                        |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| TypeScript SDK       | [`apimatic/sdk/typescript`](apimatic/sdk/typescript): typed client, both session cookies, Hosted/Local environments                                                          |
+| Python SDK           | [`apimatic/sdk/python`](apimatic/sdk/python): sync and async clients                                                                                                         |
+| API docs portal      | **<https://quartermaster-api-docs.onrender.com>** (source: [`apimatic/portal`](apimatic/portal)): API reference with SDK samples, a quickstart, `llms.txt` for coding agents |
+| Runnable quickstarts | [`apimatic/examples`](apimatic/examples): sign in, read stock and the mandate, ask the agent to restock                                                                      |
 
 Run against the hosted demo or a local API (`QM_BASE_URL=http://localhost:4000/api/v1`):
 
