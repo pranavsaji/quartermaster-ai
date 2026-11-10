@@ -9,19 +9,20 @@ Quartermaster is an AI procurement assistant for restaurants and cafés. It watc
 > A restaurant owner says: _"We're expecting a busy weekend. Restock takeaway containers and cooking oil without exceeding $300."_
 > Quartermaster forecasts 25% higher demand, finds that the cheapest supplier's listing contains a hidden prompt injection and an undisclosed $24.50 "priority service charge", watches TrustRail block that cart, re-plans to compliant suppliers ($278.20 total), and — after the owner approves — completes a PayPal sandbox checkout bound to an Ed25519-signed Intent Certificate.
 
-|                             |                                                                                                                                                             |
-| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Customer product**        | Quartermaster — inventory, forecasting, supplier comparison, approvals, payments, deliveries, invoices, analytics                                           |
-| **Security infrastructure** | TrustRail — Spend Mandates, deterministic policy engine, prompt-injection defense, Intent Certificates, capture guard, tamper-evident audit log             |
-| **Payments**                | PayPal Orders v2 (server) + JavaScript SDK v6 (browser), sandbox                                                                                            |
-| **Market evidence**         | Channel3 product search (reference prices only)                                                                                                             |
-| **AI**                      | OpenAI strict structured outputs, with a labelled deterministic fallback                                                                                    |
-| **Data grids and charts**   | 11 AG Grid grids on 8 screens, with in-grid editing of stock and catalog prices, and AG Charts for analytics. See [How we use AG Grid](#how-we-use-ag-grid) |
-| **Hosting**                 | Render (web, API, Postgres)                                                                                                                                 |
-| **Notifications**           | Zapier webhook on completed payments; operator alerts by email and webhook                                                                                  |
-| **Accounts and teams**      | Self-service sign-up, invitations with roles, password reset by email or owner-issued link                                                                  |
-| **Error tracking**          | Built-in grouped error tracking with alert throttling, health monitors, optional Sentry forwarding                                                          |
-| **API tooling**             | OpenAPI 3.1 spec and Postman collection, generated from the route table                                                                                     |
+|                             |                                                                                                                                                                                  |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Customer product**        | Quartermaster — inventory, forecasting, supplier comparison, approvals, payments, deliveries, invoices, analytics                                                                |
+| **Security infrastructure** | TrustRail — Spend Mandates, deterministic policy engine, prompt-injection defense, Intent Certificates, capture guard, tamper-evident audit log                                  |
+| **Payments**                | PayPal Orders v2 (server) + JavaScript SDK v6 (browser), sandbox                                                                                                                 |
+| **Market evidence**         | Channel3 product search (reference prices only)                                                                                                                                  |
+| **AI**                      | OpenAI strict structured outputs, with a labelled deterministic fallback                                                                                                         |
+| **Data grids and charts**   | 11 AG Grid grids on 8 screens, with in-grid editing of stock and catalog prices, and AG Charts for analytics. See [How we use AG Grid](#how-we-use-ag-grid)                      |
+| **Hosting**                 | Render (web, API, Postgres)                                                                                                                                                      |
+| **Notifications**           | Zapier webhook on completed payments; operator alerts by email and webhook                                                                                                       |
+| **Accounts and teams**      | Self-service sign-up, invitations with roles, password reset by email or owner-issued link                                                                                       |
+| **Error tracking**          | Built-in grouped error tracking with alert throttling, health monitors, optional Sentry forwarding                                                                               |
+| **API tooling**             | OpenAPI 3.1 spec and Postman collection, generated from the route table; **APIMatic** TypeScript and Python SDKs and docs portal. See [APIMatic](#apimatic-sdks-and-docs-portal) |
+| **Scheduling**              | **Bryntum Scheduler** delivery timeline with drag-to-reschedule. See [Bryntum](#bryntum-delivery-schedule)                                                                       |
 
 ## For judges
 
@@ -75,6 +76,45 @@ and column widths are remembered per browser through the grid state API. **AG Ch
 analytics charts: spend against budget, spend by supplier and category, a donut of TrustRail
 decisions, findings by type, and days of stock cover per item against its target. Each chart has a
 table view and an empty state.
+
+## APIMatic: SDKs and docs portal
+
+The API's OpenAPI 3.1 spec (`pnpm docs:api`) is the single source for everything APIMatic builds.
+It is generated from the route table, with response schemas from the TypeScript DTOs, request
+schemas from the Zod contracts, stable `operationId`s and named environments. A contract test
+(`tests/integration/openapi-contract.test.ts`) validates real API responses against it, so the
+SDKs cannot drift from what the server sends. APIMatic's validator and Redocly both pass it with
+no errors.
+
+| Output               | Where                                                                                                               |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| TypeScript SDK       | [`apimatic/sdk/typescript`](apimatic/sdk/typescript): typed client, both session cookies, Hosted/Local environments |
+| Python SDK           | [`apimatic/sdk/python`](apimatic/sdk/python): sync and async clients                                                |
+| API docs portal      | [`apimatic/portal`](apimatic/portal): API reference with SDK samples, a quickstart, `llms.txt` for coding agents    |
+| Runnable quickstarts | [`apimatic/examples`](apimatic/examples): sign in, read stock and the mandate, ask the agent to restock             |
+
+Run against the hosted demo or a local API (`QM_BASE_URL=http://localhost:4000/api/v1`):
+
+```bash
+cd apimatic/sdk/typescript && npm install && npm run build && cd ../..
+QM_EMAIL=owner@demo.quartermaster.dev QM_PASSWORD=trustrail-judges-2026 node examples/quickstart.mjs
+```
+
+The TypeScript quickstart prints low stock and the remaining weekly budget. It then shows TrustRail
+blocking QuickServe (`QUARANTINED_SOURCE`, `UNAUTHORIZED_LINE_ITEM`) and proposing Harbor for
+$173.20, which is the same decision the web app shows. To regenerate after an API change, run
+`pnpm docs:api`, then `npx @apimatic/cli@2 sdk generate -l typescript` and `portal generate` in `apimatic/`.
+
+## Bryntum: delivery schedule
+
+**Delivery schedule** (`/deliveries`) uses Bryntum Scheduler to show every paid order's
+delivery on one timeline: one row per supplier, a bar from order date to expected date, coloured
+by status, with a "now" line and 2-week and month views. Managers drag a delivery to a later
+day to reschedule it. The drop opens the delay dialog with the new date filled in, the API
+records the delay with its reason, and the bar reverts if the API refuses. A delayed delivery
+keeps its original due day shaded. Viewers get a read-only timeline, and a list view gives the
+same data to screen readers. The page uses Bryntum's public trial packages, which show a
+watermark; a production deployment needs a Bryntum licence.
 
 ## Why this is safe to delegate
 
