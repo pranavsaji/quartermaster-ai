@@ -50,8 +50,10 @@ private-network traffic, so a free deployment differs from `render.yaml`:
 
 - **Database:** `plan: free` Postgres (one per workspace; expires 30 days after creation, deleted 14
   days later unless upgraded).
-- **API:** start command `node apps/api/dist/seed.js && node apps/api/dist/server.js`. The seed migrates
-  and is idempotent, so it is safe on every boot. Set `SWEEPER_INTERVAL_SECONDS=120` so the API runs
+- **API:** start command `node apps/api/dist/seed.js --reset && node apps/api/dist/server.js` with
+  `ALLOW_DEMO_RESET=true`. Every boot migrates and re-seeds the demo organization, so each judge who
+  wakes the sleeping service starts from a clean demo (and the demo password and lockouts are reset).
+  Drop `--reset` to keep data across restarts; the plain seed is idempotent. Set `SWEEPER_INTERVAL_SECONDS=120` so the API runs
   the sweeper itself (no cron).
 - **Web:** set `API_URL=https://<api-host>` (public URL) instead of `API_HOSTPORT`. It is read at build
   time, so redeploy the web service after changing it. The API then sits behind two edge hops:

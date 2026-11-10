@@ -4,7 +4,7 @@
 
 Quartermaster is an AI procurement assistant for restaurants and cafés. It watches inventory, forecasts what to reorder, compares suppliers on true delivered cost, and prepares purchases — then pays through **PayPal** only after **TrustRail** has proven the purchase is within the owner's rules and the owner has approved the exact cart.
 
-**Live demo (PayPal sandbox, Render free plan):** <https://quartermaster-web-o0df.onrender.com>. The first visit after 15 idle minutes takes about a minute while the services wake up. API health: <https://quartermaster-api-sziv.onrender.com/readyz>.
+**Live demo (PayPal sandbox):** <https://quartermaster-web-o0df.onrender.com>. Judges: see [For judges](#for-judges).
 
 > A restaurant owner says: _"We're expecting a busy weekend. Restock takeaway containers and cooking oil without exceeding $300."_
 > Quartermaster forecasts 25% higher demand, finds that the cheapest supplier's listing contains a hidden prompt injection and an undisclosed $24.50 "priority service charge", watches TrustRail block that cart, re-plans to compliant suppliers ($278.20 total), and — after the owner approves — completes a PayPal sandbox checkout bound to an Ed25519-signed Intent Certificate.
@@ -16,6 +16,34 @@ Quartermaster is an AI procurement assistant for restaurants and cafés. It watc
 | **Payments**                | PayPal Orders v2 (server) + JavaScript SDK v6 (browser), sandbox                                                                                |
 | **Market evidence**         | Channel3 product search (reference prices only)                                                                                                 |
 | **AI**                      | OpenAI strict structured outputs, with a labelled deterministic fallback                                                                        |
+| **Data grids and charts**   | AG Grid (inventory, supplier comparison, orders, invoices, security findings, audit log) and AG Charts (analytics)                              |
+| **Hosting**                 | Render (web, API, Postgres)                                                                                                                     |
+| **Notifications**           | Zapier webhook on completed payments                                                                                                            |
+| **API tooling**             | OpenAPI 3.1 spec and Postman collection, generated from the route table                                                                         |
+
+## For judges
+
+**Live app:** <https://quartermaster-web-o0df.onrender.com>. It runs on Render's free plan, so the first request after 15 idle minutes takes about a minute while the services wake up. Health check: <https://quartermaster-api-sziv.onrender.com/readyz>.
+
+| Account                          | Role                                       | Password                |
+| -------------------------------- | ------------------------------------------ | ----------------------- |
+| `owner@demo.quartermaster.dev`   | Owner: approves and pays                   | `trustrail-judges-2026` |
+| `manager@demo.quartermaster.dev` | Manager: requests and research, no payment | `trustrail-judges-2026` |
+| `viewer@demo.quartermaster.dev`  | Read-only                                  | `trustrail-judges-2026` |
+
+These are demo-only accounts. The demo organization is re-seeded every time the API starts, so you usually begin from a clean state.
+
+**Paying (PayPal sandbox, no real money):** in the PayPal window, sign in with the sandbox buyer account given in the Devpost testing instructions, or choose **Pay with Debit or Credit Card** and use a [PayPal sandbox test card](https://developer.paypal.com/tools/sandbox/card-testing/).
+
+**A five-minute path through the product:**
+
+1. Sign in as the owner. **Procurement → New request:** _"We're expecting a busy weekend. Restock takeaway containers and cooking oil without exceeding $300."_
+2. Watch the agent research: interpretation, forecast, Channel3 market prices and the supplier comparison.
+3. The cheapest supplier (QuickServe) is **blocked by TrustRail**: its listing hides a fee and a prompt injection. Open the finding.
+4. Approve a compliant proposal, click **Verify** on the Intent Certificate, then **Pay with PayPal**.
+5. Check **Orders & invoices** (submit the invoice, then try "Simulate duplicate invoice"), the **Security center** (audit chain valid) and **Analytics**.
+
+To run it locally instead, follow [Quick start](#quick-start-local-no-external-accounts): it needs no external accounts.
 
 ---
 
