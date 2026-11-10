@@ -4,6 +4,8 @@
  */
 import type {
   BudgetDto,
+  InvitationDto,
+  MemberDto,
   DeliveryDto,
   IntentCertificateDto,
   InventoryItemDto,
@@ -66,4 +68,27 @@ export interface RefundResponse {
 /** `POST /deliveries/:id/receive` and `POST /deliveries/:id/delay`. */
 export interface DeliveryMutationResponse {
   delivery: DeliveryDto;
+}
+
+/** `GET /members`. Invitations are listed for owners only (empty otherwise). */
+export interface MembersResponse {
+  members: MemberDto[];
+  invitations: InvitationDto[];
+}
+
+/**
+ * `POST /members/invitations`. The link is returned to the owner so it can be shared even when no
+ * email provider is configured; it is never retrievable again.
+ */
+export interface InvitationCreatedResponse {
+  invitation: InvitationDto;
+  invite_url: string;
+  email_sent: boolean;
+}
+
+/** `POST /members/:id/password-reset`: a one-time link the owner passes on. */
+export interface ResetLinkResponse {
+  reset_url: string;
+  expires_at: string;
+  email_sent: boolean;
 }

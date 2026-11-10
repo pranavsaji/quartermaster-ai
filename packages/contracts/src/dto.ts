@@ -9,6 +9,7 @@ import type {
   DataSource,
   DeliveryStatus,
   FindingType,
+  InvitationStatus,
   InvoiceStatus,
   LineKind,
   PaymentStatus,
@@ -44,6 +45,8 @@ export interface SessionUser {
   name: string;
   role: Role;
   organization: { id: string; name: string; timezone: string; currency: string };
+  /** Platform operator (OPERATOR_EMAILS): may see system-wide error tracking. */
+  operator: boolean;
 }
 
 export interface PublicConfig {
@@ -51,6 +54,14 @@ export interface PublicConfig {
   paypal: { enabled: boolean; client_id: string | null; sdk_url: string; environment: "sandbox" | "live" };
   market_data: { provider: "channel3"; enabled: boolean };
   ai: { enabled: boolean; mode: AiMode };
+  accounts: {
+    /** Anyone may create a workspace. */
+    signup_enabled: boolean;
+    /** Outbound email is configured: invitations and reset links are emailed. */
+    email_enabled: boolean;
+  };
+  /** Show the shared sample-workspace accounts on the sign-in page. */
+  sample_accounts_hint: boolean;
 }
 
 /* ------------------------------------------------------------- Inventory */
@@ -74,6 +85,13 @@ export interface InventoryItemDto {
   status: "OK" | "LOW" | "CRITICAL" | "OUT";
   preferred_supplier_id: string | null;
   data_source: DataSource;
+  /**
+   * Editable details (PUT /inventory/:id round-trips them). Optional until every API build sends
+   * them; the edit form treats a missing value as blank.
+   */
+  search_query?: string;
+  keywords?: string[];
+  lead_time_days_override?: number | null;
 }
 
 export interface ForecastLineDto {
@@ -126,7 +144,34 @@ export interface SupplierDto {
   tax_rate_bps: number;
   fee_terms: FeeTermDto[];
   website: string | null;
+  description: string | null;
+  quarantined: boolean;
+  catalog_items: number;
   data_source: DataSource;
+}
+
+export interface CatalogItemDto {
+  id: string;
+  supplier_id: string;
+  sku: string;
+  title: string;
+  description: string;
+  category: ProductCategory;
+  inventory_item_id: string | null;
+  pack_quantity: number;
+  unit_price_minor: number;
+  currency: string;
+  in_stock: boolean;
+  recurring: boolean;
+  /** Flagged by injection screening: withheld from the agent, and TrustRail blocks carts with it. */
+  quarantined: boolean;
+  quarantine_reason: string | null;
+  updated_at: string;
+}
+
+export interface SupplierDetailDto extends SupplierDto {
+  catalog: CatalogItemDto[];
+  created_at: string;
 }
 
 /* ----------------------------------------------------------- Procurement */
@@ -496,4 +541,71 @@ export interface AuditChainVerificationDto {
   valid: boolean;
   events_checked: number;
   first_invalid_sequence: number | null;
+}
+
+/* ------------------------------------------------------------- Accounts */
+
+export interface MemberDto {
+  user_id: string;
+  email: string;
+  name: string;
+  role: Role;
+  joined_at: string;
+  is_self: boolean;
+}
+
+export interface InvitationDto {
+  id: string;
+  email: string;
+  role: Role;
+  status: InvitationStatus;
+  invited_by_name: string | null;
+  created_at: string;
+  expires_at: string;
+}
+
+/** What someone opening an invitation link sees before accepting. */
+export interface InvitationPreviewDto {
+  organization_name: string;
+  email: string;
+  role: Role;
+  invited_by_name: string | null;
+  expires_at: string;
+}
+
+/* ----------------------------------------------------------- Monitoring */
+
+export interface SystemErrorDto {
+  id: string;
+  fingerprint: string;
+  source: "api" | "web" | "job" | "monitor";
+  level: "warning" | "error" | "fatal";
+  code: string;
+  message: string;
+  route: string | null;
+  occurrences: number;
+  first_seen_at: string;
+  last_seen_at: string;
+  last_correlation_id: string | null;
+  last_alerted_at: string | null;
+  resolved_at: string | null;
+}
+
+/** Whether PayPal's signed notifications (webhooks) are reaching this deployment for an organisation. */
+export interface PayPalNotificationStatusDto {
+  configured: boolean;
+  last_received_at: string | null;
+  last_event_type: string | null;
+  received_24h: number;
+  /** Completed captures in the last 7 days with no verified PayPal notification. */
+  unconfirmed_captures_7d: number;
+  rejected_signatures_24h: number;
+}
+
+export interface OpsHealthDto {
+  error_tracking: { open_errors: number; sentry: boolean };
+  alerting: { email: boolean; webhook: boolean; recipients: number };
+  email: { enabled: boolean; provider: "resend" | "webhook" | "none" };
+  paypal_webhooks: { last_received_at: string | null; received_24h: number; rejected_24h: number };
+  payments: { capture_pending: number; oldest_pending_minutes: number | null };
 }

@@ -1,5 +1,12 @@
 import { z } from "zod";
-import { PO_STATUSES, PRODUCT_CATEGORIES, type PurchaseOrderStatus } from "./enums";
+import {
+  INVITABLE_ROLES,
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
+  PO_STATUSES,
+  PRODUCT_CATEGORIES,
+  type PurchaseOrderStatus,
+} from "./enums";
 import { SUPPORTED_CURRENCIES } from "./money";
 
 const minor = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
@@ -36,6 +43,66 @@ export const LoginRequest = z.object({
 });
 export type LoginRequest = z.infer<typeof LoginRequest>;
 
+const email = z.string().trim().toLowerCase().email().max(254);
+/** A password being set (sign-up, invitation, reset, change). Sign-in accepts older, shorter ones. */
+const newPassword = z
+  .string()
+  .min(PASSWORD_MIN_LENGTH, `Use at least ${PASSWORD_MIN_LENGTH} characters`)
+  .max(PASSWORD_MAX_LENGTH)
+  .refine((v) => v.trim().length >= PASSWORD_MIN_LENGTH, "Password cannot be mostly spaces");
+const personName = z.string().trim().min(1).max(120);
+/** One-time tokens from invitation and reset links (base64url, 43 characters when issued). */
+const linkToken = z
+  .string()
+  .min(20)
+  .max(200)
+  .regex(/^[\w-]+$/, "Malformed link");
+
+/** True for an IANA time zone this runtime knows (e.g. `America/Los_Angeles`). */
+export function isTimeZone(value: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: value });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export const SignupRequest = z.object({
+  name: personName,
+  email,
+  password: newPassword,
+  organization_name: z.string().trim().min(2).max(120),
+  timezone: z.string().max(64).refine(isTimeZone, "Unknown time zone").default("America/Los_Angeles"),
+  /** Start with labelled sample suppliers, stock and history (including the adversarial fixture). */
+  sample_data: z.boolean().default(true),
+});
+export type SignupRequest = z.infer<typeof SignupRequest>;
+
+export const ForgotPasswordRequest = z.object({ email });
+export type ForgotPasswordRequest = z.infer<typeof ForgotPasswordRequest>;
+
+export const ResetPasswordRequest = z.object({ token: linkToken, password: newPassword });
+export type ResetPasswordRequest = z.infer<typeof ResetPasswordRequest>;
+
+export const ChangePasswordRequest = z.object({
+  current_password: z.string().min(1).max(PASSWORD_MAX_LENGTH),
+  new_password: newPassword,
+});
+export type ChangePasswordRequest = z.infer<typeof ChangePasswordRequest>;
+
+export const CreateInvitationRequest = z.object({ email, role: z.enum(INVITABLE_ROLES) });
+export type CreateInvitationRequest = z.infer<typeof CreateInvitationRequest>;
+
+export const InvitationTokenRequest = z.object({ token: linkToken });
+export type InvitationTokenRequest = z.infer<typeof InvitationTokenRequest>;
+
+export const AcceptInvitationRequest = z.object({ token: linkToken, name: personName, password: newPassword });
+export type AcceptInvitationRequest = z.infer<typeof AcceptInvitationRequest>;
+
+export const UpdateMemberRoleRequest = z.object({ role: z.enum(INVITABLE_ROLES) });
+export type UpdateMemberRoleRequest = z.infer<typeof UpdateMemberRoleRequest>;
+
 /* ------------------------------------------------------------- Inventory */
 
 export const InventoryAdjustmentRequest = z.object({
@@ -66,6 +133,91 @@ export const ForecastRequest = z.object({
   horizon_days: z.number().int().min(1).max(30).optional(),
 });
 export type ForecastRequest = z.infer<typeof ForecastRequest>;
+
+const sku = z
+  .string()
+  .trim()
+  .min(1)
+  .max(64)
+  .regex(/^[A-Za-z0-9][\w.\-/]*$/, "Use letters, numbers, dashes, dots or slashes");
+
+/** Creating a stock item. Later stock changes go through adjustments, so on-hand is set only here. */
+export const InventoryItemInput = z.object({
+  sku,
+  name: z.string().trim().min(1).max(120),
+  category: z.enum(PRODUCT_CATEGORIES),
+  unit: z.string().trim().min(1).max(24),
+  safety_stock: z.number().int().min(0).max(10_000_000),
+  coverage_days: z.number().int().min(1).max(60),
+  lead_time_days_override: z.number().int().min(0).max(60).nullable().default(null),
+  preferred_supplier_id: z.string().uuid().nullable().default(null),
+  /** What the market-research step searches for (Channel3). */
+  search_query: z.string().trim().min(2).max(200),
+  /** Words the procurement interpreter matches in requests ("oil", "fryer oil"). */
+  keywords: z.array(z.string().trim().toLowerCase().min(1).max(40)).max(20).default([]),
+});
+export type InventoryItemInput = z.infer<typeof InventoryItemInput>;
+
+export const CreateInventoryItemRequest = InventoryItemInput.extend({
+  on_hand: z.number().int().min(0).max(10_000_000).default(0),
+});
+export type CreateInventoryItemRequest = z.infer<typeof CreateInventoryItemRequest>;
+
+/* ------------------------------------------------------------- Suppliers */
+
+export const FeeTermInput = z.object({
+  code: z
+    .string()
+    .trim()
+    .min(1)
+    .max(32)
+    .regex(/^[A-Z0-9_]+$/, "Use capital letters, digits and underscores"),
+  label: z.string().trim().min(1).max(80),
+  kind: z.enum(["SHIPPING", "FEE"]),
+  amount_minor: minor.max(10_000_000),
+  /** Waived when the product subtotal reaches this amount; null = never waived. */
+  waived_over_minor: minor.max(100_000_000).nullable(),
+});
+export type FeeTermInput = z.infer<typeof FeeTermInput>;
+
+export const SupplierInput = z
+  .object({
+    name: z.string().trim().min(2).max(120),
+    website: z
+      .string()
+      .trim()
+      .url()
+      .max(300)
+      .refine((v) => /^https?:\/\//i.test(v), "Use an http(s) address")
+      .nullable()
+      .default(null),
+    description: z.string().trim().max(1000).nullable().default(null),
+    lead_time_days: z.number().int().min(0).max(60),
+    tax_rate_bps: z.number().int().min(0).max(3000),
+    fee_terms: z.array(FeeTermInput).max(10).default([]),
+    active: z.boolean().default(true),
+    /** Whether orders from this supplier can be paid through PayPal checkout. */
+    checkout_eligible: z.boolean().default(true),
+  })
+  .refine((s) => new Set(s.fee_terms.map((f) => f.code)).size === s.fee_terms.length, {
+    message: "Fee codes must be unique",
+    path: ["fee_terms"],
+  });
+export type SupplierInput = z.infer<typeof SupplierInput>;
+
+export const CatalogItemInput = z.object({
+  sku,
+  title: z.string().trim().min(2).max(200),
+  /** Shown to the agent only after injection screening, like any supplier text. */
+  description: z.string().trim().max(2000).default(""),
+  category: z.enum(PRODUCT_CATEGORIES),
+  inventory_item_id: z.string().uuid().nullable().default(null),
+  pack_quantity: z.number().int().min(1).max(1_000_000),
+  unit_price_minor: minor.positive().max(100_000_000),
+  in_stock: z.boolean().default(true),
+  recurring: z.boolean().default(false),
+});
+export type CatalogItemInput = z.infer<typeof CatalogItemInput>;
 
 /* ----------------------------------------------------------- Procurement */
 
@@ -228,3 +380,21 @@ export const SecurityEventsQuery = PaginationQuery.extend({
   type: z.string().max(64).optional(),
 });
 export type SecurityEventsQuery = z.infer<typeof SecurityEventsQuery>;
+
+/* ------------------------------------------------------------ Monitoring */
+
+/** An error the web app caught in the browser, reported for error tracking. */
+export const ClientErrorReport = z.object({
+  message: z.string().max(500),
+  /** Next.js error digest (links a server-rendered error to its server log). */
+  digest: z.string().max(64).optional(),
+  path: z.string().max(300),
+  stack: z.string().max(4000).optional(),
+  kind: z.enum(["render", "unhandled", "rejection"]),
+});
+export type ClientErrorReport = z.infer<typeof ClientErrorReport>;
+
+export const ErrorsQuery = PaginationQuery.extend({
+  status: z.enum(["OPEN", "RESOLVED", "ALL"]).default("OPEN"),
+});
+export type ErrorsQuery = z.infer<typeof ErrorsQuery>;

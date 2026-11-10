@@ -129,7 +129,7 @@ export const FINDING_TYPES = [
 export type FindingType = (typeof FINDING_TYPES)[number];
 
 /** Where a piece of commercial data came from. Shown as a visible label in the UI. */
-export const DATA_SOURCES = ["CHANNEL3_MARKET", "SANDBOX_SUPPLIER", "SYNTHETIC"] as const;
+export const DATA_SOURCES = ["CHANNEL3_MARKET", "SANDBOX_SUPPLIER", "SYNTHETIC", "USER_ENTERED"] as const;
 export type DataSource = (typeof DATA_SOURCES)[number];
 
 export const AI_MODES = ["LLM", "DETERMINISTIC_FALLBACK"] as const;
@@ -167,3 +167,24 @@ export const isSettledPayment = (status: string): status is SettledPaymentStatus
 
 export const REFUND_STATUSES = ["REQUESTED", "UNKNOWN", "PENDING", "COMPLETED", "FAILED", "CANCELLED"] as const;
 export type RefundStatus = (typeof REFUND_STATUSES)[number];
+
+/* ---------------------------------------------------------------- Accounts */
+
+/** Roles an owner can grant through an invitation or a role change. */
+export const INVITABLE_ROLES = ["OWNER", "MANAGER", "VIEWER"] as const;
+
+export const INVITATION_STATUSES = ["PENDING", "ACCEPTED", "REVOKED", "EXPIRED"] as const;
+export type InvitationStatus = (typeof INVITATION_STATUSES)[number];
+
+/** Minimum length for any password set through sign-up, invitations or resets. */
+export const PASSWORD_MIN_LENGTH = 12;
+export const PASSWORD_MAX_LENGTH = 200;
+
+/** Categories a new workspace's first Spend Mandate allows (restricted ones stay off). */
+export const DEFAULT_ALLOWED_CATEGORIES = [
+  "food_packaging",
+  "cleaning_supplies",
+  "cooking_ingredients",
+  "beverages",
+  "kitchen_equipment",
+] as const;
