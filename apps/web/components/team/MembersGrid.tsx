@@ -47,7 +47,7 @@ export function MembersGrid({ members, manage, handlers }: { members: MemberDto[
                   </Badge>
                 ) : null}
               </span>
-              <span className="text-[12px] text-ink-3">{p.data.email}</span>
+              <span className="text-xs text-ink-3">{p.data.email}</span>
             </div>
           ) : null,
       },
@@ -97,7 +97,7 @@ export function MembersGrid({ members, manage, handlers }: { members: MemberDto[
       rows={rows}
       columns={columns}
       rowHeight={56}
-      emptyMessage="No members."
+      emptyMessage="No members yet"
       // Few columns: render them all, so browser find (Ctrl/Cmd+F) sees every cell.
       suppressColumnVirtualisation
       stateKey="team"

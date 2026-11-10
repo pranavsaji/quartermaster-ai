@@ -16,8 +16,8 @@ import { CERTIFICATE_STATUS_TONES, VERIFICATION_TONES } from "@/lib/labels";
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-3">
-      <dt className="w-32 shrink-0 text-[12px] text-ink-3">{label}</dt>
-      <dd className="min-w-0 text-[13px] text-ink">{children}</dd>
+      <dt className="w-32 shrink-0 text-xs text-ink-3">{label}</dt>
+      <dd className="min-w-0 text-sm text-ink">{children}</dd>
     </div>
   );
 }
@@ -41,11 +41,11 @@ export function CertificatePanel({ certificate }: { certificate: IntentCertifica
     <div className="rounded-xl border border-line bg-surface p-4">
       <div className="flex flex-wrap items-center gap-2">
         <Icons.approvals className="size-4 text-accent" />
-        <p className="text-[13.5px] font-semibold text-ink">Intent Certificate</p>
+        <p className="text-sm font-semibold text-ink">Intent Certificate</p>
         <StatusBadge status={certificate.status} tones={CERTIFICATE_STATUS_TONES} kind="Certificate" />
         <span
           className={cn(
-            "tnum ml-auto rounded-md px-2 py-0.5 font-mono text-[12px]",
+            "tnum ml-auto rounded-md px-2 py-0.5 font-mono text-xs",
             remaining ? "bg-canvas text-ink-2" : "bg-block-soft text-block",
           )}
           aria-live="off"
@@ -70,8 +70,8 @@ export function CertificatePanel({ certificate }: { certificate: IntentCertifica
           <CopyValue value={p.cart_hash} label="cart hash" />
         </Row>
         <Row label="Signing key">
-          <code className="font-mono text-[12px] text-ink-2">{certificate.key_id}</code>
-          <span className="ml-2 text-[12px] text-ink-3">{certificate.algorithm}</span>
+          <code className="font-mono text-xs text-ink-2">{certificate.key_id}</code>
+          <span className="ml-2 text-xs text-ink-3">{certificate.algorithm}</span>
         </Row>
         <Row label="Signature">
           <CopyValue value={certificate.signature} label="signature" head={16} tail={8} />
@@ -91,7 +91,7 @@ export function CertificatePanel({ certificate }: { certificate: IntentCertifica
         {verification ? (
           <StatusBadge status={verification.status} tones={VERIFICATION_TONES} kind="Verification" />
         ) : (
-          <span className="text-[12px] text-ink-3">Re-checks signature, cart hash, mandate version, expiry and use.</span>
+          <span className="text-xs text-ink-3">Re-checks signature, cart hash, mandate version, expiry and use.</span>
         )}
       </div>
 
@@ -99,12 +99,12 @@ export function CertificatePanel({ certificate }: { certificate: IntentCertifica
 
       {verification ? (
         <div className="mt-3 rounded-lg border border-line bg-canvas/60 p-3" role="status">
-          <p className={cn("text-[13px] font-medium", verification.valid ? "text-allow" : "text-block")}>
+          <p className={cn("text-sm font-medium", verification.valid ? "text-allow" : "text-block")}>
             {verification.valid ? "Certificate is valid." : `Certificate failed verification: ${humanize(verification.status)}.`}
           </p>
           <ul className="mt-2 space-y-1">
             {verification.checks.map((c) => (
-              <li key={c.code} className="flex gap-2 text-[12.5px]">
+              <li key={c.code} className="flex gap-2 text-xs">
                 {c.passed ? (
                   <Icons.check className="mt-0.5 size-3.5 text-allow" strokeWidth={2.4} />
                 ) : (
@@ -118,7 +118,7 @@ export function CertificatePanel({ certificate }: { certificate: IntentCertifica
               </li>
             ))}
           </ul>
-          <p className="mt-2 text-[11px] text-ink-4">Verified {dateTime(verification.verified_at)}</p>
+          <p className="mt-2 text-2xs text-ink-4">Verified {dateTime(verification.verified_at)}</p>
         </div>
       ) : null}
     </div>

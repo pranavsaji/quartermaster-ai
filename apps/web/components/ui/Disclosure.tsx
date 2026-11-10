@@ -15,7 +15,7 @@ export function Disclosure({
 }) {
   return (
     <details open={defaultOpen} className={cn("group rounded-lg border border-line", className)}>
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg px-3.5 py-2.5 text-[13px] font-medium text-ink-2 select-none hover:bg-canvas [&::-webkit-details-marker]:hidden">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg px-3.5 py-2.5 text-sm font-medium text-ink-2 select-none hover:bg-canvas [&::-webkit-details-marker]:hidden">
         <span className="min-w-0">{summary}</span>
         <svg
           viewBox="0 0 20 20"

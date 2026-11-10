@@ -40,14 +40,12 @@ export function PayPalNotificationsCard({ status }: { status: PayPalNotification
         {!status ? (
           <Skeleton className="h-12" />
         ) : (
-          <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-[13px] lg:grid-cols-4">
+          <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm lg:grid-cols-4">
             <Item label="Last received">
               {status.last_received_at ? (
                 <span title={dateTime(status.last_received_at)}>
                   {relativeTime(status.last_received_at)}
-                  {status.last_event_type ? (
-                    <span className="block font-mono text-[11.5px] text-ink-3">{status.last_event_type}</span>
-                  ) : null}
+                  {status.last_event_type ? <span className="block font-mono text-2xs text-ink-3">{status.last_event_type}</span> : null}
                 </span>
               ) : (
                 "Never"
@@ -70,7 +68,7 @@ export function PayPalNotificationsCard({ status }: { status: PayPalNotification
 function Item({ label, warn = false, children }: { label: string; warn?: boolean; children: ReactNode }) {
   return (
     <div>
-      <dt className="text-[12px] text-ink-3">{label}</dt>
+      <dt className="text-xs text-ink-3">{label}</dt>
       <dd className={warn ? "tnum mt-0.5 font-medium text-review" : "tnum mt-0.5 text-ink"}>{children}</dd>
     </div>
   );

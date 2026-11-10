@@ -8,7 +8,14 @@ export function ForecastLines({ lines, onlyReorders = false }: { lines: Forecast
   const shown = onlyReorders ? lines.filter((l) => l.needs_reorder) : lines;
   const sorted = [...shown].sort((a, b) => Number(b.needs_reorder) - Number(a.needs_reorder) || a.name.localeCompare(b.name));
   if (sorted.length === 0) {
-    return <EmptyState compact title="No lines need reordering" description="Every item covers its lead time plus safety stock." />;
+    return (
+      <EmptyState
+        compact
+        icon="inventory"
+        title="No lines need reordering"
+        description="Every item covers its lead time plus safety stock."
+      />
+    );
   }
   return (
     <ul className="divide-y divide-line">
@@ -16,8 +23,8 @@ export function ForecastLines({ lines, onlyReorders = false }: { lines: Forecast
         <li key={line.inventory_item_id} className="py-3 first:pt-0 last:pb-0">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="min-w-0">
-              <p className="text-[13.5px] font-medium text-ink">{line.name}</p>
-              <p className="font-mono text-[11.5px] text-ink-4">{line.sku}</p>
+              <p className="text-sm font-medium text-ink">{line.name}</p>
+              <p className="font-mono text-2xs text-ink-4">{line.sku}</p>
             </div>
             {line.needs_reorder ? (
               <Badge tone="accent" size="md">
@@ -27,7 +34,7 @@ export function ForecastLines({ lines, onlyReorders = false }: { lines: Forecast
               <Badge tone="allow">Covered</Badge>
             )}
           </div>
-          <dl className="tnum mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-[12px] sm:grid-cols-4">
+          <dl className="tnum mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-4">
             <div>
               <dt className="text-ink-4">Daily use</dt>
               <dd className="text-ink-2">
@@ -49,7 +56,7 @@ export function ForecastLines({ lines, onlyReorders = false }: { lines: Forecast
               <dd className="text-ink-2">{num(line.target_stock)}</dd>
             </div>
           </dl>
-          <p className="mt-2 text-[13px] leading-relaxed text-ink-3">{line.explanation}</p>
+          <p className="mt-2 text-sm leading-relaxed text-ink-3">{line.explanation}</p>
         </li>
       ))}
     </ul>

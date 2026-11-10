@@ -10,6 +10,7 @@ import { Card, CardHeader } from "@/components/ui/Card";
 import { LoadMore } from "@/components/ui/LoadMore";
 import { Notice } from "@/components/ui/Notice";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { RefreshButton } from "@/components/ui/RefreshButton";
 import { ResourceView } from "@/components/ui/ResourceView";
 import { api } from "@/lib/api";
 import { usePagedResource } from "@/lib/hooks";
@@ -40,8 +41,8 @@ function ProcurementContent() {
 
       <div className="space-y-4">
         {!config.ai.enabled ? (
-          <Notice tone="review" title="Running in deterministic mode — no LLM configured">
-            Instructions are parsed with deterministic rules. Results are still policy-checked by TrustRail.
+          <Notice tone="review" title="Running without an AI model">
+            Requests are read with fixed rules instead of a language model. TrustRail checks every cart either way.
           </Notice>
         ) : null}
         {!config.market_data.enabled ? (
@@ -65,11 +66,7 @@ function ProcurementContent() {
         <CardHeader
           id="requests-title"
           title="Requests"
-          actions={
-            <Button size="sm" variant="ghost" onClick={requests.reload} loading={requests.refreshing}>
-              Refresh
-            </Button>
-          }
+          actions={<RefreshButton onClick={requests.reload} loading={requests.refreshing} />}
         />
         <div className="p-3">
           <ResourceView resource={requests} hasData={Boolean(requests.items)}>

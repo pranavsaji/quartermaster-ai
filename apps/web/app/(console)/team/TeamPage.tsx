@@ -14,6 +14,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Notice } from "@/components/ui/Notice";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { RefreshButton } from "@/components/ui/RefreshButton";
 import { ResourceView } from "@/components/ui/ResourceView";
 import { SkeletonRows } from "@/components/ui/Skeleton";
 import { api } from "@/lib/api";
@@ -80,11 +81,7 @@ export function TeamPage() {
             ? "Invite the people who run the kitchen with you and choose what each of them can do."
             : "Who has access to this workspace. Owners manage invitations and roles."
         }
-        actions={
-          <Button variant="secondary" onClick={team.reload} loading={team.refreshing}>
-            Refresh
-          </Button>
-        }
+        actions={<RefreshButton onClick={team.reload} loading={team.refreshing} />}
       />
 
       {link ? (
@@ -133,7 +130,12 @@ export function TeamPage() {
             <CardBody>
               {team.data ? (
                 pending.length === 0 ? (
-                  <EmptyState compact title="No pending invitations" />
+                  <EmptyState
+                    compact
+                    icon="team"
+                    title="No pending invitations"
+                    description="People you invite show up here until they join."
+                  />
                 ) : (
                   <InvitationsTable invitations={pending} onRevoked={replaceInvitation} />
                 )
@@ -172,10 +174,10 @@ function InvitationsTable({ invitations, onRevoked }: { invitations: InvitationD
 function InvitationRow({ invitation: inv, onRevoked }: { invitation: InvitationDto; onRevoked: (invitation: InvitationDto) => void }) {
   const revoke = useAction(async () => onRevoked((await api.members.revokeInvitation(inv.id)).invitation));
   return (
-    <li className="flex flex-wrap items-center justify-between gap-3 py-2.5 text-[13px]">
+    <li className="flex flex-wrap items-center justify-between gap-3 py-2.5 text-sm">
       <div className="min-w-0">
         <p className="font-medium text-ink">{inv.email}</p>
-        <p className="text-[12px] text-ink-3">
+        <p className="text-xs text-ink-3">
           {lookup(ROLE_LABELS, inv.role, inv.role)}
           {inv.invited_by_name ? ` · invited by ${inv.invited_by_name}` : ""} · expires {dateTime(inv.expires_at)}
         </p>

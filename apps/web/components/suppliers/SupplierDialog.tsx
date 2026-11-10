@@ -131,8 +131,8 @@ export function SupplierDialog({
         </Field>
 
         <fieldset className="space-y-3">
-          <legend className="text-[13px] font-medium text-ink-2">Delivery and fees</legend>
-          {form.fees.length === 0 ? <p className="text-[12.5px] text-ink-3">No fees: deliveries are free.</p> : null}
+          <legend className="text-sm font-medium text-ink-2">Delivery and fees</legend>
+          {form.fees.length === 0 ? <p className="text-xs text-ink-3">No fees: deliveries are free.</p> : null}
           {form.fees.map((fee, i) => (
             <div
               key={fee.key}

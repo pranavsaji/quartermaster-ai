@@ -3,7 +3,7 @@ import { Button } from "./Button";
 import { Notice } from "./Notice";
 
 /**
- * Renders an API failure: the server's message, its error code and the
+ * Renders an API failure: the server's message and, when the server failed (5xx or no reply), its code and the
  * correlation id (so an operator can find the request in the API logs).
  * Only a role denial gets the "ask the owner" explanation; every other 403
  * (CSRF, "only the approving owner can pay", disabled actions) shows the
@@ -46,8 +46,9 @@ export function ErrorNotice({
         {describeError(error)}
         {roleDenied ? " Ask the restaurant owner if you need access." : null}
       </p>
-      {apiError && (apiError.correlationId || apiError.code) ? (
-        <p className="mt-1 font-mono text-[11.5px] text-ink-3">
+      {/* A support reference only helps when the server failed; a "not found" or a validation reply speaks for itself. */}
+      {apiError?.isAmbiguous && (apiError.correlationId || apiError.code) ? (
+        <p className="mt-1 font-mono text-2xs text-ink-3">
           {apiError.code ? <span>{apiError.code}</span> : null}
           {apiError.correlationId ? (
             <span>

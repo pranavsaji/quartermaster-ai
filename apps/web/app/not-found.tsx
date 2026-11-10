@@ -10,11 +10,11 @@ export default function NotFound() {
       <div className="mb-8 flex justify-center">
         <Brand />
       </div>
-      <h1 className="text-xl font-semibold text-ink">Page not found</h1>
-      <p className="mt-2 text-sm text-ink-3">That page doesn&apos;t exist, or the link is out of date.</p>
+      <h1 className="text-xl font-semibold text-ink">We couldn&apos;t find that page</h1>
+      <p className="mt-2 text-sm text-ink-3">The link may be out of date, or the page has moved.</p>
       <p className="mt-6">
-        <ButtonLink href="/" variant="primary">
-          Back to the overview
+        <ButtonLink href="/procurement" variant="primary">
+          Back to requests
         </ButtonLink>
       </p>
     </main>

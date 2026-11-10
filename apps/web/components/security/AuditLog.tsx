@@ -43,11 +43,12 @@ export function AuditLog({ events }: { events: AuditEventDto[] | undefined }) {
         type: "rightAligned",
         cellClass: rightCell(),
       },
-      { field: "action", headerName: "Action", minWidth: 200, flex: 1, cellClass: "font-mono text-[12px]" },
+      { field: "action", headerName: "Action", minWidth: 200, flex: 1, cellClass: "font-mono text-xs" },
       {
         field: "actor_type",
         headerName: "Actor",
         minWidth: 120,
+        context: { secondary: true },
         cellRenderer: (p: CustomCellRendererProps<AuditEventDto>) =>
           p.data ? (
             <Badge tone={lookup<keyof typeof ACTOR_TONES, Tone>(ACTOR_TONES, p.data.actor_type, "neutral")}>{p.data.actor_type}</Badge>
@@ -63,7 +64,8 @@ export function AuditLog({ events }: { events: AuditEventDto[] | undefined }) {
         field: "hash",
         headerName: "Hash",
         minWidth: 170,
-        cellClass: "font-mono text-[12px]",
+        context: { secondary: true },
+        cellClass: "font-mono text-xs",
         valueFormatter: (p) => (typeof p.value === "string" ? truncateMiddle(p.value, 10, 6) : ""),
         tooltipValueGetter: (p) => (typeof p.value === "string" ? p.value : ""),
       },
@@ -71,7 +73,8 @@ export function AuditLog({ events }: { events: AuditEventDto[] | undefined }) {
         field: "prev_hash",
         headerName: "Previous hash",
         minWidth: 170,
-        cellClass: "font-mono text-[12px] text-ink-3",
+        hide: true,
+        cellClass: "font-mono text-xs text-ink-3",
         valueFormatter: (p) => (typeof p.value === "string" ? truncateMiddle(p.value, 10, 6) : "genesis"),
         tooltipValueGetter: (p) => (typeof p.value === "string" ? p.value : "genesis"),
       },
@@ -79,7 +82,8 @@ export function AuditLog({ events }: { events: AuditEventDto[] | undefined }) {
         field: "correlation_id",
         headerName: "Correlation",
         minWidth: 130,
-        cellClass: "font-mono text-[12px] text-ink-3",
+        hide: true,
+        cellClass: "font-mono text-xs text-ink-3",
         valueFormatter: (p) => (typeof p.value === "string" ? p.value.slice(0, 10) : "—"),
       },
       dateTimeColumn<AuditEventDto>("created_at", "When", { minWidth: 150 }),
@@ -94,10 +98,10 @@ export function AuditLog({ events }: { events: AuditEventDto[] | undefined }) {
           <Button variant="primary" onClick={() => void verify.run()} loading={verify.pending}>
             Verify audit chain
           </Button>
-          <span className="text-[12.5px] text-ink-3">Recomputes every hash on the server and checks each link to its predecessor.</span>
+          <span className="text-xs text-ink-3">Recomputes every hash on the server and checks each link to its predecessor.</span>
         </div>
       ) : (
-        <p className="text-[12.5px] text-ink-3">
+        <p className="text-xs text-ink-3">
           Managers and owners can re-verify the audit chain. You can still read every event and its hash below.
         </p>
       )}
@@ -117,11 +121,12 @@ export function AuditLog({ events }: { events: AuditEventDto[] | undefined }) {
       <DataGrid<AuditEventDto>
         ariaLabel="Audit log"
         rows={events}
-        tools={{ exportFileName: "audit-log" }}
+        tools={{ exportFileName: "audit-log", columns: true }}
         stateKey="audit-log"
         columns={columns}
         height={480}
-        emptyMessage="No audit events yet."
+        emptyMessage="No audit events yet"
+        emptyDescription="Every approval, payment and change is recorded here."
         rowClassRules={{ "bg-block-soft": (p) => brokenAt !== null && (p.data?.sequence ?? -1) >= brokenAt }}
         tooltipShowDelay={300}
       />

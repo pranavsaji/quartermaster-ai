@@ -2,6 +2,7 @@
 
 import { AnalyzeInvoiceRequest, type InvoiceDto, type PurchaseOrderDto, type SupplierDto } from "@qm/contracts";
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { Icons } from "@/components/shell/icons";
 import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardFooter, CardHeader } from "@/components/ui/Card";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
@@ -283,7 +284,7 @@ export function InvoiceForm({
             <Field
               label="Invoice total"
               error={errors.total}
-              hint={`Sum of lines: ${computedTotal !== null ? money(computedTotal, currency) : "—"}. Override to test a mismatched total.`}
+              hint={`Sum of the lines: ${computedTotal !== null ? money(computedTotal, currency) : "—"}. Leave blank to use it, or enter the total printed on the invoice if it differs.`}
             >
               {(control) => (
                 <MoneyInput
@@ -314,23 +315,36 @@ export function InvoiceForm({
           {result ? (
             <div className="space-y-2">
               {lastWasDuplicateSim ? (
-                <Notice tone="info">Resubmitted invoice {result.invoice_number} a second time to demonstrate duplicate detection.</Notice>
+                <Notice tone="info">
+                  Resubmitted invoice {result.invoice_number} a second time, as a supplier sending it twice would.
+                </Notice>
               ) : null}
               <InvoiceResult invoice={result} />
             </div>
           ) : null}
         </CardBody>
         <CardFooter className={DEMO_MODE ? "justify-between" : "justify-end"}>
-          {/* A demo of duplicate detection: only offered when the build is in demo mode. */}
+          {/* Sandbox-only: duplicate detection on demand. Set apart so it never reads as an everyday action. */}
           {DEMO_MODE ? (
-            <Button
-              variant="secondary"
-              onClick={simulateDuplicate}
-              disabled={!lastSubmitted || analyze.pending}
-              title={lastSubmitted ? `Resubmit invoice ${lastSubmitted.invoice_number} with the same number` : "Analyze an invoice first"}
+            <div
+              role="group"
+              aria-label="Sandbox tools"
+              className="flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-line-strong bg-surface py-1 pr-1 pl-2.5"
             >
-              Simulate duplicate invoice
-            </Button>
+              <span className="flex items-center gap-1.5 text-2xs font-semibold tracking-wide text-ink-3 uppercase">
+                <Icons.beaker className="size-3.5" />
+                Sandbox tools
+              </span>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={simulateDuplicate}
+                disabled={!lastSubmitted || analyze.pending}
+                title={lastSubmitted ? `Resubmit invoice ${lastSubmitted.invoice_number} with the same number` : "Analyze an invoice first"}
+              >
+                Simulate duplicate invoice
+              </Button>
+            </div>
           ) : null}
           <Button type="submit" variant="primary" loading={analyze.pending}>
             Analyze invoice

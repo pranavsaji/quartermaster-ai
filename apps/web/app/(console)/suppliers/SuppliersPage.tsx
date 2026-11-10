@@ -11,6 +11,7 @@ import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Notice } from "@/components/ui/Notice";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { RefreshButton } from "@/components/ui/RefreshButton";
 import { ResourceView } from "@/components/ui/ResourceView";
 import { SkeletonRows } from "@/components/ui/Skeleton";
 import { api } from "@/lib/api";
@@ -31,14 +32,12 @@ export function SuppliersPage() {
         description="Who you buy from, on what terms, and what they sell. The agent only compares offers from these catalogs."
         actions={
           <>
-            <Button variant="secondary" onClick={suppliers.reload} loading={suppliers.refreshing}>
-              Refresh
-            </Button>
             {can("manageSuppliers") ? (
               <Button variant="primary" onClick={() => setAdding(true)}>
                 Add supplier
               </Button>
             ) : null}
+            <RefreshButton onClick={suppliers.reload} loading={suppliers.refreshing} />
           </>
         }
       />

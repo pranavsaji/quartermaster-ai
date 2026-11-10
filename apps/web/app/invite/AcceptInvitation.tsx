@@ -93,13 +93,13 @@ function AcceptForm({ token, invitation }: { token: string; invitation: Invitati
 
   return (
     <form ref={containerRef} onSubmit={onSubmit} noValidate className="space-y-4">
-      <div className="rounded-lg border border-line bg-canvas px-3.5 py-3 text-[13px]">
+      <div className="rounded-lg border border-line bg-canvas px-3.5 py-3 text-sm">
         <p className="font-medium text-ink">{invitation.organization_name}</p>
         <p className="mt-0.5 text-ink-3">
           {invitation.invited_by_name ?? "An owner"} invited <span className="font-medium text-ink-2">{invitation.email}</span> to join as{" "}
           <span className="font-medium text-ink-2">{role}</span>.
         </p>
-        <p className="mt-0.5 text-[12px] text-ink-4">Expires {dateTime(invitation.expires_at)}</p>
+        <p className="mt-0.5 text-xs text-ink-4">Expires {dateTime(invitation.expires_at)}</p>
       </div>
       <Field label="Email" hint="Invitations are for one address.">
         {(control) => <Input {...control} type="email" value={invitation.email} readOnly autoComplete="username" />}

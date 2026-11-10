@@ -40,7 +40,7 @@ describe("OverviewPage", () => {
     });
     renderWithSession(<OverviewPage />);
 
-    expect(await screen.findByText("Proposals awaiting the owner")).toBeInTheDocument();
+    expect(await screen.findByText("Carts waiting for the owner")).toBeInTheDocument();
     const lowStock = screen.getByRole("region", { name: "Low stock" });
     expect(await within(lowStock).findByText("Fryer oil")).toBeInTheDocument();
     expect(within(lowStock).getAllByRole("row")).toHaveLength(2);

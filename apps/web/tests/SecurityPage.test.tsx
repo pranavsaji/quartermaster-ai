@@ -46,7 +46,7 @@ describe("SecurityPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(await screen.findByText("Duplicate captures")).toBeInTheDocument();
-    expect(screen.getByText("Prompt injections detected").nextElementSibling).toHaveTextContent("1");
+    expect(screen.getByText("Prompt injections caught").nextElementSibling).toHaveTextContent("1");
     expect(calls.filter((c) => c.url.includes("/analytics/summary"))).toHaveLength(2);
   });
 

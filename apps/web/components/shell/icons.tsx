@@ -155,6 +155,48 @@ export const Icons = {
       <path d="M10 3v3M10 14v3M3 10h3M14 10h3M5.3 5.3l2 2M12.7 12.7l2 2M14.7 5.3l-2 2M7.3 12.7l-2 2" />
     </Base>
   ),
+  refresh: (p: SVGProps<SVGSVGElement>) => (
+    <Base {...p}>
+      <path d="M16 10a6 6 0 1 1-1.76-4.24" />
+      <path d="M16 3.5v3h-3" />
+    </Base>
+  ),
+  inbox: (p: SVGProps<SVGSVGElement>) => (
+    <Base {...p}>
+      <path d="M3 11.5 5 5h10l2 6.5V15a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 15v-3.5Z" />
+      <path d="M3 11.5h4l1 2h4l1-2h4" />
+    </Base>
+  ),
+  more: (p: SVGProps<SVGSVGElement>) => (
+    <Base {...p}>
+      <circle cx="5" cy="10" r="0.9" fill="currentColor" />
+      <circle cx="10" cy="10" r="0.9" fill="currentColor" />
+      <circle cx="15" cy="10" r="0.9" fill="currentColor" />
+    </Base>
+  ),
+  chevronDown: (p: SVGProps<SVGSVGElement>) => (
+    <Base {...p}>
+      <path d="m6 8 4 4 4-4" />
+    </Base>
+  ),
+  beaker: (p: SVGProps<SVGSVGElement>) => (
+    <Base {...p}>
+      <path d="M8 3h4M8.5 3v4.5L4.2 14.6A1.6 1.6 0 0 0 5.6 17h8.8a1.6 1.6 0 0 0 1.4-2.4L11.5 7.5V3" />
+      <path d="M6.2 12h7.6" />
+    </Base>
+  ),
+  search: (p: SVGProps<SVGSVGElement>) => (
+    <Base {...p}>
+      <circle cx="8.5" cy="8.5" r="5.5" />
+      <path d="m13 13 4 4" />
+    </Base>
+  ),
+  columns: (p: SVGProps<SVGSVGElement>) => (
+    <Base {...p}>
+      <rect x="3" y="4" width="14" height="12" rx="1.5" />
+      <path d="M8 4v12M12.5 4v12" />
+    </Base>
+  ),
 };
 
 export type IconName = keyof typeof Icons;

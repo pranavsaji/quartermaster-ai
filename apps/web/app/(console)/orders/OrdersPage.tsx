@@ -7,12 +7,12 @@ import { InvoiceForm, type InvoicePrefill } from "@/components/orders/InvoiceFor
 import { InvoicesGrid } from "@/components/orders/InvoicesGrid";
 import { OrdersGrid, type OrderRow } from "@/components/orders/OrdersGrid";
 import { useSession } from "@/components/session/SessionProvider";
-import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { LoadMore } from "@/components/ui/LoadMore";
 import { Notice } from "@/components/ui/Notice";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { RefreshButton } from "@/components/ui/RefreshButton";
 import { ResourceView } from "@/components/ui/ResourceView";
 import { SkeletonCard } from "@/components/ui/Skeleton";
 import { SourceLabel } from "@/components/ui/SourceLabel";
@@ -79,19 +79,16 @@ export function OrdersPage() {
     <>
       <PageHeader
         title="Orders & invoices"
-        description="Paid purchase orders, their (synthetic) deliveries, and supplier invoices matched before settlement."
+        description="Paid orders, their deliveries, and supplier invoices checked against each order before anything is settled."
         actions={
-          <Button
-            variant="secondary"
+          <RefreshButton
             onClick={() => {
               orders.reload();
               deliveries.reload();
               invoices.reload();
             }}
             loading={orders.refreshing}
-          >
-            Refresh
-          </Button>
+          />
         }
       />
 
@@ -106,12 +103,7 @@ export function OrdersPage() {
           <CardHeader
             id="orders-title"
             title="Purchase orders"
-            actions={
-              <>
-                <SourceLabel source="SANDBOX_SUPPLIER">Sandbox suppliers</SourceLabel>
-                <SourceLabel source="SYNTHETIC">Synthetic fulfillment data</SourceLabel>
-              </>
-            }
+            actions={<SourceLabel source="SANDBOX_SUPPLIER">Sandbox suppliers · simulated deliveries</SourceLabel>}
           />
           <div className="p-3">
             {/* Deliveries only decorate the orders: their failure is reported without hiding the grid. */}

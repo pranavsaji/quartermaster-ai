@@ -113,6 +113,18 @@ export const PO_STATUS_TONES: Record<PurchaseOrderStatus, Tone> = {
   EXPIRED: "neutral",
 };
 
+/** Statuses whose code reads poorly as a word. */
+export const PO_STATUS_LABELS: Partial<Record<PurchaseOrderStatus, string>> = {
+  SUPERSEDED: "Replaced",
+  PAYMENT_PENDING: "Payment pending",
+};
+
+export const REQUEST_STATUS_LABELS: Partial<Record<RequestStatus, string>> = {
+  RESEARCHING: "Researching",
+  READY_FOR_REVIEW: "Ready for review",
+  PAYMENT_PENDING: "Payment pending",
+};
+
 export const PAYMENT_STATUS_TONES: Record<PaymentStatus, Tone> = {
   CREATED: "neutral",
   ORDER_CREATED: "info",

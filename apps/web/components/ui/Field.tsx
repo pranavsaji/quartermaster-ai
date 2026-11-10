@@ -45,7 +45,7 @@ export function Field({
   };
   return (
     <div className={cn("flex flex-col gap-1.5", className)}>
-      <label htmlFor={id} className="text-[13px] font-medium text-ink-2">
+      <label htmlFor={id} className="text-sm font-medium text-ink-2">
         {label}
         {required ? (
           <span aria-hidden className="ml-0.5 text-block">
@@ -55,12 +55,12 @@ export function Field({
       </label>
       {children(control)}
       {hint ? (
-        <p id={hintId} className="text-[12px] text-ink-3">
+        <p id={hintId} className="text-xs text-ink-3">
           {hint}
         </p>
       ) : null}
       {error ? (
-        <p id={errorId} className="text-[12px] font-medium text-block">
+        <p id={errorId} className="text-xs font-medium text-block">
           {error}
         </p>
       ) : null}
@@ -123,11 +123,11 @@ export function Checkbox({
         {...rest}
       />
       <div className="min-w-0">
-        <label htmlFor={id} className="text-[13px] font-medium text-ink-2 select-none">
+        <label htmlFor={id} className="text-sm font-medium text-ink-2 select-none">
           {label}
         </label>
         {description ? (
-          <p id={`${id}-desc`} className="text-[12px] text-ink-3">
+          <p id={`${id}-desc`} className="text-xs text-ink-3">
             {description}
           </p>
         ) : null}

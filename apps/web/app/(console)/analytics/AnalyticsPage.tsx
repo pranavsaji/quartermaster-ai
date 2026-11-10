@@ -4,9 +4,9 @@ import type { AnalyticsSummaryDto, InventoryItemDto, PolicyDecisionKind } from "
 import type { AgChartOptions } from "ag-charts-community";
 import { useMemo } from "react";
 import { ChartCard } from "@/components/charts/ChartCard";
-import { Button } from "@/components/ui/Button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { RefreshButton } from "@/components/ui/RefreshButton";
 import { ResourceView } from "@/components/ui/ResourceView";
 import { SkeletonCard } from "@/components/ui/Skeleton";
 import { StatTile } from "@/components/ui/StatTile";
@@ -37,12 +37,26 @@ export function stockCoverRows(items: readonly InventoryItemDto[]) {
     .sort((a, b) => a.days - b.days);
 }
 
+/** Axis labels at a size and contrast that stay legible on a phone. */
+function axisLabel(c: ChartColors) {
+  return { fontSize: 12, color: c.muted };
+}
+
+/** Category labels wrap on spaces and tilt only when they would otherwise collide. */
+function categoryAxis(position: "left" | "bottom", c: ChartColors) {
+  return {
+    type: "category" as const,
+    position,
+    label: { ...axisLabel(c), wrapping: "on-space" as const, autoRotate: position === "bottom" },
+  };
+}
+
 function moneyAxis(currency: string, c: ChartColors) {
   return {
     type: "number" as const,
     position: "left" as const,
     gridLine: { style: [{ stroke: c.grid, lineDash: [] }] },
-    label: { formatter: ({ value }: { value: number }) => moneyTick(value, currency) },
+    label: { ...axisLabel(c), formatter: ({ value }: { value: number }) => moneyTick(value, currency) },
   };
 }
 
@@ -53,7 +67,7 @@ function countAxis(position: "left" | "bottom", max: number, c: ChartColors) {
     position,
     gridLine: { style: [{ stroke: c.grid, lineDash: [] }] },
     ...(max <= 10 ? { interval: { step: 1 } } : {}),
-    label: { formatter: ({ value }: { value: number }) => (Number.isInteger(value) ? String(value) : "") },
+    label: { ...axisLabel(c), formatter: ({ value }: { value: number }) => (Number.isInteger(value) ? String(value) : "") },
   };
 }
 
@@ -121,7 +135,7 @@ function useChartOptions(s: AnalyticsSummaryDto | undefined, inventory: Inventor
           tooltip: tooltipMoney("Reserved"),
         },
       ],
-      axes: { x: { type: "category", position: "bottom" }, y: moneyAxis(cur, c) },
+      axes: { x: categoryAxis("bottom", c), y: moneyAxis(cur, c) },
       legend: { position: "top", enabled: true },
     });
 
@@ -139,7 +153,7 @@ function useChartOptions(s: AnalyticsSummaryDto | undefined, inventory: Inventor
           tooltip: tooltipMoney("Captured"),
         },
       ],
-      axes: { x: { type: "category", position: "left" }, y: { ...moneyAxis(cur, c), position: "bottom" } },
+      axes: { x: categoryAxis("left", c), y: { ...moneyAxis(cur, c), position: "bottom" } },
       legend: { enabled: false },
     });
 
@@ -157,7 +171,7 @@ function useChartOptions(s: AnalyticsSummaryDto | undefined, inventory: Inventor
           tooltip: tooltipMoney("Captured"),
         },
       ],
-      axes: { x: { type: "category", position: "left" }, y: { ...moneyAxis(cur, c), position: "bottom" } },
+      axes: { x: categoryAxis("left", c), y: { ...moneyAxis(cur, c), position: "bottom" } },
       legend: { enabled: false },
     });
 
@@ -198,6 +212,8 @@ function useChartOptions(s: AnalyticsSummaryDto | undefined, inventory: Inventor
           yKey: "days",
           yName: "Days of cover",
           cornerRadius: 4,
+          // Bars are coloured by stock status, so the legend below the chart names the statuses instead.
+          showInLegend: false,
           itemStyler: ({ datum }: { datum: { status: InventoryItemDto["status"] } }) => ({
             fill: lookup(stockColors(c), datum.status, c.muted),
           }),
@@ -215,12 +231,12 @@ function useChartOptions(s: AnalyticsSummaryDto | undefined, inventory: Inventor
         },
       ],
       axes: {
-        x: { type: "category", position: "bottom" },
+        x: categoryAxis("bottom", c),
         y: {
           type: "number",
           position: "left",
           gridLine: { style: [{ stroke: c.grid, lineDash: [] }] },
-          label: { formatter: ({ value }: { value: number }) => `${value} d` },
+          label: { ...axisLabel(c), formatter: ({ value }: { value: number }) => `${value} d` },
         },
       },
       legend: { position: "top", enabled: true },
@@ -240,7 +256,7 @@ function useChartOptions(s: AnalyticsSummaryDto | undefined, inventory: Inventor
           label: { enabled: true, placement: "outside-end", color: c.text },
         },
       ],
-      axes: { x: { type: "category", position: "left" }, y: countAxis("bottom", Math.max(0, ...findings.map((f) => f.count)), c) },
+      axes: { x: categoryAxis("left", c), y: countAxis("bottom", Math.max(0, ...findings.map((f) => f.count)), c) },
       legend: { enabled: false },
     });
 
@@ -274,11 +290,7 @@ export function AnalyticsPage() {
       <PageHeader
         title="Analytics"
         description="Spend, policy outcomes and the security results TrustRail delivers."
-        actions={
-          <Button variant="secondary" onClick={summary.reload} loading={summary.refreshing}>
-            Refresh
-          </Button>
-        }
+        actions={<RefreshButton onClick={summary.reload} loading={summary.refreshing} />}
       />
 
       <ResourceView
@@ -296,27 +308,28 @@ export function AnalyticsPage() {
       {s && charts ? (
         <div className="space-y-6">
           <section aria-labelledby="outcomes-title">
-            <h2 id="outcomes-title" className="mb-3 text-[15px] font-semibold text-ink">
+            <h2 id="outcomes-title" className="mb-3 text-base font-semibold text-ink">
               Measurable outcomes
             </h2>
-            <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 2xl:grid-cols-6">
+            {/* Attacks stopped are protection working (green once there is one); zero is neutral; only a duplicate capture is red. */}
+            <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 2xl:grid-cols-6">
               <StatTile
                 label="Blocked attempts"
                 value={num(s.security.blocked_attempts)}
-                tone={s.security.blocked_attempts > 0 ? "block" : "neutral"}
-                sub="Carts TrustRail refused"
+                tone={s.security.blocked_attempts > 0 ? "allow" : "neutral"}
+                sub="Unsafe carts stopped before payment"
               />
               <StatTile
-                label="Prompt injections detected"
+                label="Prompt injections caught"
                 value={num(s.security.prompt_injections_detected)}
-                tone="review"
-                sub="Quarantined, never executed"
+                tone={s.security.prompt_injections_detected > 0 ? "allow" : "neutral"}
+                sub="Quarantined, never followed"
               />
               <StatTile
                 label="Duplicate captures"
                 value={num(s.security.duplicate_captures)}
-                tone={s.security.duplicate_captures === 0 ? "allow" : "block"}
-                sub="Idempotent payments: target 0"
+                tone={s.security.duplicate_captures > 0 ? "block" : "neutral"}
+                sub="Paid twice for one cart: target 0"
               />
               <StatTile label="Duplicate invoices flagged" value={num(s.security.duplicate_invoices_flagged)} sub="Settlement blocked" />
               <StatTile label="Procurement time (median)" value={duration(s.procurement_time_ms.median)} sub="Request → approved cart" />
@@ -327,7 +340,7 @@ export function AnalyticsPage() {
           <Card aria-labelledby="totals-title">
             <CardHeader id="totals-title" title="Totals" />
             <CardBody>
-              <dl className="tnum grid grid-cols-2 gap-x-6 gap-y-4 text-[13px] sm:grid-cols-4 xl:grid-cols-7">
+              <dl className="tnum grid grid-cols-2 gap-x-6 gap-y-4 text-sm sm:grid-cols-4 xl:grid-cols-7">
                 {[
                   ["Approved spend", money(s.totals.approved_spend_minor, cur)],
                   ["Captured spend", money(s.totals.captured_spend_minor, cur)],
@@ -339,17 +352,17 @@ export function AnalyticsPage() {
                 ].map(([label, value]) => (
                   <div key={label}>
                     <dt className="text-ink-3">{label}</dt>
-                    <dd className="mt-0.5 text-[17px] font-semibold text-ink">{value}</dd>
+                    <dd className="mt-0.5 text-lg font-semibold text-ink">{value}</dd>
                   </div>
                 ))}
               </dl>
             </CardBody>
           </Card>
 
-          <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+          <div className="grid grid-cols-1 items-start gap-6 xl:grid-cols-2">
             <ChartCard
               title="Spend by week"
-              description="Captured (paid via PayPal sandbox) vs reserved (approved, not yet captured)."
+              description="Paid through PayPal, and approved but not yet paid (reserved)."
               options={charts.spendByWeek}
               rows={charts.weekly}
               table={[
@@ -407,6 +420,7 @@ export function AnalyticsPage() {
               description="Per item, coloured by stock status, against its target cover (lead time plus days to order). Items without recorded usage are left out."
               options={charts.stockCover}
               rows={charts.cover}
+              legend={<StockLegend />}
               emptyTitle="No usage recorded yet"
               table={[
                 { label: "Item", value: (r) => r.item },
@@ -419,5 +433,28 @@ export function AnalyticsPage() {
         </div>
       ) : null}
     </>
+  );
+}
+
+/** The stock-cover bars are coloured by status: name the colours (and the target line) in text. */
+function StockLegend() {
+  const items: { label: string; swatch: string }[] = [
+    { label: "OK", swatch: "bg-allow" },
+    { label: "Low", swatch: "bg-[var(--color-chart-review)]" },
+    { label: "Critical or out", swatch: "bg-[var(--color-chart-block)]" },
+  ];
+  return (
+    <ul className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-ink-3" aria-label="Chart legend">
+      {items.map((i) => (
+        <li key={i.label} className="flex items-center gap-1.5">
+          <span aria-hidden className={`size-2.5 rounded-sm ${i.swatch}`} />
+          {i.label}
+        </li>
+      ))}
+      <li className="flex items-center gap-1.5">
+        <span aria-hidden className="w-4 border-t-[1.5px] border-dashed border-ink-2" />
+        Target cover
+      </li>
+    </ul>
   );
 }

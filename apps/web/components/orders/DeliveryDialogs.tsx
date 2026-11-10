@@ -87,8 +87,8 @@ export function ReceiveDialog({
         <div className="mb-3">
           <SourceLabel source="SYNTHETIC">Synthetic fulfillment data</SourceLabel>
         </div>
-        <table className="w-full text-left text-[13px]">
-          <thead className="text-[12px] text-ink-3">
+        <table className="w-full text-left text-sm">
+          <thead className="text-xs text-ink-3">
             <tr>
               <th scope="col" className="py-2 font-medium">
                 Line
@@ -111,7 +111,7 @@ export function ReceiveDialog({
                 <tr key={line.id}>
                   <td className="py-2 pr-2">
                     <p className="text-ink">{line.description}</p>
-                    {line.sku ? <p className="font-mono text-[11.5px] text-ink-4">{line.sku}</p> : null}
+                    {line.sku ? <p className="font-mono text-2xs text-ink-4">{line.sku}</p> : null}
                   </td>
                   <td className="tnum py-2 text-right text-ink-2">{num(line.quantity)}</td>
                   <td className="py-2 pl-3">
@@ -126,7 +126,7 @@ export function ReceiveDialog({
                       className={short ? "tnum border-review text-right" : "tnum text-right"}
                     />
                     {error ? (
-                      <p id={errorId} className="mt-1 text-right text-[12px] font-medium text-block">
+                      <p id={errorId} className="mt-1 text-right text-xs font-medium text-block">
                         {error}
                       </p>
                     ) : null}

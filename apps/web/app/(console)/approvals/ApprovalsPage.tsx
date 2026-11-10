@@ -5,13 +5,13 @@ import { useMemo, type ReactNode } from "react";
 import { useSession } from "@/components/session/SessionProvider";
 import { DecisionBadge } from "@/components/trustrail/DecisionBadge";
 import { Badge, StatusBadge } from "@/components/ui/Badge";
-import { Button } from "@/components/ui/Button";
 import { ButtonLink } from "@/components/ui/ButtonLink";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { LoadMore } from "@/components/ui/LoadMore";
 import { Notice } from "@/components/ui/Notice";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { RefreshButton } from "@/components/ui/RefreshButton";
 import { ResourceView } from "@/components/ui/ResourceView";
 import { SkeletonRows } from "@/components/ui/Skeleton";
 import { SourceLabel } from "@/components/ui/SourceLabel";
@@ -48,11 +48,11 @@ function ApprovalRow({ po, now }: { po: PurchaseOrderDto; now: number }) {
     <li className="flex flex-wrap items-center gap-x-4 gap-y-2 px-5 py-4">
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <p className="text-[14px] font-semibold text-ink">{po.supplier_name}</p>
+          <p className="text-sm font-semibold text-ink">{po.supplier_name}</p>
           <StatusBadge status={po.status} tones={PO_STATUS_TONES} kind="Proposal" />
           {po.policy_decision ? <DecisionBadge decision={po.policy_decision.decision} size="sm" /> : null}
         </div>
-        <p className="mt-1 flex flex-wrap items-center gap-2 text-[12.5px] text-ink-3">
+        <p className="mt-1 flex flex-wrap items-center gap-2 text-xs text-ink-3">
           <span className="font-mono">{po.number}</span>
           <span>· {plural(po.items.filter((i) => i.kind === "PRODUCT").length, "product")}</span>
           <span>· proposed {relativeTime(po.created_at)}</span>
@@ -62,9 +62,9 @@ function ApprovalRow({ po, now }: { po: PurchaseOrderDto; now: number }) {
           <SourceLabel source="SANDBOX_SUPPLIER" />
         </p>
       </div>
-      <p className="tnum text-right text-[16px] font-semibold text-ink">{money(po.total_minor, po.currency)}</p>
+      <p className="tnum text-right text-base font-semibold text-ink">{money(po.total_minor, po.currency)}</p>
       <div className="flex w-full items-center justify-between gap-3 sm:w-auto">
-        <span className="text-[12.5px] text-ink-3 sm:hidden">{nextAction(po)}</span>
+        <span className="text-xs text-ink-3 sm:hidden">{nextAction(po)}</span>
         {href ? (
           <ButtonLink href={href} size="sm" variant={blockedDecision ? "secondary" : "primary"}>
             {po.status === "PROPOSED" ? "Review" : "Open"}
@@ -73,7 +73,7 @@ function ApprovalRow({ po, now }: { po: PurchaseOrderDto; now: number }) {
           <Badge tone="neutral">No linked request</Badge>
         )}
       </div>
-      <p className="hidden w-full text-[12.5px] text-ink-3 sm:block">Next: {nextAction(po)}</p>
+      <p className="hidden w-full text-xs text-ink-3 sm:block">Next: {nextAction(po)}</p>
     </li>
   );
 }
@@ -138,11 +138,7 @@ export function ApprovalsPage() {
       <PageHeader
         title="Approvals"
         description="Every proposal waiting on the owner, across all requests. Each supplier cart is approved and paid on its own."
-        actions={
-          <Button variant="secondary" onClick={orders.reload} loading={orders.refreshing}>
-            Refresh
-          </Button>
-        }
+        actions={<RefreshButton onClick={orders.reload} loading={orders.refreshing} />}
       />
 
       {!can("approve") ? (

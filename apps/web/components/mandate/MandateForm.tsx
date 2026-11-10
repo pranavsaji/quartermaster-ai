@@ -33,18 +33,18 @@ function Section({ title, description, error, children }: { title: string; descr
     >
       <legend className="sr-only">{title}</legend>
       <div>
-        <p aria-hidden className="text-[14px] font-semibold text-ink">
+        <p aria-hidden className="text-sm font-semibold text-ink">
           {title}
         </p>
         {description ? (
-          <p id={`${id}-desc`} className="mt-1 text-[12.5px] leading-relaxed text-ink-3">
+          <p id={`${id}-desc`} className="mt-1 text-xs leading-relaxed text-ink-3">
             {description}
           </p>
         ) : null}
       </div>
       <div className="space-y-4">
         {error ? (
-          <p id={`${id}-error`} className="text-[12px] font-medium text-block">
+          <p id={`${id}-error`} className="text-xs font-medium text-block">
             {error}
           </p>
         ) : null}
@@ -106,12 +106,12 @@ export function MandateForm({
         <CardHeader
           id="mandate-form-title"
           title="Spend mandate"
-          description={`Version ${mandate.version} · ${mandate.status === "ACTIVE" ? "active" : "superseded"}. TrustRail evaluates every cart against these rules deterministically.`}
+          description={`Version ${mandate.version} · ${mandate.status === "ACTIVE" ? "active" : "replaced"}. TrustRail checks every cart against these rules, the same way every time.`}
           actions={!editable ? <Badge tone="neutral">Read-only · owner can edit</Badge> : null}
         />
         <CardBody>
           <fieldset disabled={!editable || save.pending} className="contents">
-            <Section title="Budget" description={`Amounts in ${cur}. Converted to integer cents before they reach the API.`}>
+            <Section title="Budget" description={`Amounts in ${cur}.`}>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <Field label="Weekly budget" required error={errors.weekly_budget_minor}>
                   {(control) => (
@@ -174,7 +174,7 @@ export function MandateForm({
                   </li>
                 ))}
               </ul>
-              {suppliers.length === 0 ? <p className="text-[13px] text-ink-3">No suppliers found.</p> : null}
+              {suppliers.length === 0 ? <p className="text-sm text-ink-3">No suppliers found.</p> : null}
             </Section>
 
             <Section
@@ -288,7 +288,7 @@ export function MandateForm({
         </CardBody>
         {editable ? (
           <CardFooter className="justify-between">
-            <p className="text-[12.5px] text-ink-3">
+            <p className="text-xs text-ink-3">
               Saving creates version {mandate.version + 1} and revokes active certificates signed under v{mandate.version}.
             </p>
             <div className="flex gap-2">

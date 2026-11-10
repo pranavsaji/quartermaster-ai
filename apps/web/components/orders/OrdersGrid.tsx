@@ -74,16 +74,16 @@ export function OrdersGrid({
         ...controlColumn<OrderRow>(),
         cellRenderer: (p: CustomCellRendererProps<OrderRow>) =>
           p.node.rowPinned ? (
-            <span className="text-[12.5px] font-semibold text-ink">{p.data?.number}</span>
+            <span className="text-xs font-semibold text-ink">{p.data?.number}</span>
           ) : p.data ? (
             p.data.request_id ? (
               <ActionCell eGridCell={p.eGridCell}>
-                <Link href={`/procurement/${p.data.request_id}#proposals`} className="font-mono text-[12.5px] text-accent hover:underline">
+                <Link href={`/procurement/${p.data.request_id}#proposals`} className="font-mono text-xs text-accent hover:underline">
                   {p.data.number}
                 </Link>
               </ActionCell>
             ) : (
-              <span className="font-mono text-[12.5px]">{p.data.number}</span>
+              <span className="font-mono text-xs">{p.data.number}</span>
             )
           ) : null,
       },
@@ -118,6 +118,7 @@ export function OrdersGrid({
         colId: "expected",
         headerName: "Expected",
         minWidth: 130,
+        context: { secondary: true },
         cellClass: "tnum",
         valueGetter: (p) => p.data?.delivery_view?.expected_date ?? null,
         valueFormatter: (p) => (p.node?.rowPinned ? "" : typeof p.value === "string" ? date(p.value) : "—"),
@@ -177,7 +178,8 @@ export function OrdersGrid({
       rows={rows}
       columns={columns}
       height={460}
-      emptyMessage="No purchase orders yet."
+      emptyMessage="No orders yet"
+      emptyDescription="Approve and pay a proposal; the order and its delivery show up here."
       tools={{ exportFileName: "purchase-orders" }}
       stateKey="orders"
       pinnedBottomRowData={pinned}

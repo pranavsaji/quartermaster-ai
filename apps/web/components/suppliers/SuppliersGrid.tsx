@@ -49,7 +49,7 @@ export function SuppliersGrid({ suppliers, currency }: { suppliers: SupplierDto[
               <Link href={`/suppliers/${p.data.id}`} className="font-medium text-ink hover:text-accent hover:underline">
                 {p.data.name}
               </Link>
-              {p.data.website ? <span className="max-w-64 truncate text-[11.5px] text-ink-3">{hostOf(p.data.website)}</span> : null}
+              {p.data.website ? <span className="max-w-64 truncate text-2xs text-ink-3">{hostOf(p.data.website)}</span> : null}
             </ActionCell>
           ) : null,
       },
@@ -69,6 +69,7 @@ export function SuppliersGrid({ suppliers, currency }: { suppliers: SupplierDto[
         colId: "delivery",
         headerName: "Delivery",
         minWidth: 200,
+        context: { secondary: true },
         type: "rightAligned",
         cellClass: rightCell("text-ink-2"),
         valueGetter: (p) => (p.data ? deliveryTerms(p.data, currency) : ""),
@@ -82,6 +83,7 @@ export function SuppliersGrid({ suppliers, currency }: { suppliers: SupplierDto[
         field: "data_source",
         headerName: "Source",
         minWidth: 190,
+        context: { secondary: true },
         valueFormatter: (p) => (typeof p.value === "string" ? (DATA_SOURCE_LABELS[p.value as SupplierDto["data_source"]] ?? p.value) : ""),
         cellRenderer: (p: CustomCellRendererProps<SupplierDto>) => (p.data ? <SourceLabel source={p.data.data_source} /> : null),
       },
@@ -96,7 +98,8 @@ export function SuppliersGrid({ suppliers, currency }: { suppliers: SupplierDto[
       columns={columns}
       height={460}
       rowHeight={52}
-      emptyMessage="No suppliers yet."
+      emptyMessage="No suppliers yet"
+      emptyDescription="Add the suppliers you buy from; the agent only compares their catalogs."
       // Few columns: render them all, so browser find (Ctrl/Cmd+F) sees every cell.
       suppressColumnVirtualisation
       stateKey="suppliers"

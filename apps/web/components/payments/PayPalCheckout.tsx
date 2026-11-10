@@ -258,14 +258,14 @@ export function PayPalCheckout({
         <span className="sr-only">Pay {money(amountMinor, currency)} with PayPal (sandbox).</span>
       </div>
       {busy ? (
-        <p className="flex items-center gap-2 text-[12.5px] text-ink-3" role="status">
+        <p className="flex items-center gap-2 text-xs text-ink-3" role="status">
           <Spinner className="size-3.5" />
           {phase === "creating" && "Verifying the certificate and creating the PayPal order…"}
           {phase === "approving" && "Waiting for approval in the PayPal window…"}
           {phase === "capturing" && "Capturing payment on the server…"}
         </p>
       ) : (
-        <p className="text-[12px] text-ink-3">
+        <p className="text-xs text-ink-3">
           PayPal sandbox — use a sandbox buyer account. The amount is fixed by the signed certificate:{" "}
           <span className="tnum font-medium text-ink-2">{money(amountMinor, currency)}</span>.
         </p>
@@ -311,7 +311,7 @@ export function PayPalCheckout({
       ) : null}
       <ErrorNotice error={error} title="Payment didn't go through" />
       {canRestart(error) ? (
-        <p className="text-[12.5px] text-ink-2">Nothing was charged. Use the PayPal button again to choose another way to pay.</p>
+        <p className="text-xs text-ink-2">Nothing was charged. Use the PayPal button again to choose another way to pay.</p>
       ) : null}
     </div>
   );

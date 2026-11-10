@@ -60,10 +60,10 @@ export function PaymentStatusPanel({
   return (
     <div className="rounded-xl border border-line bg-surface p-4">
       <div className="flex flex-wrap items-center gap-2">
-        <p className="text-[13.5px] font-semibold text-ink">Payment</p>
+        <p className="text-sm font-semibold text-ink">Payment</p>
         <StatusBadge status={payment.status} tones={PAYMENT_STATUS_TONES} kind="Payment" />
         {polling && !poll.exhausted ? (
-          <span className="flex items-center gap-1.5 text-[12px] text-ink-3" role="status">
+          <span className="flex items-center gap-1.5 text-xs text-ink-3" role="status">
             <Spinner className="size-3" /> Checking with PayPal…
           </span>
         ) : null}
@@ -72,35 +72,35 @@ export function PaymentStatusPanel({
         </SourceLabel>
       </div>
 
-      <dl className="tnum mt-3 grid grid-cols-1 gap-x-6 gap-y-2 text-[13px] sm:grid-cols-2">
+      <dl className="tnum mt-3 grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
         <div>
-          <dt className="text-[12px] text-ink-3">Amount</dt>
+          <dt className="text-xs text-ink-3">Amount</dt>
           <dd className="font-medium text-ink">{money(payment.amount_minor, payment.currency)}</dd>
         </div>
         <div>
-          <dt className="text-[12px] text-ink-3">Captured</dt>
+          <dt className="text-xs text-ink-3">Captured</dt>
           <dd className="font-medium text-ink">
             {payment.captured_amount_minor !== null ? money(payment.captured_amount_minor, payment.currency) : "—"}
           </dd>
         </div>
         {payment.refunded_amount_minor > 0 ? (
           <div>
-            <dt className="text-[12px] text-ink-3">Refunded</dt>
+            <dt className="text-xs text-ink-3">Refunded</dt>
             <dd className="font-medium text-ink">{money(payment.refunded_amount_minor, payment.currency)}</dd>
           </div>
         ) : null}
         <div>
-          <dt className="text-[12px] text-ink-3">PayPal capture id</dt>
+          <dt className="text-xs text-ink-3">PayPal capture id</dt>
           <dd>{payment.paypal_capture_id ? <CopyValue value={payment.paypal_capture_id} label="capture id" head={10} tail={4} /> : "—"}</dd>
         </div>
         <div>
-          <dt className="text-[12px] text-ink-3">PayPal order id</dt>
+          <dt className="text-xs text-ink-3">PayPal order id</dt>
           <dd>
             {payment.paypal_order_id ? <CopyValue value={payment.paypal_order_id} label="PayPal order id" head={10} tail={4} /> : "—"}
           </dd>
         </div>
         <div>
-          <dt className="text-[12px] text-ink-3">{payment.completed_at ? "Completed" : "Updated"}</dt>
+          <dt className="text-xs text-ink-3">{payment.completed_at ? "Completed" : "Updated"}</dt>
           <dd className="text-ink-2">{dateTime(payment.completed_at ?? payment.updated_at)}</dd>
         </div>
       </dl>
@@ -112,7 +112,7 @@ export function PaymentStatusPanel({
       ) : null}
 
       {delivery ? (
-        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-line bg-canvas/60 px-3 py-2 text-[13px]">
+        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-line bg-canvas/60 px-3 py-2 text-sm">
           <span className="text-ink-3">Delivery</span>
           <StatusBadge status={delivery.status} tones={DELIVERY_STATUS_TONES} kind="Delivery" />
           <span className="text-ink-2">

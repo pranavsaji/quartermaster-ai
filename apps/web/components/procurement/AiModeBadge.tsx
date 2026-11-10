@@ -3,16 +3,12 @@ import { Badge } from "@/components/ui/Badge";
 
 export function AiModeBadge({ mode }: { mode: AiMode }) {
   return mode === "LLM" ? (
-    <Badge tone="accent" label="Interpreted by: LLM" title="Interpreted by a language model, validated against a strict schema">
-      LLM
+    <Badge tone="accent" label="Written by: AI model" title="Written by a language model and checked against a strict schema">
+      AI model
     </Badge>
   ) : (
-    <Badge
-      tone="review"
-      label="Interpreted by: deterministic fallback"
-      title="No LLM configured or available: deterministic rules were used"
-    >
-      Deterministic fallback
+    <Badge tone="review" label="Written by: fixed rules" title="No AI model was available, so fixed rules were used instead">
+      Fixed rules
     </Badge>
   );
 }

@@ -72,7 +72,7 @@ export function Tabs<K extends string>({
             onClick={() => onChange(item.key)}
             onKeyDown={(e) => onKeyDown(e, i)}
             className={cn(
-              "-mb-px flex items-center gap-2 border-b-2 px-3 py-2.5 text-[13.5px] font-medium whitespace-nowrap transition-colors",
+              "-mb-px flex items-center gap-2 border-b-2 px-3 py-2.5 text-sm font-medium whitespace-nowrap transition-colors",
               selected ? "border-accent text-ink" : "border-transparent text-ink-3 hover:text-ink",
             )}
           >
@@ -80,7 +80,7 @@ export function Tabs<K extends string>({
             {item.count !== undefined ? (
               <span
                 className={cn(
-                  "tnum rounded-full px-1.5 text-[11px]",
+                  "tnum rounded-full px-1.5 text-2xs",
                   selected ? "bg-accent-soft text-accent-strong" : "bg-ink/[0.05] text-ink-3",
                 )}
               >

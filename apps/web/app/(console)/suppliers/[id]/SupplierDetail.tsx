@@ -13,6 +13,7 @@ import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Notice } from "@/components/ui/Notice";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { RefreshButton } from "@/components/ui/RefreshButton";
 import { ResourceView } from "@/components/ui/ResourceView";
 import { SkeletonCard } from "@/components/ui/Skeleton";
 import { SourceLabel } from "@/components/ui/SourceLabel";
@@ -64,7 +65,7 @@ export function SupplierDetail({ id }: { id: string }) {
         title={supplier?.name ?? "Supplier"}
         meta={
           <>
-            <Link href="/suppliers" className="text-[13px] font-medium text-accent hover:underline">
+            <Link href="/suppliers" className="text-sm font-medium text-accent hover:underline">
               ← Suppliers
             </Link>
             {supplier ? <SourceLabel source={supplier.data_source} /> : null}
@@ -73,14 +74,12 @@ export function SupplierDetail({ id }: { id: string }) {
         description={supplier?.description ?? undefined}
         actions={
           <>
-            <Button variant="secondary" onClick={resource.reload} loading={resource.refreshing}>
-              Refresh
-            </Button>
             {manage && supplier ? (
               <Button variant="primary" onClick={() => setEditing({ kind: "supplier" })}>
                 Edit supplier
               </Button>
             ) : null}
+            <RefreshButton onClick={resource.reload} loading={resource.refreshing} />
           </>
         }
       />
@@ -102,7 +101,7 @@ export function SupplierDetail({ id }: { id: string }) {
             <Card aria-labelledby="terms-title">
               <CardHeader id="terms-title" title="Terms" actions={<SupplierBadges supplier={supplier} />} />
               <CardBody>
-                <dl className="grid gap-x-6 gap-y-3 text-[13px] sm:grid-cols-3">
+                <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-3">
                   <Term label="Lead time">{plural(supplier.lead_time_days, "day")}</Term>
                   <Term label="Sales tax">{`${supplier.tax_rate_bps / 100}%`}</Term>
                   <Term label="Website">
@@ -115,11 +114,11 @@ export function SupplierDetail({ id }: { id: string }) {
                     )}
                   </Term>
                 </dl>
-                <h3 className="mt-5 text-[12.5px] font-medium text-ink-3">Delivery and fees</h3>
+                <h3 className="mt-5 text-xs font-medium text-ink-3">Delivery and fees</h3>
                 {supplier.fee_terms.length === 0 ? (
-                  <p className="mt-1 text-[13px] text-ink-2">No fees.</p>
+                  <p className="mt-1 text-sm text-ink-2">No fees.</p>
                 ) : (
-                  <ul className="mt-1 space-y-1 text-[13px]">
+                  <ul className="mt-1 space-y-1 text-sm">
                     {supplier.fee_terms.map((f) => (
                       <li key={f.code} className="flex flex-wrap gap-x-2">
                         <span className="font-medium text-ink">{f.label}</span>
@@ -196,7 +195,7 @@ export function SupplierDetail({ id }: { id: string }) {
 function Term({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div>
-      <dt className="text-[12px] text-ink-3">{label}</dt>
+      <dt className="text-xs text-ink-3">{label}</dt>
       <dd className="mt-0.5 text-ink">{children}</dd>
     </div>
   );

@@ -69,11 +69,11 @@ export function Dialog({
         <div className="flex max-h-[85dvh] flex-col">
           <header className="flex items-start justify-between gap-4 border-b border-line px-5 py-4">
             <div>
-              <h2 id={titleId} className="text-[15px] font-semibold">
+              <h2 id={titleId} className="text-base font-semibold">
                 {title}
               </h2>
               {description ? (
-                <p id={descId} className="mt-0.5 text-[13px] text-ink-3">
+                <p id={descId} className="mt-0.5 text-sm text-ink-3">
                   {description}
                 </p>
               ) : null}

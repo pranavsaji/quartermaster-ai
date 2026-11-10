@@ -7,6 +7,7 @@ import { ErrorNotice } from "@/components/ui/ErrorNotice";
 import { Checkbox, Field, Textarea } from "@/components/ui/Field";
 import { api } from "@/lib/api";
 import { money } from "@/lib/format";
+import { violationCopy } from "@/lib/plain-language";
 import { useAction } from "@/lib/hooks";
 import { isConflictError } from "@/lib/http";
 
@@ -77,27 +78,23 @@ export function ApprovalForm({
 
   return (
     <div className="rounded-xl border border-accent-line bg-accent-soft/40 p-4">
-      <p className="text-[13.5px] font-semibold text-ink">Owner approval</p>
-      <p className="mt-0.5 text-[12.5px] text-ink-3">
-        Approving signs an Intent Certificate for exactly this cart ({money(po.total_minor, po.currency)}). Payment can then only be made
-        for this cart hash.
+      <p className="text-sm font-semibold text-ink">Your approval</p>
+      <p className="mt-0.5 text-xs text-ink-3">
+        Approving signs an Intent Certificate for exactly this cart ({money(po.total_minor, po.currency)}). PayPal can then charge only this
+        cart, at this total.
       </p>
 
       {reviewCodes.length > 0 ? (
         <fieldset className="mt-3 space-y-2.5">
-          <legend className="mb-1 text-[12.5px] font-medium text-review">
-            Acknowledge each review item to continue ({ackedCount}/{reviewCodes.length})
+          <legend className="mb-1 text-xs font-medium text-review">
+            Confirm each point TrustRail raised ({ackedCount} of {reviewCodes.length})
           </legend>
           {reviewCodes.map((code) => (
             <Checkbox
               key={code}
               checked={acked.has(code)}
               onChange={(e) => toggle(code, e.target.checked)}
-              label={
-                <>
-                  I have reviewed <code className="font-mono text-[12px]">{code}</code>
-                </>
-              }
+              label={<>I have reviewed: {violationCopy(code).title.toLowerCase()}</>}
               description={messages.get(code)}
             />
           ))}
@@ -119,7 +116,7 @@ export function ApprovalForm({
         <Button variant="danger" onClick={onReject} disabled={approve.pending}>
           Reject
         </Button>
-        {!allAcked ? <span className="self-center text-[12px] text-ink-3">Tick every review item to enable approval.</span> : null}
+        {!allAcked ? <span className="self-center text-xs text-ink-3">Tick each point above to approve.</span> : null}
       </div>
     </div>
   );
