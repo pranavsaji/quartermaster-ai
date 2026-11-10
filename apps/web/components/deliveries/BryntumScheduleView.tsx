@@ -5,7 +5,7 @@
  * Bryntum renders into the DOM directly.
  *
  * Bryntum's prebuilt ES module (4.6 MB) is served as a static file (copied to
- * public/vendor/bryntum by scripts/copy-bryntum.mjs) and imported at runtime, instead of being
+ * public/vendor/bryntum/<version> by scripts/copy-bryntum.mjs) and imported at runtime, instead of being
  * bundled: bundling it made the production build exceed the host's build memory. Only its
  * types are imported at compile time.
  *
@@ -43,7 +43,8 @@ export interface ScheduleViewProps {
 type BryntumModule = typeof Bryntum;
 type Mode = "2w" | "month";
 const PRESETS: Record<Mode, string> = { "2w": "weekAndDayLetter", month: "weekAndMonth" };
-const BRYNTUM_URL = "/vendor/bryntum/scheduler.module.js";
+// Versioned path (scripts/copy-bryntum.mjs), served with an immutable Cache-Control (next.config.ts).
+const BRYNTUM_URL = "/vendor/bryntum/7.3.8/scheduler.module.js";
 
 let loading: Promise<BryntumModule> | null = null;
 /** Imports Bryntum once per page load, from the static copy (never bundled). */

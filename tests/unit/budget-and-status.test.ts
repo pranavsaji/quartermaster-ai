@@ -75,7 +75,12 @@ describe("configuration", () => {
 
   it("requires PayPal credentials in pairs and secures production cookies", () => {
     expect(() => loadConfig({ PAYPAL_CLIENT_ID: "only-id" })).toThrow();
-    const prod = loadConfig({ NODE_ENV: "production", DATABASE_URL: "postgres://x", TRUSTRAIL_SIGNING_KEY: "x" });
+    const prod = loadConfig({
+      NODE_ENV: "production",
+      DATABASE_URL: "postgres://x",
+      TRUSTRAIL_SIGNING_KEY: "x",
+      APP_BASE_URL: "https://app.example",
+    });
     expect(prod.session.cookieSecure).toBe(true);
     expect(prod.session.cookieName).toBe("__Host-qm_session");
   });

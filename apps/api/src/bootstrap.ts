@@ -53,7 +53,9 @@ export async function bootstrap(overrides: ContextOverrides & { env?: NodeJS.Pro
     onPoolError: (err) => log.error({ err }, "idle database connection failed"),
   });
   try {
-    if (overrides.migrate !== false) await database.migrate();
+    // Production migrates in the pre-deploy step (MIGRATE_ON_BOOT defaults off there); the CLI
+    // entry points say explicitly whether they migrate.
+    if (overrides.migrate ?? config.migrateOnBoot) await database.migrate();
     const signingKey = resolveSigningKey(config, log);
     await registerSigningKey(database.db, signingKey);
     return buildContext(config, log, database, signingKey, overrides);

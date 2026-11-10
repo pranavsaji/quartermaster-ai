@@ -128,6 +128,28 @@ const EnvSchema = z.object({
   SWEEPER_INTERVAL_SECONDS: z.coerce.number().int().min(0).max(3600).default(60),
   /** Demo-only delivery simulation. Defaults to false in production, true elsewhere. */
   ALLOW_SYNTHETIC_DELIVERY_ACTIONS: optionalBool(),
+
+  /* ---- Operations hardening (production track). Every default keeps local dev and tests working. ---- */
+  /**
+   * Where workspace notifications go: the Zapier Catch Hook, email to the workspace's owners (through
+   * the transactional mailer), or both. Defaults to `both` with a Resend key and a Zapier URL,
+   * `email` with only a Resend key, otherwise `zapier`.
+   */
+  NOTIFY_CHANNEL: z.enum(["zapier", "email", "both"]).optional(),
+  /** Apply migrations when the API boots. Defaults to off in production, where the pre-deploy step migrates. */
+  MIGRATE_ON_BOOT: optionalBool(),
+  /**
+   * Seconds without a successful sweep before `monitor.sweeper_stale` alerts (0 disables the check).
+   * Defaults to 3x SWEEPER_INTERVAL_SECONDS, or 3x five minutes when a cron job runs the sweeper.
+   */
+  SWEEPER_STALE_AFTER_SECONDS: z.coerce.number().int().min(0).max(86_400).optional(),
+  /** Days to keep webhook events, agent tool steps, error groups and abandoned one-time links. */
+  RETENTION_DAYS: z.coerce.number().int().min(7).max(3650).default(90),
+  /** Consecutive OpenAI/Channel3 failures before calls are skipped for the cooldown (0 disables). */
+  PROVIDER_BREAKER_THRESHOLD: z.coerce.number().int().min(0).max(100).default(3),
+  PROVIDER_BREAKER_COOLDOWN_SECONDS: z.coerce.number().int().min(1).max(3600).default(120),
+  /** Per-organisation cache of the analytics summary, in seconds (0 disables; off in tests). */
+  ANALYTICS_CACHE_SECONDS: z.coerce.number().int().min(0).max(600).optional(),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
@@ -175,6 +197,14 @@ export interface AppConfig {
   sweeperIntervalSeconds: number;
   shutdownGraceMs: number;
   allowSyntheticDeliveryActions: boolean;
+  /* ---- Operations hardening (production track) ---- */
+  notifyChannel: "zapier" | "email" | "both";
+  migrateOnBoot: boolean;
+  /** 0 disables the stale-sweeper monitor. */
+  sweeperStaleAfterSeconds: number;
+  retentionDays: number;
+  providerBreaker: { threshold: number; cooldownMs: number };
+  analyticsCacheSeconds: number;
 }
 
 const NAMED_PROXY_RANGES = new Set(["loopback", "linklocal", "uniquelocal"]);
@@ -249,6 +279,8 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
       );
     }
   }
+  // Operations hardening: links in emails and alerts must point at the deployment, not localhost.
+  if (production && !source.APP_BASE_URL) throw new Error("Missing required production configuration: APP_BASE_URL");
   if (Boolean(e.PAYPAL_CLIENT_ID) !== Boolean(e.PAYPAL_CLIENT_SECRET)) {
     throw new Error("PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET must be set together");
   }
@@ -330,5 +362,12 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
     sweeperIntervalSeconds: e.SWEEPER_INTERVAL_SECONDS,
     shutdownGraceMs: e.SHUTDOWN_GRACE_MS,
     allowSyntheticDeliveryActions: e.ALLOW_SYNTHETIC_DELIVERY_ACTIONS ?? !production,
+    /* ---- Operations hardening (production track) ---- */
+    notifyChannel: e.NOTIFY_CHANNEL ?? (e.RESEND_API_KEY ? (e.ZAPIER_WEBHOOK_URL ? "both" : "email") : "zapier"),
+    migrateOnBoot: e.MIGRATE_ON_BOOT ?? !production,
+    sweeperStaleAfterSeconds: e.SWEEPER_STALE_AFTER_SECONDS ?? 3 * (e.SWEEPER_INTERVAL_SECONDS > 0 ? e.SWEEPER_INTERVAL_SECONDS : 300),
+    retentionDays: e.RETENTION_DAYS,
+    providerBreaker: { threshold: e.PROVIDER_BREAKER_THRESHOLD, cooldownMs: e.PROVIDER_BREAKER_COOLDOWN_SECONDS * 1000 },
+    analyticsCacheSeconds: e.ANALYTICS_CACHE_SECONDS ?? (e.NODE_ENV === "test" ? 0 : 30),
   };
 }

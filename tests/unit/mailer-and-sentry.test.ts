@@ -131,7 +131,13 @@ describe("account and monitoring configuration", () => {
   });
 
   it("defaults: sign-up on, sample-account hint off in production", () => {
-    const base = { NODE_ENV: "production", DATABASE_URL: "postgres://x", TRUSTRAIL_SIGNING_KEY: "k", DATABASE_SSL: "require" };
+    const base = {
+      NODE_ENV: "production",
+      DATABASE_URL: "postgres://x",
+      TRUSTRAIL_SIGNING_KEY: "k",
+      DATABASE_SSL: "require",
+      APP_BASE_URL: "https://app.example",
+    };
     const prod = loadConfig(base);
     expect(prod.accounts).toMatchObject({ signupEnabled: true, sampleAccountsHint: false, signupPerHour: 5 });
     expect(loadConfig({ ...base, SAMPLE_ACCOUNTS_HINT: "true", SIGNUP_ENABLED: "false" }).accounts).toMatchObject({

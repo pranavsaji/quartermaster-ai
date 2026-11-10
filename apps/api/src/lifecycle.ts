@@ -12,6 +12,8 @@ export interface ShutdownDeps {
   /** How long in-flight requests (and a running sweep) may take to finish. */
   graceMs: number;
   exit: (code: number) => void;
+  /** Shared with the readiness probe, which answers 503 once draining starts. */
+  state?: { draining: boolean };
 }
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms).unref());
@@ -48,6 +50,7 @@ export function createShutdown(deps: ShutdownDeps) {
 
   async function drain(reason: string, exitCode: number): Promise<void> {
     draining = true;
+    if (deps.state) deps.state.draining = true;
     const deadline = Date.now() + deps.graceMs;
     log.info({ reason, in_flight: inFlight, grace_ms: deps.graceMs }, "shutting down: draining in-flight requests");
     // Last resort if something below hangs (e.g. the database close).

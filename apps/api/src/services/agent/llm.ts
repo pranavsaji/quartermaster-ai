@@ -73,6 +73,8 @@ export function fallbackNote(err: unknown): string {
       return "Model call stopped at the agent deadline.";
     case "network":
       return "Model provider could not be reached.";
+    case "unavailable":
+      return "Model provider is paused after repeated failures; using deterministic rules.";
     case "refused":
       return "Model declined the request.";
     case "truncated":

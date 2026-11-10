@@ -6,6 +6,7 @@ import type { SigningKey } from "@qm/trustrail";
 import type { AppConfig } from "./config";
 import type { Logger } from "./logger";
 import { ErrorTracker } from "./services/monitoring/tracker";
+import { ownerNotificationRecipients } from "./services/notifications";
 
 export interface AppContext {
   config: AppConfig;
@@ -55,6 +56,8 @@ export function buildContext(
     baseUrl: config.channel3.baseUrl,
     fetch: overrides.channel3Fetch ?? overrides.fetch,
     log: (event, data) => log.warn({ ...data, event }, "channel3"),
+    breakerThreshold: config.providerBreaker.threshold,
+    breakerCooldownMs: config.providerBreaker.cooldownMs,
   });
   const openai = new OpenAIClient({
     apiKey: config.openai.apiKey,
@@ -62,12 +65,8 @@ export function buildContext(
     baseUrl: config.openai.baseUrl,
     fetch: overrides.openaiFetch ?? overrides.fetch,
     log: (event, data) => log.warn({ ...data, event }, "openai"),
-  });
-  const notifier = new Notifier({
-    webhookUrl: config.zapierWebhookUrl,
-    appBaseUrl: config.appBaseUrl,
-    fetch: overrides.fetch,
-    log: (event, data) => log.warn({ ...data, event }, "notifier"),
+    breakerThreshold: config.providerBreaker.threshold,
+    breakerCooldownMs: config.providerBreaker.cooldownMs,
   });
   const now = overrides.now ?? (() => new Date());
   const mailer = new Mailer({
@@ -96,6 +95,25 @@ export function buildContext(
     alertEmails: config.monitoring.alertEmails,
     alertWebhookUrl: config.monitoring.alertWebhookUrl,
     cooldownMinutes: config.monitoring.alertCooldownMinutes,
+  });
+  const notifier = new Notifier({
+    webhookUrl: config.zapierWebhookUrl,
+    appBaseUrl: config.appBaseUrl,
+    fetch: overrides.fetch,
+    log: (event, data) => log.warn({ ...data, event }, "notifier"),
+    channel: config.notifyChannel,
+    mailer,
+    recipients: ownerNotificationRecipients(database.db),
+    // One warning group per channel (deduplicated by the tracker), so a lapsed Zapier plan or a
+    // rejected sending domain shows up on the System page instead of only in the logs.
+    onFailure: (f) =>
+      errors.capture({
+        source: "api",
+        level: "warning",
+        code: "NOTIFY_FAILED",
+        message: `Notification delivery failed via ${f.channel}`,
+        context: { channel: f.channel, kind: f.kind, reason: f.reason, status: f.status ?? null },
+      }),
   });
   return {
     config,

@@ -37,6 +37,36 @@ export interface DatabaseOptions {
   onPoolError?: (err: Error) => void;
 }
 
+/**
+ * Session-level advisory lock key held while migrations run, so two processes migrating at once
+ * (a pre-deploy step and a booting instance, or two instances) apply them one after the other.
+ */
+export const MIGRATION_LOCK_KEY = 72_411_093_157;
+
+/** The part of a pooled client that `withAdvisoryLock` needs (pg.PoolClient satisfies it). */
+export interface LockClient {
+  query(sql: string, params?: unknown[]): Promise<unknown>;
+  release(): void;
+}
+
+/**
+ * Runs `work` while holding a PostgreSQL session advisory lock on a dedicated connection. Waits
+ * for the lock (another migrator finishing first); always unlocks and releases the connection.
+ */
+export async function withAdvisoryLock<T>(connect: () => Promise<LockClient>, key: number, work: () => Promise<T>): Promise<T> {
+  const client = await connect();
+  try {
+    await client.query("select pg_advisory_lock($1)", [key]);
+    try {
+      return await work();
+    } finally {
+      await client.query("select pg_advisory_unlock($1)", [key]);
+    }
+  } finally {
+    client.release();
+  }
+}
+
 export function defaultMigrationsFolder(): string {
   if (process.env.QM_MIGRATIONS_DIR) return process.env.QM_MIGRATIONS_DIR;
   const here = path.dirname(fileURLToPath(import.meta.url));
@@ -81,7 +111,12 @@ export async function createDatabase(options: DatabaseOptions): Promise<Database
   return {
     db,
     driver: "postgres",
-    migrate: () => migratePg(db as never, { migrationsFolder }),
+    migrate: () =>
+      withAdvisoryLock(
+        () => pool.connect(),
+        MIGRATION_LOCK_KEY,
+        () => migratePg(db as never, { migrationsFolder }),
+      ),
     close: () => pool.end(),
     ping: async () => {
       await pool.query("select 1");

@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { loadConfig, parseTrustProxy } from "../../apps/api/src/config";
 
-const PROD = { NODE_ENV: "production", DATABASE_URL: "postgres://db/x", TRUSTRAIL_SIGNING_KEY: "k" } as const;
+const PROD = {
+  NODE_ENV: "production",
+  DATABASE_URL: "postgres://db/x",
+  TRUSTRAIL_SIGNING_KEY: "k",
+  APP_BASE_URL: "https://app.example",
+} as const;
 const PAYPAL = { PAYPAL_CLIENT_ID: "id", PAYPAL_CLIENT_SECRET: "secret" } as const;
 
 describe("production configuration", () => {

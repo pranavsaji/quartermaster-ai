@@ -5,6 +5,7 @@ import rateLimit from "express-rate-limit";
 import pinoHttp from "pino-http";
 import type { AppContext } from "../context";
 import { notFound } from "../errors";
+import { sweeperHealth } from "../jobs/sweeper";
 import { sessionAuth } from "./middleware/auth";
 import { errorHandler } from "./middleware/errors";
 import { correlation, csrfGuard } from "./middleware/security";
@@ -19,7 +20,26 @@ import { procurementRoutes } from "./routes/procurement";
 import { supplierRoutes } from "./routes/suppliers";
 import { limiterStore } from "./rate-limit-store";
 
-export function createApp(ctx: AppContext) {
+/** How long the readiness probe waits for the database before answering 503. */
+export const READINESS_TIMEOUT_MS = 2000;
+
+/** Resolves with `work`, or rejects once `ms` have passed (the work itself is not cancelled). */
+export function withinTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`timed out after ${ms} ms`)), ms);
+    timer.unref();
+  });
+  return Promise.race([work, timeout]).finally(() => clearTimeout(timer));
+}
+
+export interface AppOptions {
+  /** Set by the shutdown handler: while draining, /readyz answers 503 so the platform stops routing here. */
+  lifecycle?: { readonly draining: boolean };
+  readinessTimeoutMs?: number;
+}
+
+export function createApp(ctx: AppContext, options: AppOptions = {}) {
   const app = express();
   app.disable("x-powered-by");
   app.set("trust proxy", ctx.config.trustProxy);
@@ -65,17 +85,25 @@ export function createApp(ctx: AppContext) {
     res.json({ status: "ok" });
   });
   app.get("/readyz", async (_req, res) => {
+    res.setHeader("Cache-Control", "no-store");
+    if (options.lifecycle?.draining) return void res.status(503).json({ status: "draining" });
     try {
-      await ctx.database.ping();
+      const timeoutMs = options.readinessTimeoutMs ?? READINESS_TIMEOUT_MS;
+      await withinTimeout(ctx.database.ping(), timeoutMs);
+      // The sweeper's liveness is reported, never a reason to fail the probe (that would restart a
+      // healthy API); an external uptime check can alert on `"sweeper":"stale"`.
+      const sweeper = await withinTimeout(sweeperHealth(ctx), timeoutMs).catch(() => null);
+      const sweep = { sweeper: sweeper?.status ?? "unknown", last_sweep_age_seconds: sweeper?.last_sweep_age_seconds ?? null };
       // In production the probe says only whether the API can serve; which integrations are
       // configured is not advertised to unauthenticated callers.
-      if (ctx.config.env === "production") return void res.json({ status: "ready" });
+      if (ctx.config.env === "production") return void res.json({ status: "ready", ...sweep });
       res.json({
         status: "ready",
         database: ctx.database.driver,
         paypal: ctx.paypal.configured,
         channel3: ctx.channel3.enabled,
         ai: ctx.openai.enabled,
+        ...sweep,
       });
     } catch {
       res.status(503).json({ status: "unavailable" });

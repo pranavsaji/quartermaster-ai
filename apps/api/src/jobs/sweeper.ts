@@ -5,11 +5,16 @@ import {
   agentRuns,
   idempotencyKeys,
   intentCertificates,
+  invitations,
   jobLeases,
+  passwordResetTokens,
   paymentAttempts,
+  paypalWebhookEvents,
   purchaseRequests,
   rateLimitHits,
   sessions,
+  systemErrors,
+  toolExecutions,
   type Database,
 } from "@qm/database";
 import type { AppContext } from "../context";
@@ -27,6 +32,8 @@ export interface SweepReport {
   refundsReconciled: number;
   sessionsPurged: number;
   idempotencyPurged: number;
+  /** Rows removed by the retention purge (RETENTION_DAYS). */
+  retentionPurged: number;
   errors: number;
 }
 
@@ -70,6 +77,7 @@ export async function sweep(ctx: AppContext): Promise<SweepReport> {
     refundsReconciled: 0,
     sessionsPurged: 0,
     idempotencyPurged: 0,
+    retentionPurged: 0,
     errors: 0,
   };
   if (!(await acquireLease(ctx.db, "sweeper", ctx.now()))) return report;
@@ -202,6 +210,14 @@ export async function sweep(ctx: AppContext): Promise<SweepReport> {
     await ctx.db.delete(rateLimitHits).where(lt(rateLimitHits.resetAt, sql`now() - interval '1 minute'`));
 
     try {
+      const purged = await purgeExpiredRecords(ctx, now);
+      report.retentionPurged = Object.values(purged).reduce((a, n) => a + n, 0);
+    } catch (err) {
+      report.errors++;
+      ctx.log.warn({ err }, "retention purge failed");
+    }
+
+    try {
       await runMonitors(ctx);
     } catch (err) {
       report.errors++;
@@ -217,10 +233,167 @@ export async function sweep(ctx: AppContext): Promise<SweepReport> {
         context: { errors: report.errors },
       });
     }
+    await recordSweepSuccess(ctx);
   } finally {
     await releaseLease(ctx.db, "sweeper");
   }
   return report;
+}
+
+/* ------------------------------------------------------------ Retention */
+
+export interface RetentionReport {
+  webhookEvents: number;
+  toolExecutions: number;
+  systemErrors: number;
+  invitations: number;
+  passwordResets: number;
+}
+
+/** Rows deleted per table per sweep, so a first purge of a large backlog stays short. */
+const PURGE_BATCH = 5000;
+
+/**
+ * Deletes operational records older than RETENTION_DAYS: processed or rejected PayPal webhook
+ * events, agent tool steps (the run rows and their token counts stay), error groups not seen
+ * since, and invitations and password-reset links that expired unused. Never touches audit
+ * events, payments, orders, certificates or anything else that is evidence.
+ */
+export async function purgeExpiredRecords(ctx: AppContext, now: Date): Promise<RetentionReport> {
+  const cutoff = new Date(now.getTime() - ctx.config.retentionDays * 86_400_000);
+  const webhookEvents = await ctx.db
+    .delete(paypalWebhookEvents)
+    .where(
+      inArray(
+        paypalWebhookEvents.id,
+        ctx.db
+          .select({ id: paypalWebhookEvents.id })
+          .from(paypalWebhookEvents)
+          .where(lt(paypalWebhookEvents.receivedAt, cutoff))
+          .limit(PURGE_BATCH),
+      ),
+    )
+    .returning({ id: paypalWebhookEvents.id });
+  const steps = await ctx.db
+    .delete(toolExecutions)
+    .where(
+      inArray(
+        toolExecutions.id,
+        ctx.db.select({ id: toolExecutions.id }).from(toolExecutions).where(lt(toolExecutions.startedAt, cutoff)).limit(PURGE_BATCH),
+      ),
+    )
+    .returning({ id: toolExecutions.id });
+  const errorGroups = await ctx.db.delete(systemErrors).where(lt(systemErrors.lastSeenAt, cutoff)).returning({ id: systemErrors.id });
+  const staleInvitations = await ctx.db
+    .delete(invitations)
+    .where(and(isNull(invitations.acceptedAt), lt(invitations.expiresAt, cutoff)))
+    .returning({ id: invitations.id });
+  const staleResets = await ctx.db
+    .delete(passwordResetTokens)
+    .where(lt(passwordResetTokens.expiresAt, cutoff))
+    .returning({ id: passwordResetTokens.id });
+  const report = {
+    webhookEvents: webhookEvents.length,
+    toolExecutions: steps.length,
+    systemErrors: errorGroups.length,
+    invitations: staleInvitations.length,
+    passwordResets: staleResets.length,
+  };
+  if (Object.values(report).some((n) => n > 0))
+    ctx.log.info({ retention: report, retention_days: ctx.config.retentionDays }, "retention purge");
+  return report;
+}
+
+/* ------------------------------------------------------- Sweeper liveness */
+
+/**
+ * The last successful sweep is kept as a row in `job_leases` under its own name (the lease
+ * mechanism only ever touches the `sweeper` row), so the API can tell when the sweeper, in-process
+ * or a cron job, has stopped.
+ */
+const LAST_SWEEP = "sweeper:last_success";
+
+async function recordSweepSuccess(ctx: AppContext): Promise<void> {
+  const at = ctx.now();
+  await ctx.db
+    .insert(jobLeases)
+    .values({ name: LAST_SWEEP, holder: INSTANCE_ID, leaseUntil: at })
+    .onConflictDoUpdate({ target: jobLeases.name, set: { holder: INSTANCE_ID, leaseUntil: at } });
+}
+
+/** When the last sweep completed, or null if none has been recorded. */
+export async function lastSweepAt(db: Database): Promise<Date | null> {
+  const [row] = await db.select({ at: jobLeases.leaseUntil }).from(jobLeases).where(eq(jobLeases.name, LAST_SWEEP));
+  return row?.at ?? null;
+}
+
+export type SweeperHealth = { status: "ok" | "stale" | "unknown" | "disabled"; last_sweep_age_seconds: number | null };
+
+/**
+ * Whether the sweeper is keeping up: `stale` once the last success is older than
+ * SWEEPER_STALE_AFTER_SECONDS, `unknown` when none has been recorded yet.
+ */
+export async function sweeperHealth(ctx: AppContext): Promise<SweeperHealth> {
+  const last = await lastSweepAt(ctx.db);
+  const age = last ? Math.max(0, Math.floor((ctx.now().getTime() - last.getTime()) / 1000)) : null;
+  const limit = ctx.config.sweeperStaleAfterSeconds;
+  if (limit <= 0) return { status: "disabled", last_sweep_age_seconds: age };
+  if (age === null) return { status: "unknown", last_sweep_age_seconds: null };
+  return { status: age > limit ? "stale" : "ok", last_sweep_age_seconds: age };
+}
+
+export const SWEEPER_STALE_MONITOR = "monitor.sweeper_stale";
+
+/**
+ * One watchdog check: raises `monitor.sweeper_stale` while the last successful sweep is too old
+ * (or none was ever recorded once `startedAt` is that old), and resolves it when sweeps resume.
+ * Runs in the API process, so it still fires when the sweeper itself has stopped. Never throws.
+ */
+export async function checkSweeperLiveness(ctx: AppContext, startedAt: Date): Promise<SweeperHealth | null> {
+  try {
+    const health = await sweeperHealth(ctx);
+    const limit = ctx.config.sweeperStaleAfterSeconds;
+    const sinceStart = (ctx.now().getTime() - startedAt.getTime()) / 1000;
+    const stale = health.status === "stale" || (health.status === "unknown" && sinceStart > limit);
+    if (stale) {
+      await ctx.errors.monitor(
+        SWEEPER_STALE_MONITOR,
+        "error",
+        health.last_sweep_age_seconds === null
+          ? `No sweep has completed since this API instance started over ${Math.round(limit / 60)} minutes ago. Payments are not being reconciled.`
+          : `The last successful sweep was ${Math.round(health.last_sweep_age_seconds / 60)} minutes ago (limit ${Math.round(limit / 60)}). Payments are not being reconciled.`,
+        { last_sweep_age_seconds: health.last_sweep_age_seconds, limit_seconds: limit },
+      );
+    } else if (health.status === "ok") {
+      await ctx.errors.clearMonitor(SWEEPER_STALE_MONITOR);
+    }
+    return health;
+  } catch (err) {
+    ctx.log.warn({ err }, "sweeper liveness check failed");
+    return null;
+  }
+}
+
+/** Runs `checkSweeperLiveness` periodically in the API process (off when the limit is 0). */
+export function startSweeperWatchdog(ctx: AppContext): SweeperHandle {
+  const limit = ctx.config.sweeperStaleAfterSeconds;
+  if (limit <= 0) return { stop: async () => {} };
+  const startedAt = ctx.now();
+  let current: Promise<unknown> | null = null;
+  const timer = setInterval(
+    () => {
+      if (current) return;
+      current = checkSweeperLiveness(ctx, startedAt).finally(() => (current = null));
+    },
+    Math.min(300, Math.max(30, Math.floor(limit / 3))) * 1000,
+  );
+  timer.unref();
+  return {
+    stop: async () => {
+      clearInterval(timer);
+      await current;
+    },
+  };
 }
 
 /**

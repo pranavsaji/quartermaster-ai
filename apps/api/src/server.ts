@@ -1,12 +1,17 @@
 import { bootstrap, loadDotEnv } from "./bootstrap";
 import { createApp } from "./http/app";
-import { startSweeper } from "./jobs/sweeper";
+import { startSweeper, startSweeperWatchdog } from "./jobs/sweeper";
 import { createShutdown } from "./lifecycle";
 
 loadDotEnv();
 const ctx = await bootstrap();
-const app = createApp(ctx);
+// Flipped by the shutdown handler so /readyz reports 503 while in-flight requests drain.
+const lifecycleState = { draining: false };
+const app = createApp(ctx, { lifecycle: lifecycleState });
 const sweeper = startSweeper(ctx);
+// Alerts (monitor.sweeper_stale) when no sweep has succeeded for SWEEPER_STALE_AFTER_SECONDS,
+// whether the sweeper runs in this process or as a cron job.
+const watchdog = startSweeperWatchdog(ctx);
 
 const server = app.listen(ctx.config.port, () => {
   ctx.log.info(
@@ -28,7 +33,8 @@ server.requestTimeout = Math.max(120_000, ctx.config.agent.deadlineMs + 30_000);
 const lifecycle = createShutdown({
   server,
   log: ctx.log,
-  sweeper,
+  sweeper: { stop: () => Promise.all([watchdog.stop(), sweeper.stop()]).then(() => undefined) },
+  state: lifecycleState,
   closeDatabase: () => ctx.database.close(),
   graceMs: ctx.config.shutdownGraceMs,
   exit: (code) => process.exit(code),

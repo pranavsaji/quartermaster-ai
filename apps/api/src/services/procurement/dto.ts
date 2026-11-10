@@ -48,38 +48,40 @@ export async function getRequestDto(db: DbOrTx, organizationId: string, id: stri
     .where(and(eq(purchaseRequests.id, id), eq(purchaseRequests.organizationId, organizationId)));
   if (!req) throw notFound("Procurement request");
 
-  const [forecast] = req.forecastRunId ? await db.select().from(forecastRuns).where(eq(forecastRuns.id, req.forecastRunId)) : [];
-  const candidates = await db
-    .select()
-    .from(purchaseCandidates)
-    .where(eq(purchaseCandidates.requestId, req.id))
-    .orderBy(asc(purchaseCandidates.inventoryItemId), asc(purchaseCandidates.rank));
-  const sups = await db.select().from(suppliers).where(eq(suppliers.organizationId, organizationId));
-  const catalogIds = [...new Set(candidates.map((c) => c.catalogItemId))];
-  const catalog = catalogIds.length ? await db.select().from(supplierCatalogItems).where(inArray(supplierCatalogItems.id, catalogIds)) : [];
-  const pos = await db.select().from(purchaseOrders).where(eq(purchaseOrders.requestId, req.id)).orderBy(asc(purchaseOrders.createdAt));
-  const findings = await db
-    .select()
-    .from(securityFindings)
-    .where(eq(securityFindings.relatedRequestId, req.id))
-    .orderBy(desc(securityFindings.createdAt));
-  const runs = await db.select({ id: agentRuns.id }).from(agentRuns).where(eq(agentRuns.requestId, req.id));
-  const steps = runs.length
-    ? await db
+  // Independent reads run concurrently; the catalog depends on the candidates and the proposals
+  // on the purchase orders, so each of those is chained after its source.
+  const [[forecast], { candidates, catalog }, sups, proposals, findings, steps] = await Promise.all([
+    req.forecastRunId ? db.select().from(forecastRuns).where(eq(forecastRuns.id, req.forecastRunId)) : Promise.resolve([]),
+    (async () => {
+      const candidates = await db
         .select()
-        .from(toolExecutions)
-        .where(
-          inArray(
-            toolExecutions.agentRunId,
-            runs.map((r) => r.id),
-          ),
-        )
-        .orderBy(asc(toolExecutions.startedAt))
-    : [];
+        .from(purchaseCandidates)
+        .where(eq(purchaseCandidates.requestId, req.id))
+        .orderBy(asc(purchaseCandidates.inventoryItemId), asc(purchaseCandidates.rank));
+      const catalogIds = [...new Set(candidates.map((c) => c.catalogItemId))];
+      const catalog = catalogIds.length
+        ? await db.select().from(supplierCatalogItems).where(inArray(supplierCatalogItems.id, catalogIds))
+        : [];
+      return { candidates, catalog };
+    })(),
+    db.select().from(suppliers).where(eq(suppliers.organizationId, organizationId)),
+    (async () => {
+      const pos = await db.select().from(purchaseOrders).where(eq(purchaseOrders.requestId, req.id)).orderBy(asc(purchaseOrders.createdAt));
+      return orderDtos(db, organizationId, pos);
+    })(),
+    db.select().from(securityFindings).where(eq(securityFindings.relatedRequestId, req.id)).orderBy(desc(securityFindings.createdAt)),
+    // Steps of every run for this request, in one joined query.
+    db
+      .select({ step: toolExecutions })
+      .from(toolExecutions)
+      .innerJoin(agentRuns, eq(agentRuns.id, toolExecutions.agentRunId))
+      .where(eq(agentRuns.requestId, req.id))
+      .orderBy(asc(toolExecutions.startedAt))
+      .then((rows) => rows.map((r) => r.step)),
+  ]);
 
   const supplierById = new Map(sups.map((s) => [s.id, s]));
   const catalogById = new Map(catalog.map((c) => [c.id, c]));
-  const proposals = await orderDtos(db, organizationId, pos);
 
   // Candidates are review evidence only (never charged or signed): one whose stored quote is
   // malformed is left out of the comparison rather than shown with made-up amounts.

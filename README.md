@@ -163,7 +163,7 @@ tests/
   unit/ adversarial/ integration/ e2e/   Vitest suites, Playwright + axe journeys
 docs/                  Architecture, security model, API reference, operations runbook, demo script
 postman/               Postman collection for the HTTP API
-render.yaml            Render blueprint (web, API, sweeper cron, Postgres)
+render.yaml            Render blueprint (web, API with the sweeper, Postgres)
 ```
 
 ---
@@ -243,7 +243,7 @@ What the suites prove (all reproducible from this repository):
 
 ## Deployment
 
-`render.yaml` deploys the web app, the API (pre-deploy migrations, `/readyz` health check), a 5-minute sweeper cron (PayPal reconciliation, certificate expiry, purges) and Postgres 17. Set the `sync: false` secrets in the Render dashboard, then seed once with `node apps/api/dist/seed.js` from a Render shell. The live demo uses the simpler free-plan layout (seeding in the start command, the sweeper inside the API) on Starter instances, so it never sleeps; [docs/operations.md](docs/operations.md) describes both.
+`render.yaml` describes the live deployment: the web app and the API on Starter instances (pre-deploy migrations and seeding, `/readyz` health check, the sweeper running inside the API for PayPal reconciliation, certificate expiry and purges) and Postgres 17 on a paid plan. Set the `sync: false` secrets in the Render dashboard; [docs/operations.md](docs/operations.md) covers the free-plan variant, rollback, backups and the release process.
 
 ---
 
