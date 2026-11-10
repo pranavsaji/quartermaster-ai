@@ -51,6 +51,8 @@ export function RequestList({ requests }: { requests: ProcurementRequestSummaryD
     <DataGrid<ProcurementRequestSummaryDto>
       ariaLabel="Procurement requests"
       rows={requests}
+      tools={{ exportFileName: "procurement-requests" }}
+      stateKey="procurement-requests"
       columns={columns}
       emptyMessage="No requests yet. Create one to get started."
       onRowDoubleClicked={(e) => e.data && router.push(`/procurement/${e.data.id}`)}

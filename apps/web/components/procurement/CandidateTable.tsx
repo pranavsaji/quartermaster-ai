@@ -2,7 +2,7 @@
 
 import type { ColDef } from "ag-grid-community";
 import type { CustomCellRendererProps } from "ag-grid-react";
-import type { CandidateDto } from "@qm/contracts";
+import type { CandidateDto, MarketReferenceDto } from "@qm/contracts";
 import { useMemo } from "react";
 import { DataGrid } from "@/components/grid/DataGrid";
 import { moneyColumn, numberColumn, rightCell } from "@/components/grid/columns";
@@ -12,7 +12,56 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { SourceLabel } from "@/components/ui/SourceLabel";
 import { humanize } from "@/lib/format";
 
-type Row = CandidateDto & { item_name: string };
+export type ComparisonRow = CandidateDto & {
+  item_name: string;
+  /** The cheapest eligible offer for its item: what TrustRail would let the agent buy. */
+  best: boolean;
+  /** First row of an item's group in the default order (item, then delivered unit cost). */
+  group_start: boolean;
+  /** Item price per unit against the Channel3 market reference, in percent; null without a reference. */
+  market_premium_pct: number | null;
+};
+type Row = ComparisonRow;
+
+/**
+ * Comparison rows in their default order: by item, eligible offers before ineligible ones, then
+ * cheapest delivered unit cost first. Marks each item's best eligible offer and its market premium.
+ */
+export function comparisonRows(
+  candidates: readonly CandidateDto[],
+  itemNames: Map<string, string>,
+  market: readonly MarketReferenceDto[] = [],
+): ComparisonRow[] {
+  const reference = new Map(market.map((m) => [m.inventory_item_id, m.reference_unit_price_minor]));
+  const rows = candidates
+    .map((c) => {
+      const ref = reference.get(c.inventory_item_id) ?? null;
+      const unit = c.units > 0 ? c.item_subtotal_minor / c.units : null;
+      return {
+        ...c,
+        item_name: itemNames.get(c.inventory_item_id) ?? c.title,
+        best: false,
+        group_start: false,
+        market_premium_pct: ref && unit !== null ? Math.round(((unit - ref) / ref) * 1000) / 10 : null,
+      };
+    })
+    .sort(
+      (a, b) =>
+        a.item_name.localeCompare(b.item_name) ||
+        Number(b.eligible) - Number(a.eligible) ||
+        a.delivered_unit_cost_minor - b.delivered_unit_cost_minor,
+    );
+  const seen = new Set<string>();
+  for (const r of rows) {
+    if (!seen.has(r.inventory_item_id)) {
+      seen.add(r.inventory_item_id);
+      r.group_start = true;
+      // Sorted eligible-first and cheapest-first, so the first eligible row of an item is its best.
+      r.best = r.eligible;
+    }
+  }
+  return rows;
+}
 
 /**
  * Supplier comparison: every candidate cart line with its *delivered* unit cost
@@ -23,33 +72,42 @@ export function CandidateTable({
   candidates,
   itemNames,
   currency,
+  market = [],
 }: {
   candidates: CandidateDto[];
   itemNames: Map<string, string>;
   currency: string;
+  /** Channel3 market references, for the "vs market" column. */
+  market?: MarketReferenceDto[];
 }) {
-  const rows = useMemo<Row[]>(
-    () =>
-      candidates
-        .map((c) => ({ ...c, item_name: itemNames.get(c.inventory_item_id) ?? c.title }))
-        .sort(
-          (a, b) => a.item_name.localeCompare(b.item_name) || (a.rank ?? Number.POSITIVE_INFINITY) - (b.rank ?? Number.POSITIVE_INFINITY),
-        ),
-    [candidates, itemNames],
-  );
+  const rows = useMemo(() => comparisonRows(candidates, itemNames, market), [candidates, itemNames, market]);
+  const hasMarket = rows.some((r) => r.market_premium_pct !== null);
 
   const columns = useMemo<ColDef<Row>[]>(() => {
     const cur = () => currency;
     return [
-      { field: "item_name", headerName: "Item", minWidth: 160, pinned: "left" },
+      {
+        field: "item_name",
+        headerName: "Item",
+        minWidth: 170,
+        pinned: "left",
+        // The first row of each item carries the name in full weight, so the default order reads as
+        // groups; later rows repeat it quietly so any re-sort still says which item a row is for.
+        cellRenderer: (p: CustomCellRendererProps<Row>) =>
+          p.data ? <span className={p.data.group_start ? "font-medium text-ink" : "text-ink-3"}>{p.data.item_name}</span> : null,
+      },
       {
         field: "rank",
         headerName: "Rank",
-        width: 90,
-        minWidth: 80,
+        width: 130,
+        minWidth: 110,
         cellRenderer: (p: CustomCellRendererProps<Row>) =>
-          p.data?.rank != null ? (
-            <Badge tone={p.data.rank === 1 ? "accent" : "neutral"} label={`Rank ${p.data.rank}`}>
+          p.data?.best ? (
+            <Badge tone="allow" dot label="Best eligible offer">
+              Best offer
+            </Badge>
+          ) : p.data?.rank != null ? (
+            <Badge tone="neutral" label={`Rank ${p.data.rank}`}>
               #{p.data.rank}
             </Badge>
           ) : (
@@ -105,6 +163,19 @@ export function CandidateTable({
         cellClass: rightCell("font-semibold text-ink"),
         minWidth: 135,
       }),
+      ...(hasMarket
+        ? [
+            numberColumn<Row>("market_premium_pct", "vs market", {
+              width: 120,
+              headerTooltip: "Item price per unit compared with the Channel3 market reference for this item.",
+              valueFormatter: (p) => (typeof p.value === "number" ? `${p.value > 0 ? "+" : ""}${p.value.toFixed(1)}%` : "No reference"),
+              cellClassRules: {
+                "text-block font-medium": (p) => typeof p.value === "number" && p.value > 10,
+                "text-allow": (p) => typeof p.value === "number" && p.value <= 0,
+              },
+            }),
+          ]
+        : []),
       numberColumn<Row>("lead_time_days", "Lead", {
         width: 90,
         valueFormatter: (p) => (typeof p.value === "number" ? `${p.value} d` : "—"),
@@ -149,14 +220,14 @@ export function CandidateTable({
         },
       },
     ];
-  }, [currency]);
+  }, [currency, hasMarket]);
 
   return (
     <Card aria-labelledby="candidates-title">
       <CardHeader
         id="candidates-title"
         title="Supplier comparison"
-        description="Ranked by delivered unit cost — the true price after shipping, tax and fees."
+        description="Grouped by item and sorted by delivered unit cost — the true price after shipping, tax and fees. The best eligible offer per item is highlighted; blocked and quarantined offers say why."
         actions={<SourceLabel source="SANDBOX_SUPPLIER">Sandbox suppliers</SourceLabel>}
       />
       <div className="p-3">
@@ -167,10 +238,17 @@ export function CandidateTable({
             ariaLabel="Supplier comparison"
             rows={rows}
             columns={columns}
-            height={Math.min(560, 64 + rows.length * 76)}
+            height={Math.min(620, 110 + rows.length * 76)}
+            tools={{ exportFileName: "supplier-comparison" }}
             // Ineligible rows get a muted background rather than reduced opacity, which would drop
-            // their text below WCAG AA contrast.
-            rowClassRules={{ "!bg-canvas": (p) => p.data?.eligible === false }}
+            // their text below WCAG AA contrast. Quarantined sources are tinted as blocked, the best
+            // eligible offer per item as allowed, and each item's group starts with a heavier rule.
+            rowClassRules={{
+              "!bg-canvas": (p) => p.data?.eligible === false && !p.data.quarantined,
+              "!bg-block-soft": (p) => p.data?.quarantined === true,
+              "!bg-allow-soft": (p) => p.data?.best === true,
+              "!border-t-2 !border-t-line-strong": (p) => p.data?.group_start === true && (p.node.rowIndex ?? 0) > 0,
+            }}
           />
         )}
       </div>

@@ -81,6 +81,8 @@ export function FindingsGrid({ findings }: { findings: SecurityFindingDto[] | un
     <DataGrid<SecurityFindingDto>
       ariaLabel="Security findings"
       rows={findings}
+      tools={{ exportFileName: "security-findings" }}
+      stateKey="security-findings"
       columns={columns}
       height={480}
       emptyMessage="No findings. TrustRail hasn't flagged anything."

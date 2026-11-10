@@ -24,7 +24,11 @@ export function DecisionsGrid({ decisions }: { decisions: PolicyDecisionDto[] | 
         autoHeight: true,
         wrapText: true,
         sortable: true,
+        // Sorts by how many rules failed; search and CSV export see the codes and messages.
         valueGetter: (p) => p.data?.violations.length ?? 0,
+        valueFormatter: (p) => p.data?.violations.map((v) => v.code).join("; ") || "None",
+        getQuickFilterText: (p) => p.data?.violations.map((v) => `${v.code} ${v.message}`).join(" ") ?? "",
+        filter: false,
         // Each message is written out, not left in a hover-only tooltip that keyboard and touch users never see.
         cellRenderer: (p: CustomCellRendererProps<PolicyDecisionDto>) =>
           p.data && p.data.violations.length > 0 ? (
@@ -80,6 +84,8 @@ export function DecisionsGrid({ decisions }: { decisions: PolicyDecisionDto[] | 
     <DataGrid<PolicyDecisionDto>
       ariaLabel="Policy decisions"
       rows={decisions}
+      tools={{ exportFileName: "trustrail-decisions" }}
+      stateKey="trustrail-decisions"
       columns={columns}
       height={440}
       emptyMessage="No policy decisions recorded yet."

@@ -117,6 +117,8 @@ export function AuditLog({ events }: { events: AuditEventDto[] | undefined }) {
       <DataGrid<AuditEventDto>
         ariaLabel="Audit log"
         rows={events}
+        tools={{ exportFileName: "audit-log" }}
+        stateKey="audit-log"
         columns={columns}
         height={480}
         emptyMessage="No audit events yet."
