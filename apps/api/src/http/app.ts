@@ -11,9 +11,12 @@ import { correlation, csrfGuard } from "./middleware/security";
 import { paypalWebhookGuard, paypalWebhookLimiter } from "./middleware/webhooks";
 import { authRoutes } from "./routes/auth";
 import { inventoryRoutes } from "./routes/inventory";
+import { memberRoutes } from "./routes/members";
+import { monitoringRoutes } from "./routes/monitoring";
 import { operationsRoutes } from "./routes/operations";
 import { intentAndPaymentRoutes, webhookRoutes } from "./routes/payments";
 import { procurementRoutes } from "./routes/procurement";
+import { supplierRoutes } from "./routes/suppliers";
 import { limiterStore } from "./rate-limit-store";
 
 export function createApp(ctx: AppContext) {
@@ -106,13 +109,16 @@ export function createApp(ctx: AppContext) {
     next();
   });
   authed.use(inventoryRoutes(ctx));
+  authed.use(supplierRoutes(ctx));
+  authed.use(memberRoutes(ctx));
   authed.use(procurementRoutes(ctx));
   authed.use(intentAndPaymentRoutes(ctx));
   authed.use(operationsRoutes(ctx));
+  authed.use(monitoringRoutes(ctx));
   api.use(authed);
 
   app.use("/api/v1", api);
   app.use((_req, _res, next) => next(notFound("Route")));
-  app.use(errorHandler(ctx.log));
+  app.use(errorHandler(ctx.log, (e) => void ctx.errors.capture({ source: "api", ...e })));
   return app;
 }

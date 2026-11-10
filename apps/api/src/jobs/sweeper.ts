@@ -17,6 +17,7 @@ import { appendAudit } from "../services/audit";
 import { retryOnConflict } from "../services/common";
 import { releaseReservation } from "../services/budget";
 import { setOrderStatus } from "../services/order-status";
+import { runMonitors } from "../services/monitoring/status";
 import { reconcilePayment, reconcileRefunds, transitionPayment, voidAbandonedCapture } from "../services/payments";
 
 export interface SweepReport {
@@ -199,6 +200,23 @@ export async function sweep(ctx: AppContext): Promise<SweepReport> {
     report.idempotencyPurged = purgedKeys.length;
     // Rate-limit windows are timed by the database clock; anything past its reset is dead.
     await ctx.db.delete(rateLimitHits).where(lt(rateLimitHits.resetAt, sql`now() - interval '1 minute'`));
+
+    try {
+      await runMonitors(ctx);
+    } catch (err) {
+      report.errors++;
+      await ctx.errors.capture({ source: "job", level: "error", code: "MONITORS_FAILED", message: "Health monitors failed to run", err });
+    }
+    if (report.errors > 0) {
+      // Individual failures are retried next run; a group here shows how often that happens.
+      await ctx.errors.capture({
+        source: "job",
+        level: "warning",
+        code: "SWEEP_PARTIAL_FAILURE",
+        message: "Some sweeper steps failed and will be retried",
+        context: { errors: report.errors },
+      });
+    }
   } finally {
     await releaseLease(ctx.db, "sweeper");
   }
@@ -253,7 +271,10 @@ export function startSweeper(ctx: AppContext): SweeperHandle {
       .then((r) => {
         if (r.reconciled || r.expired || r.researchRecovered || r.errors) ctx.log.info({ sweep: r }, "sweeper run");
       })
-      .catch((err: unknown) => ctx.log.error({ err }, "sweeper failed"))
+      .catch(async (err: unknown) => {
+        ctx.log.error({ err }, "sweeper failed");
+        await ctx.errors.capture({ source: "job", level: "error", code: "SWEEPER_FAILED", message: "The sweeper run failed", err });
+      })
       .finally(() => {
         current = null;
       });

@@ -51,12 +51,35 @@ export const RETRY_AFTER_SECONDS = 5;
 const isRetryable = (details: unknown): boolean =>
   typeof details === "object" && details !== null && (details as { retryable?: unknown }).retryable === true;
 
-export function errorHandler(log: Logger): ErrorRequestHandler {
+/** A server-side failure handed to error tracking (5xx only; client errors are not tracked). */
+export interface ServerErrorReport {
+  level: "warning" | "error";
+  code: string;
+  message: string;
+  route: string;
+  correlationId: string | null;
+  err: unknown;
+}
+
+/** `POST /payments/:id/capture`-style route template, so errors group by endpoint, not by id. */
+export function routeTemplate(req: Request): string {
+  const route = (req as Request & { route?: { path?: unknown } }).route;
+  const path = typeof route?.path === "string" ? `${req.baseUrl}${route.path}` : req.path.replace(UUID_ANY, ":id");
+  return `${req.method} ${path}`.slice(0, 200);
+}
+
+const UUID_ANY = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+
+export function errorHandler(log: Logger, onServerError?: (report: ServerErrorReport) => void): ErrorRequestHandler {
   return (err, req, res, _next) => {
     const correlation_id = req.correlationId;
+    const track = (level: ServerErrorReport["level"], code: string, message: string) =>
+      onServerError?.({ level, code, message, route: routeTemplate(req), correlationId: correlation_id ?? null, err });
     if (err instanceof AppError) {
       if (err.status >= 500) {
         log.error({ err, details: err.details, correlation_id }, err.message);
+        // Retryable 503s (deadlines, budgets) are expected under load: tracked, but they do not alert.
+        track(err.status === 503 && isRetryable(err.details) ? "warning" : "error", err.code, err.message);
         // A retryable 503 (e.g. AGENT_DEADLINE_EXCEEDED) tells clients when to try again.
         if (err.status === 503 && isRetryable(err.details)) res.set("Retry-After", String(RETRY_AFTER_SECONDS));
         return void res
@@ -89,6 +112,7 @@ export function errorHandler(log: Logger): ErrorRequestHandler {
     // is safe to retry.
     if (sqlState === "40001" || sqlState === "40P01") {
       log.warn({ sqlstate: sqlState, correlation_id, path: req.path }, "transaction conflict returned to client");
+      track("warning", "CONCURRENT_UPDATE", "A transaction lost a lock race and was returned to the client");
       res.set("Retry-After", "1");
       return void res.status(503).json({
         error: {
@@ -100,6 +124,7 @@ export function errorHandler(log: Logger): ErrorRequestHandler {
       });
     }
     log.error({ err, correlation_id, path: req.path }, "unhandled error");
+    track("error", "INTERNAL", err instanceof Error ? `${err.name}: ${err.message}` : "Unhandled non-error value thrown");
     res.status(500).json({ error: { code: "INTERNAL", message: "An unexpected error occurred.", correlation_id } });
   };
 }

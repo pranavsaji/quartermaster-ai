@@ -36,12 +36,20 @@ const lifecycle = createShutdown({
 
 process.on("SIGTERM", () => void lifecycle.shutdown("SIGTERM"));
 process.on("SIGINT", () => void lifecycle.shutdown("SIGINT"));
-// The process state is unknown after either of these: log, drain what we can, exit non-zero.
-process.on("uncaughtException", (err) => {
-  ctx.log.fatal({ err }, "uncaught exception");
-  void lifecycle.shutdown("uncaughtException", 1);
-});
-process.on("unhandledRejection", (err) => {
-  ctx.log.fatal({ err }, "unhandled rejection");
-  void lifecycle.shutdown("unhandledRejection", 1);
-});
+// The process state is unknown after either of these: log, record and alert (bounded wait),
+// drain what we can, exit non-zero.
+const fatal = (code: string, err: unknown) => {
+  ctx.log.fatal({ err }, code === "UNCAUGHT_EXCEPTION" ? "uncaught exception" : "unhandled rejection");
+  const tracked = ctx.errors.capture({
+    source: "api",
+    level: "fatal",
+    code,
+    message: err instanceof Error ? `${err.name}: ${err.message}` : "Non-error value",
+    err,
+  });
+  void Promise.race([tracked, new Promise((r) => setTimeout(r, 5000).unref())]).finally(
+    () => void lifecycle.shutdown(code === "UNCAUGHT_EXCEPTION" ? "uncaughtException" : "unhandledRejection", 1),
+  );
+};
+process.on("uncaughtException", (err) => fatal("UNCAUGHT_EXCEPTION", err));
+process.on("unhandledRejection", (err) => fatal("UNHANDLED_REJECTION", err));
