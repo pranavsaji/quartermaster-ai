@@ -17,6 +17,10 @@ export interface Harness {
   paypal: FakePayPal;
   clock: { now: Date };
   agent(role?: keyof typeof DEMO_CREDENTIALS): Promise<Client>;
+  /** Signs in any account; throws unless the API answers 200. */
+  signIn(email: string, password: string): Promise<Client>;
+  /** A signed-out client (cookies are kept, so sign-up and invitation acceptance sign it in). */
+  anonymous(): Client;
   close(): Promise<void>;
 }
 
@@ -28,7 +32,13 @@ export interface Client {
 
 /** Boots the real API against in-memory PostgreSQL (PGlite) and a fake PayPal sandbox. */
 export async function createHarness(
-  opts: { channel3Fetch?: typeof fetch; openaiFetch?: typeof fetch; extraEnv?: Record<string, string> } = {},
+  opts: {
+    channel3Fetch?: typeof fetch;
+    openaiFetch?: typeof fetch;
+    /** Email provider, alert webhook and Sentry calls. */
+    monitoringFetch?: typeof fetch;
+    extraEnv?: Record<string, string>;
+  } = {},
 ): Promise<Harness> {
   const paypal = new FakePayPal();
   // A fixed instant, so no test depends on the day or hour it runs: a Wednesday mid-morning UTC,
@@ -60,6 +70,7 @@ export async function createHarness(
     paypalFetch: paypal.fetch,
     channel3Fetch: opts.channel3Fetch,
     openaiFetch: opts.openaiFetch,
+    monitoringFetch: opts.monitoringFetch,
     now: () => clock.now,
   });
   // Tables outside any organisation survive the demo reset; clear them so test files sharing one
@@ -69,13 +80,7 @@ export async function createHarness(
   await seedDemo(ctx.db, { password: PASSWORD, now: clock.now, reset: true });
   const app = createApp(ctx);
 
-  async function agent(role: keyof typeof DEMO_CREDENTIALS = "owner"): Promise<Client> {
-    const a = clockedAgent(app, clock);
-    const res = await a
-      .post("/api/v1/auth/login")
-      .set("X-Requested-With", "quartermaster")
-      .send({ email: DEMO_CREDENTIALS[role].email, password: PASSWORD });
-    if (res.status !== 200) throw new Error(`login failed: ${res.status} ${JSON.stringify(res.body)}`);
+  function client(a: ReturnType<typeof clockedAgent>): Client {
     const withHeaders = (t: request.Test, key?: string) => {
       t.set("X-Requested-With", "quartermaster");
       if (key !== undefined) t.set("Idempotency-Key", key);
@@ -88,7 +93,17 @@ export async function createHarness(
     };
   }
 
-  return { ctx, app, paypal, clock, agent, close: () => ctx.database.close() };
+  async function signIn(email: string, password: string): Promise<Client> {
+    const a = clockedAgent(app, clock);
+    const res = await a.post("/api/v1/auth/login").set("X-Requested-With", "quartermaster").send({ email, password });
+    if (res.status !== 200) throw new Error(`login failed: ${res.status} ${JSON.stringify(res.body)}`);
+    return client(a);
+  }
+
+  const agent = (role: keyof typeof DEMO_CREDENTIALS = "owner") => signIn(DEMO_CREDENTIALS[role].email, PASSWORD);
+  const anonymous = () => client(clockedAgent(app, clock));
+
+  return { ctx, app, paypal, clock, agent, signIn, anonymous, close: () => ctx.database.close() };
 }
 
 /**

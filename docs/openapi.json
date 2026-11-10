@@ -116,6 +116,426 @@
         }
       }
     },
+    "/auth/signup": {
+      "post": {
+        "summary": "Create a workspace and its owner (sets session cookie)",
+        "tags": [
+          "Auth"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "{ user: SessionUser }"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "email": {
+                    "type": "string",
+                    "maxLength": 254,
+                    "format": "email",
+                    "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 12,
+                    "maxLength": 200
+                  },
+                  "organization_name": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 120
+                  },
+                  "timezone": {
+                    "default": "America/Los_Angeles",
+                    "type": "string",
+                    "maxLength": 64
+                  },
+                  "sample_data": {
+                    "default": true,
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "name",
+                  "email",
+                  "password",
+                  "organization_name"
+                ]
+              },
+              "example": {
+                "name": "Ada Owner",
+                "email": "ada@example.com",
+                "password": "{{password}}",
+                "organization_name": "Ada's Kitchen",
+                "timezone": "America/Los_Angeles",
+                "sample_data": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/password/forgot": {
+      "post": {
+        "summary": "Email a password reset link (always 202)",
+        "tags": [
+          "Auth"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "{ status: 'sent' }"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "maxLength": 254,
+                    "format": "email",
+                    "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+                  }
+                },
+                "required": [
+                  "email"
+                ]
+              },
+              "example": {
+                "email": "ada@example.com"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/password/reset": {
+      "post": {
+        "summary": "Set a new password from a one-time link",
+        "tags": [
+          "Auth"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "{ status: 'reset' }"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "token": {
+                    "type": "string",
+                    "minLength": 20,
+                    "maxLength": 200,
+                    "pattern": "^[\\w-]+$"
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 12,
+                    "maxLength": 200
+                  }
+                },
+                "required": [
+                  "token",
+                  "password"
+                ]
+              },
+              "example": {
+                "token": "{{reset_token}}",
+                "password": "{{new_password}}"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/password/change": {
+      "post": {
+        "summary": "Change your password (signs out other sessions)",
+        "tags": [
+          "Auth"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "{ status: 'changed' }"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "current_password": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "new_password": {
+                    "type": "string",
+                    "minLength": 12,
+                    "maxLength": 200
+                  }
+                },
+                "required": [
+                  "current_password",
+                  "new_password"
+                ]
+              },
+              "example": {
+                "current_password": "{{password}}",
+                "new_password": "{{new_password}}"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/invitations/lookup": {
+      "post": {
+        "summary": "Preview an invitation from its link token",
+        "tags": [
+          "Team"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "{ invitation: InvitationPreviewDto }"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "token": {
+                    "type": "string",
+                    "minLength": 20,
+                    "maxLength": 200,
+                    "pattern": "^[\\w-]+$"
+                  }
+                },
+                "required": [
+                  "token"
+                ]
+              },
+              "example": {
+                "token": "{{invite_token}}"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/invitations/accept": {
+      "post": {
+        "summary": "Accept an invitation: create the account and sign in",
+        "tags": [
+          "Team"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "{ user: SessionUser }"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "token": {
+                    "type": "string",
+                    "minLength": 20,
+                    "maxLength": 200,
+                    "pattern": "^[\\w-]+$"
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 12,
+                    "maxLength": 200
+                  }
+                },
+                "required": [
+                  "token",
+                  "name",
+                  "password"
+                ]
+              },
+              "example": {
+                "token": "{{invite_token}}",
+                "name": "Sam Manager",
+                "password": "{{new_password}}"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/client-errors": {
+      "post": {
+        "summary": "Report a browser error to error tracking",
+        "tags": [
+          "System"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "{ status: 'recorded' }"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "message": {
+                    "type": "string",
+                    "maxLength": 500
+                  },
+                  "digest": {
+                    "type": "string",
+                    "maxLength": 64
+                  },
+                  "path": {
+                    "type": "string",
+                    "maxLength": 300
+                  },
+                  "stack": {
+                    "type": "string",
+                    "maxLength": 4000
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "render",
+                      "unhandled",
+                      "rejection"
+                    ]
+                  }
+                },
+                "required": [
+                  "message",
+                  "path",
+                  "kind"
+                ]
+              },
+              "example": {
+                "message": "TypeError: x is undefined",
+                "path": "/orders",
+                "kind": "render"
+              }
+            }
+          }
+        }
+      }
+    },
     "/auth/logout": {
       "post": {
         "summary": "Sign out",
@@ -200,6 +620,159 @@
           },
           "403": {
             "description": "Insufficient role or missing CSRF header"
+          }
+        }
+      },
+      "post": {
+        "summary": "Add a stock item",
+        "tags": [
+          "Inventory"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-required-role": "MANAGER",
+        "responses": {
+          "200": {
+            "description": "{ item: InventoryItemDto }"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "sku": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "pattern": "^[A-Za-z0-9][\\w.\\-/]*$"
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "category": {
+                    "type": "string",
+                    "enum": [
+                      "food_packaging",
+                      "cleaning_supplies",
+                      "cooking_ingredients",
+                      "beverages",
+                      "kitchen_equipment",
+                      "alcohol",
+                      "gift_cards",
+                      "services"
+                    ]
+                  },
+                  "unit": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 24
+                  },
+                  "safety_stock": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 10000000
+                  },
+                  "coverage_days": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 60
+                  },
+                  "lead_time_days_override": {
+                    "default": null,
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 60
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "preferred_supplier_id": {
+                    "default": null,
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "search_query": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 200
+                  },
+                  "keywords": {
+                    "default": [],
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40
+                    }
+                  },
+                  "on_hand": {
+                    "default": 0,
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 10000000
+                  }
+                },
+                "required": [
+                  "sku",
+                  "name",
+                  "category",
+                  "unit",
+                  "safety_stock",
+                  "coverage_days",
+                  "search_query"
+                ]
+              },
+              "example": {
+                "sku": "BEV-COLA-CAN",
+                "name": "Cola cans",
+                "category": "beverages",
+                "unit": "each",
+                "on_hand": 48,
+                "safety_stock": 24,
+                "coverage_days": 4,
+                "search_query": "cola soda cans 24 pack",
+                "keywords": [
+                  "cola",
+                  "soda"
+                ]
+              }
+            }
           }
         }
       }
@@ -369,9 +942,153 @@
         }
       }
     },
+    "/inventory/{id}": {
+      "put": {
+        "summary": "Update a stock item's details (not its quantity)",
+        "tags": [
+          "Inventory"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-required-role": "MANAGER",
+        "responses": {
+          "200": {
+            "description": "{ item: InventoryItemDto }"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "sku": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "pattern": "^[A-Za-z0-9][\\w.\\-/]*$"
+                  },
+                  "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 120
+                  },
+                  "category": {
+                    "type": "string",
+                    "enum": [
+                      "food_packaging",
+                      "cleaning_supplies",
+                      "cooking_ingredients",
+                      "beverages",
+                      "kitchen_equipment",
+                      "alcohol",
+                      "gift_cards",
+                      "services"
+                    ]
+                  },
+                  "unit": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 24
+                  },
+                  "safety_stock": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 10000000
+                  },
+                  "coverage_days": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 60
+                  },
+                  "lead_time_days_override": {
+                    "default": null,
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 60
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "preferred_supplier_id": {
+                    "default": null,
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "search_query": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 200
+                  },
+                  "keywords": {
+                    "default": [],
+                    "maxItems": 20,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 40
+                    }
+                  }
+                },
+                "required": [
+                  "sku",
+                  "name",
+                  "category",
+                  "unit",
+                  "safety_stock",
+                  "coverage_days",
+                  "search_query"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     "/suppliers": {
       "get": {
-        "summary": "Sandbox demo suppliers with mandate approval",
+        "summary": "Suppliers with mandate approval and catalog size",
         "tags": [
           "Suppliers"
         ],
@@ -384,6 +1101,924 @@
         "responses": {
           "200": {
             "description": "{ items: SupplierDto[] }"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          }
+        }
+      },
+      "post": {
+        "summary": "Add a supplier (owners approve it in the Spend Mandate)",
+        "tags": [
+          "Suppliers"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-required-role": "MANAGER",
+        "responses": {
+          "200": {
+            "description": "{ supplier: SupplierDetailDto }"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 120
+                  },
+                  "website": {
+                    "default": null,
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 300,
+                        "format": "uri"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "description": {
+                    "default": null,
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 1000
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "lead_time_days": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 60
+                  },
+                  "tax_rate_bps": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 3000
+                  },
+                  "fee_terms": {
+                    "default": [],
+                    "maxItems": 10,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 32,
+                          "pattern": "^[A-Z0-9_]+$"
+                        },
+                        "label": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 80
+                        },
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "SHIPPING",
+                            "FEE"
+                          ]
+                        },
+                        "amount_minor": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 10000000
+                        },
+                        "waived_over_minor": {
+                          "anyOf": [
+                            {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 100000000
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "label",
+                        "kind",
+                        "amount_minor",
+                        "waived_over_minor"
+                      ]
+                    }
+                  },
+                  "active": {
+                    "default": true,
+                    "type": "boolean"
+                  },
+                  "checkout_eligible": {
+                    "default": true,
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "name",
+                  "lead_time_days",
+                  "tax_rate_bps"
+                ]
+              },
+              "example": {
+                "name": "Bayside Beverages",
+                "website": "https://bayside.example.com",
+                "description": "Local drinks distributor",
+                "lead_time_days": 2,
+                "tax_rate_bps": 825,
+                "fee_terms": [
+                  {
+                    "code": "SHIP_STD",
+                    "label": "Delivery",
+                    "kind": "SHIPPING",
+                    "amount_minor": 900,
+                    "waived_over_minor": 15000
+                  }
+                ],
+                "active": true,
+                "checkout_eligible": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/suppliers/{id}": {
+      "get": {
+        "summary": "Supplier with its catalog",
+        "tags": [
+          "Suppliers"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "{ supplier: SupplierDetailDto }"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          }
+        }
+      },
+      "put": {
+        "summary": "Update a supplier",
+        "tags": [
+          "Suppliers"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-required-role": "MANAGER",
+        "responses": {
+          "200": {
+            "description": "{ supplier: SupplierDetailDto }"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 120
+                  },
+                  "website": {
+                    "default": null,
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 300,
+                        "format": "uri"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "description": {
+                    "default": null,
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "maxLength": 1000
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "lead_time_days": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 60
+                  },
+                  "tax_rate_bps": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 3000
+                  },
+                  "fee_terms": {
+                    "default": [],
+                    "maxItems": 10,
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 32,
+                          "pattern": "^[A-Z0-9_]+$"
+                        },
+                        "label": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 80
+                        },
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "SHIPPING",
+                            "FEE"
+                          ]
+                        },
+                        "amount_minor": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 10000000
+                        },
+                        "waived_over_minor": {
+                          "anyOf": [
+                            {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 100000000
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "label",
+                        "kind",
+                        "amount_minor",
+                        "waived_over_minor"
+                      ]
+                    }
+                  },
+                  "active": {
+                    "default": true,
+                    "type": "boolean"
+                  },
+                  "checkout_eligible": {
+                    "default": true,
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "name",
+                  "lead_time_days",
+                  "tax_rate_bps"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/suppliers/{id}/catalog": {
+      "post": {
+        "summary": "Add a catalog listing (screened for prompt injection)",
+        "tags": [
+          "Suppliers"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-required-role": "MANAGER",
+        "responses": {
+          "200": {
+            "description": "{ item: CatalogItemDto }"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "sku": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "pattern": "^[A-Za-z0-9][\\w.\\-/]*$"
+                  },
+                  "title": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 200
+                  },
+                  "description": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 2000
+                  },
+                  "category": {
+                    "type": "string",
+                    "enum": [
+                      "food_packaging",
+                      "cleaning_supplies",
+                      "cooking_ingredients",
+                      "beverages",
+                      "kitchen_equipment",
+                      "alcohol",
+                      "gift_cards",
+                      "services"
+                    ]
+                  },
+                  "inventory_item_id": {
+                    "default": null,
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "pack_quantity": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1000000
+                  },
+                  "unit_price_minor": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 100000000
+                  },
+                  "in_stock": {
+                    "default": true,
+                    "type": "boolean"
+                  },
+                  "recurring": {
+                    "default": false,
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "sku",
+                  "title",
+                  "category",
+                  "pack_quantity",
+                  "unit_price_minor"
+                ]
+              },
+              "example": {
+                "sku": "BB-COLA-24",
+                "title": "Cola, 24 x 12 oz cans",
+                "description": "Classic cola",
+                "category": "beverages",
+                "inventory_item_id": null,
+                "pack_quantity": 24,
+                "unit_price_minor": 1499,
+                "in_stock": true,
+                "recurring": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/suppliers/{id}/catalog/{itemId}": {
+      "put": {
+        "summary": "Update a catalog listing",
+        "tags": [
+          "Suppliers"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "itemId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-required-role": "MANAGER",
+        "responses": {
+          "200": {
+            "description": "{ item: CatalogItemDto }"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "sku": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "pattern": "^[A-Za-z0-9][\\w.\\-/]*$"
+                  },
+                  "title": {
+                    "type": "string",
+                    "minLength": 2,
+                    "maxLength": 200
+                  },
+                  "description": {
+                    "default": "",
+                    "type": "string",
+                    "maxLength": 2000
+                  },
+                  "category": {
+                    "type": "string",
+                    "enum": [
+                      "food_packaging",
+                      "cleaning_supplies",
+                      "cooking_ingredients",
+                      "beverages",
+                      "kitchen_equipment",
+                      "alcohol",
+                      "gift_cards",
+                      "services"
+                    ]
+                  },
+                  "inventory_item_id": {
+                    "default": null,
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "pack_quantity": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1000000
+                  },
+                  "unit_price_minor": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 100000000
+                  },
+                  "in_stock": {
+                    "default": true,
+                    "type": "boolean"
+                  },
+                  "recurring": {
+                    "default": false,
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "sku",
+                  "title",
+                  "category",
+                  "pack_quantity",
+                  "unit_price_minor"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/members": {
+      "get": {
+        "summary": "Members, and open invitations for owners",
+        "tags": [
+          "Team"
+        ],
+        "parameters": [],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "MembersResponse"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          }
+        }
+      }
+    },
+    "/members/invitations": {
+      "post": {
+        "summary": "Invite someone (returns the one-time link; emailed when email is configured)",
+        "tags": [
+          "Team"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-required-role": "OWNER",
+        "responses": {
+          "200": {
+            "description": "InvitationCreatedResponse"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "maxLength": 254,
+                    "format": "email",
+                    "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "OWNER",
+                      "MANAGER",
+                      "VIEWER"
+                    ]
+                  }
+                },
+                "required": [
+                  "email",
+                  "role"
+                ]
+              },
+              "example": {
+                "email": "sam@example.com",
+                "role": "MANAGER"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/members/invitations/{id}/revoke": {
+      "post": {
+        "summary": "Revoke an open invitation",
+        "tags": [
+          "Team"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-required-role": "OWNER",
+        "responses": {
+          "200": {
+            "description": "{ invitation: InvitationDto }"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          }
+        }
+      }
+    },
+    "/members/{id}/role": {
+      "put": {
+        "summary": "Change a member's role (a workspace keeps at least one owner)",
+        "tags": [
+          "Team"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-required-role": "OWNER",
+        "responses": {
+          "200": {
+            "description": "{ member: MemberDto }"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": {
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "OWNER",
+                      "MANAGER",
+                      "VIEWER"
+                    ]
+                  }
+                },
+                "required": [
+                  "role"
+                ]
+              },
+              "example": {
+                "role": "VIEWER"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/members/{id}/remove": {
+      "post": {
+        "summary": "Remove a member",
+        "tags": [
+          "Team"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-required-role": "OWNER",
+        "responses": {
+          "204": {
+            "description": "204"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          }
+        }
+      }
+    },
+    "/members/{id}/password-reset": {
+      "post": {
+        "summary": "Issue a one-time password reset link for a member",
+        "tags": [
+          "Team"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-required-role": "OWNER",
+        "responses": {
+          "200": {
+            "description": "ResetLinkResponse"
           },
           "400": {
             "description": "Validation error (ApiError)"
@@ -1909,6 +3544,163 @@
         "responses": {
           "200": {
             "description": "AnalyticsSummaryDto"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          }
+        }
+      }
+    },
+    "/security/paypal-notifications": {
+      "get": {
+        "summary": "Whether PayPal's signed notifications are arriving",
+        "tags": [
+          "Security"
+        ],
+        "parameters": [],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "{ status: PayPalNotificationStatusDto }"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          }
+        }
+      }
+    },
+    "/ops/health": {
+      "get": {
+        "summary": "Platform health (operators)",
+        "tags": [
+          "Operations"
+        ],
+        "parameters": [],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OpsHealthDto"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          }
+        }
+      }
+    },
+    "/ops/errors": {
+      "get": {
+        "summary": "Tracked error groups (operators)",
+        "tags": [
+          "Operations"
+        ],
+        "parameters": [],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Page<SystemErrorDto>"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          }
+        }
+      }
+    },
+    "/ops/errors/{id}/resolve": {
+      "post": {
+        "summary": "Resolve an error group; it reopens and alerts if it recurs",
+        "tags": [
+          "Operations"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "{ error: SystemErrorDto }"
+          },
+          "400": {
+            "description": "Validation error (ApiError)"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Insufficient role or missing CSRF header"
+          }
+        }
+      }
+    },
+    "/ops/alerts/test": {
+      "post": {
+        "summary": "Send a test alert to every configured channel",
+        "tags": [
+          "Operations"
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Csrf"
+          }
+        ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "{ email_recipients, emails_sent, webhook_sent }"
           },
           "400": {
             "description": "Validation error (ApiError)"
