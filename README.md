@@ -6,7 +6,7 @@ Quartermaster is an AI procurement assistant for restaurants and cafés. It watc
 
 Both products, **Quartermaster** (the agent) and **TrustRail** (the guard that decides in code), were built by us for the PayPal AI Hackathon 2026.
 
-**Live demo (PayPal sandbox):** <https://quartermaster-web-o0df.onrender.com> · **API docs and SDKs (APIMatic):** <https://quartermaster-api-docs.onrender.com>. Judges: see [For judges](#for-judges).
+**Demo video (2:58):** <https://youtu.be/O-OhoYMhyw4> · **Live demo (PayPal sandbox):** <https://quartermaster-web-o0df.onrender.com> · **API docs and SDKs (APIMatic):** <https://quartermaster-api-docs.onrender.com>. Judges: see [For judges](#for-judges).
 
 > **Test credentials (shared sample workspace, PayPal sandbox only)**
 >
