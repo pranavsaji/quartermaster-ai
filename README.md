@@ -4,7 +4,19 @@
 
 Quartermaster is an AI procurement assistant for restaurants and cafés. It watches inventory, forecasts what to reorder, compares suppliers on true delivered cost, and prepares purchases — then pays through **PayPal** only after **TrustRail** has proven the purchase is within the owner's rules and the owner has approved the exact cart.
 
+Both products, **Quartermaster** (the agent) and **TrustRail** (the guard that decides in code), were built by us for the PayPal AI Hackathon 2026.
+
 **Live demo (PayPal sandbox):** <https://quartermaster-web-o0df.onrender.com> · **API docs and SDKs (APIMatic):** <https://quartermaster-api-docs.onrender.com>. Judges: see [For judges](#for-judges).
+
+> **Test credentials (shared sample workspace, PayPal sandbox only)**
+>
+> | Email                            | Password                | Can do                                |
+> | -------------------------------- | ----------------------- | ------------------------------------- |
+> | `owner@demo.quartermaster.dev`   | `trustrail-judges-2026` | Everything: approve, verify and pay   |
+> | `manager@demo.quartermaster.dev` | `trustrail-judges-2026` | Requests and research; cannot approve |
+> | `viewer@demo.quartermaster.dev`  | `trustrail-judges-2026` | Read-only                             |
+>
+> On the sign-in page, the **Owner / Manager / Viewer** buttons fill in the email. Prefer a private copy? Choose **Create an account** and keep **Start with sample data** ticked. Details below.
 
 > A restaurant owner says: _"We're expecting a busy weekend. Restock takeaway containers and cooking oil without exceeding $300."_
 > Quartermaster forecasts 25% higher demand, finds that the cheapest supplier's listing contains a hidden prompt injection and an undisclosed $24.50 "priority service charge", watches TrustRail block that cart, re-plans to compliant suppliers ($278.20 total), and — after the owner approves — completes a PayPal sandbox checkout bound to an Ed25519-signed Intent Certificate.
@@ -18,7 +30,7 @@ Quartermaster is an AI procurement assistant for restaurants and cafés. It watc
 | **AI**                      | OpenAI strict structured outputs, with a labelled deterministic fallback                                                                                                         |
 | **Data grids and charts**   | 11 AG Grid grids on 8 screens, with in-grid editing of stock and catalog prices, and AG Charts for analytics. See [How we use AG Grid](#how-we-use-ag-grid)                      |
 | **Hosting**                 | Render (web, API, Postgres)                                                                                                                                                      |
-| **Notifications**           | Zapier webhook on completed payments; operator alerts by email and webhook                                                                                                       |
+| **Notifications**           | Branded email (Resend) or Zapier webhook on completed payments; operator alerts by email and webhook                                                                             |
 | **Accounts and teams**      | Self-service sign-up, invitations with roles, password reset by email or owner-issued link                                                                                       |
 | **Error tracking**          | Built-in grouped error tracking with alert throttling, health monitors, optional Sentry forwarding                                                                               |
 | **API tooling**             | OpenAPI 3.1 spec and Postman collection, generated from the route table; **APIMatic** TypeScript and Python SDKs and docs portal. See [APIMatic](#apimatic-sdks-and-docs-portal) |
@@ -38,7 +50,7 @@ Quartermaster is an AI procurement assistant for restaurants and cafés. It watc
 | `manager@demo.quartermaster.dev` | Manager: requests and research, no payment | `trustrail-judges-2026` |
 | `viewer@demo.quartermaster.dev`  | Read-only                                  | `trustrail-judges-2026` |
 
-The shared workspace is for the purchasing journey: requests, research, approval, PayPal payment, invoices, deliveries and the red-team page all work. Because everyone shares these sign-ins, it is read-only for account, team, Spend Mandate and supplier changes (you will see "read-only in the shared sample workspace"), and its password cannot be changed. Other judges' orders stay visible and the weekly budget is shared until it is reset to the original sample data each night (UTC). To change the mandate, suppliers or team, create your own workspace with sample data as above.
+The shared workspace is for the purchasing journey: requests, research, approval, PayPal payment, invoices, deliveries and the red-team page all work. Because everyone shares these sign-ins, it is read-only for account, team, Spend Mandate and supplier changes (you will see "read-only in the shared sample workspace"), and its password cannot be changed. Other judges' orders stay visible and the weekly budget is shared until the workspace is reset to the original sample data each night at 09:00 UTC (1 AM Pacific). To change the mandate, suppliers or team, create your own workspace with sample data as above.
 
 **Paying (PayPal sandbox, no real money):** in the PayPal window, sign in with the sandbox buyer account given in the Devpost testing instructions, or choose **Pay with Debit or Credit Card** and use a [PayPal sandbox test card](https://developer.paypal.com/tools/sandbox/card-testing/).
 
