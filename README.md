@@ -1,14 +1,54 @@
 # Quartermaster AI — secured by TrustRail
 
-**Autonomous purchasing for small businesses, with cryptographically verifiable spending authority.**
+**The AI buyer can be fooled. The money can't.**
 
-Quartermaster is an AI procurement assistant for restaurants and cafés. It watches inventory, forecasts what to reorder, compares suppliers on true delivered cost, and prepares purchases — then pays through **PayPal** only after **TrustRail** has proven the purchase is within the owner's rules and the owner has approved the exact cart.
+[![CI](https://github.com/pranavsaji/quartermaster-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/pranavsaji/quartermaster-ai/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/pranavsaji/quartermaster-ai/actions/workflows/codeql.yml/badge.svg)](https://github.com/pranavsaji/quartermaster-ai/actions/workflows/codeql.yml)
+[![Uptime](https://github.com/pranavsaji/quartermaster-ai/actions/workflows/uptime.yml/badge.svg)](https://github.com/pranavsaji/quartermaster-ai/actions/workflows/uptime.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![PayPal sandbox](https://img.shields.io/badge/PayPal-sandbox-003087.svg)](https://quartermaster-web-o0df.onrender.com)
 
-Both products, **Quartermaster** (the agent) and **TrustRail** (the guard that decides in code), were built by us for the PayPal AI Hackathon 2026.
+[![Watch the 2:58 demo on YouTube](docs/media/demo-video.jpg)](https://youtu.be/O-OhoYMhyw4)
 
-**Demo video (2:58):** <https://youtu.be/O-OhoYMhyw4> · **Live demo (PayPal sandbox):** <https://quartermaster-web-o0df.onrender.com> · **API docs and SDKs (APIMatic):** <https://quartermaster-api-docs.onrender.com>. Judges: see [For judges](#for-judges).
+**[Watch the demo (2:58)](https://youtu.be/O-OhoYMhyw4)** · **[Try the live app](https://quartermaster-web-o0df.onrender.com)** · **[API docs and SDKs](https://quartermaster-api-docs.onrender.com)** · **[Judge guide](#for-judges)**
 
-> **Test credentials (shared sample workspace, PayPal sandbox only)**
+We built two products for the PayPal AI Hackathon 2026:
+
+- **Quartermaster is an AI purchasing assistant for restaurants.** It watches stock, forecasts what to reorder, researches suppliers and market prices, and proposes carts. It never pays.
+- **TrustRail is the payment guard.** It checks every order against the owner's rules, in code, signs the one cart the owner approves, and re-checks it just before **PayPal** takes the money. If anything changed, the payment stops.
+
+Many agents that pay are given a card and a spending limit. A limit only checks the total, so a hijacked agent can still buy the wrong thing, from the wrong supplier, with a hidden fee. Ours never touches the money.
+
+## At a glance
+
+|                                       |                                                                                                                                                                    |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **0 of 28,000** hijacked attempts     | moved money outside the owner's rules, in a [simulated hijack](docs/benchmark.md) where the attacker writes every proposal (28 kinds of attack, 1,000 tries each)  |
+| **1,638 automated tests**             | pass in CI on every push (1,291 core, 332 web, 15 Playwright journeys with axe accessibility scans), and the 343 integration tests run again on real PostgreSQL 17 |
+| **4 independent gates**               | Spend Mandate, deterministic policy engine, Ed25519 Intent Certificate bound to the cart hash, and a capture guard that re-checks order, amount and payee          |
+| **PayPal end to end**                 | Orders v2 on the server, JavaScript SDK v6 in the browser, approve and capture as separate steps, verified webhooks, refunds, payee check                          |
+| **AI where it helps, never on money** | OpenAI structured outputs read the owner's request and screen listings for prompt injection; every number that decides a payment is computed by code               |
+| **Live and open**                     | Hosted on Render with no cold start, uptime checked every 10 minutes, Apache-2.0, deploys only after CI passes                                                     |
+
+## How it works
+
+```mermaid
+flowchart LR
+    R["Owner asks in plain English<br/>'Restock for the weekend, under $300'"] --> Q["Quartermaster<br/>AI purchasing assistant"]
+    Q -->|forecast, Channel3 prices,<br/>supplier comparison| C["Proposed carts"]
+    C --> T{"TrustRail<br/>policy in code"}
+    T -->|breaks a rule| B["Stopped, with the reason<br/>and the evidence"]
+    T -->|allowed| A["Owner approves<br/>the exact cart"]
+    A --> S["Signed Intent Certificate<br/>(Ed25519, cart hash)"]
+    S --> P["Owner pays in<br/>PayPal sandbox"]
+    P --> G{"TrustRail re-checks<br/>order, amount, payee"}
+    G -->|all match| K["PayPal captures,<br/>owner gets an email"]
+    G -->|anything changed| X["Payment stops"]
+```
+
+## Test credentials
+
+> **Shared sample workspace, PayPal sandbox only (no real money)**
 >
 > | Email                            | Password                | Can do                                |
 > | -------------------------------- | ----------------------- | ------------------------------------- |
@@ -18,8 +58,14 @@ Both products, **Quartermaster** (the agent) and **TrustRail** (the guard that d
 >
 > On the sign-in page, the **Owner / Manager / Viewer** buttons fill in the email. Prefer a private copy? Choose **Create an account** and keep **Start with sample data** ticked. Details below.
 
+## The demo story
+
 > A restaurant owner says: _"We're expecting a busy weekend. Restock takeaway containers and cooking oil without exceeding $300."_
-> Quartermaster forecasts 25% higher demand, finds that the cheapest supplier's listing contains a hidden prompt injection and an undisclosed $24.50 "priority service charge", watches TrustRail block that cart, re-plans to compliant suppliers ($278.20 total), and — after the owner approves — completes a PayPal sandbox checkout bound to an Ed25519-signed Intent Certificate.
+> Quartermaster, the AI purchasing assistant, forecasts 25% higher demand, finds that the cheapest supplier's listing contains a hidden prompt injection and an undisclosed $24.50 "priority service charge", watches TrustRail block that cart, re-plans to compliant suppliers ($278.20 total), and — after the owner approves — completes a PayPal sandbox checkout bound to an Ed25519-signed Intent Certificate.
+
+**In the video:** [0:00](https://youtu.be/O-OhoYMhyw4?t=0) the trap · [0:33](https://youtu.be/O-OhoYMhyw4?t=33) what we built · [0:52](https://youtu.be/O-OhoYMhyw4?t=52) the request · [1:04](https://youtu.be/O-OhoYMhyw4?t=64) research with Channel3 and AG Grid · [1:28](https://youtu.be/O-OhoYMhyw4?t=88) TrustRail blocks it · [1:44](https://youtu.be/O-OhoYMhyw4?t=104) approval and Intent Certificate · [2:02](https://youtu.be/O-OhoYMhyw4?t=122) PayPal: approve, re-check, capture · [2:18](https://youtu.be/O-OhoYMhyw4?t=138) after payment and the hijack benchmark · [2:35](https://youtu.be/O-OhoYMhyw4?t=155) MCP, how it's built
+
+## Everything in the product
 
 |                             |                                                                                                                                                                                  |
 | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -64,6 +110,20 @@ The shared workspace is for the purchasing journey: requests, research, approval
 6. **Try to break it:** open **Red-team TrustRail**, write your own hostile supplier listing (or pick an example), and press **Attack**. You see what the detector finds, then what TrustRail decides if the agent obeyed your listing completely, against the workspace's real Spend Mandate. Nothing is stored, no model is called and PayPal is never contacted, so try as many as you like.
 
 To run it locally instead, follow [Quick start](#quick-start-local-no-external-accounts): it needs no external accounts.
+
+## Read more
+
+| Document                                                     | What it covers                                                                                                                  |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| [Security model](docs/security-model.md)                     | The threat model, the four gates, what TrustRail trusts and what it never does                                                  |
+| [Hijack benchmark](docs/benchmark.md)                        | 28 attack families × 1,000 tries against a fully hijacked agent, with the rule that fired for each                              |
+| [Architecture](docs/architecture.md)                         | Packages, the step-by-step request and payment flow, and failure handling                                                       |
+| [MCP server](docs/mcp.md)                                    | Letting Claude, Cursor or any MCP agent shop through TrustRail without any way to pay                                           |
+| [Agent Payments Protocol](docs/ap2.md)                       | How TrustRail's Intent Certificates relate to Google's AP2 mandates                                                             |
+| [Operations runbook](docs/operations.md)                     | Deploys, health checks, alerts, backups, retention and rollback                                                                 |
+| [Demo script](docs/demo-script.md)                           | The scripted walkthrough behind the video                                                                                       |
+| [API reference](https://quartermaster-api-docs.onrender.com) | APIMatic portal with TypeScript and Python SDKs; spec in [docs/openapi.json](docs/openapi.json), Postman in [postman/](postman) |
+| [Changelog](CHANGELOG.md)                                    | What changed, release by release                                                                                                |
 
 ---
 
@@ -169,7 +229,7 @@ packages/
   trustrail/           Canonical encoding, cart hashing, policy engine, injection detection, certificates, capture guard
   quartermaster/       Forecasting, pack-size normalisation, supplier comparison, planning, invoice matching
   payments/            PayPal REST client (OAuth, Orders v2, capture, refunds, webhook verification)
-  integrations/        Channel3 search, OpenAI structured outputs, Zapier notifications
+  integrations/        Channel3 search, OpenAI structured outputs, Resend email and Zapier notifications
   database/            Drizzle schema, migrations, Postgres/PGlite client, labelled demo seed
 tests/
   unit/ adversarial/ integration/ e2e/   Vitest suites, Playwright + axe journeys
@@ -206,6 +266,7 @@ Without API keys the system runs honestly degraded and labels it everywhere: det
 | `PAYPAL_MERCHANT_ID`                       | Sandbox business account → Account info                                                                                           | Captures to any other payee are refused |
 | `CHANNEL3_API_KEY`                         | channel3.ai                                                                                                                       | Live market reference prices            |
 | `OPENAI_API_KEY` (+ `OPENAI_MODEL`)        | platform.openai.com                                                                                                               | LLM interpretation and explanations     |
+| `RESEND_API_KEY`, `EMAIL_FROM`             | resend.com (a verified sending domain)                                                                                            | Branded payment and alert emails        |
 | `ZAPIER_WEBHOOK_URL`                       | Zapier Catch Hook                                                                                                                 | Notification-only alerts                |
 
 Use a separate sandbox **Personal** account to approve payments in the PayPal popup.
@@ -233,8 +294,18 @@ HARNESS_DATABASE_URL=postgres://… pnpm vitest run tests/integration --no-file-
 ```
 
 CI runs all of the above on every push, plus the integration suite on PostgreSQL 17, a dependency
-audit, CodeQL (security-extended) and a container build that applies the migrations. Render deploys
-only after CI passes.
+audit, a gitleaks secret scan, CodeQL (security-extended) and a container build that applies the
+migrations. Render deploys only after CI passes, and a scheduled workflow checks the live app's
+health every 10 minutes.
+
+On the latest commit CI ran **1,638 tests, all passing**:
+
+| Suite                                                        | Tests | Command                                                    |
+| ------------------------------------------------------------ | ----: | ---------------------------------------------------------- |
+| Core: unit, property, adversarial and integration (94 files) | 1,291 | `pnpm test:coverage`                                       |
+| Web app: components, pages and hooks (53 files)              |   332 | `pnpm test:web`                                            |
+| Browser journeys with axe WCAG 2.1 AA scans (Playwright)     |    15 | `pnpm test:e2e`                                            |
+| Integration suite again on real PostgreSQL 17 (47 files)     |   343 | `HARNESS_DATABASE_URL=… pnpm vitest run tests/integration` |
 
 What the suites prove (all reproducible from this repository):
 
