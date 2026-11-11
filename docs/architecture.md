@@ -25,7 +25,7 @@ packages with a one-way dependency — rather than a network hop.
 └──────┬─────────────────┬──────────────────┬──────────────────┬──────────────┘
        │                 │                  │                  │
   packages/trustrail  packages/quartermaster  packages/payments  packages/integrations
-  (pure, no I/O)      (pure, no I/O)          (PayPal REST)      (Channel3, OpenAI, Zapier)
+  (pure, no I/O)      (pure, no I/O)          (PayPal REST)      (Channel3, OpenAI, Resend, Zapier)
        │
   packages/database — Drizzle schema · migrations · Postgres/PGlite
 ```
