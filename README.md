@@ -33,7 +33,7 @@ Many agents that pay are given a card and a spending limit. A limit only checks 
 ## How it works
 
 ```mermaid
-flowchart LR
+flowchart TD
     R["Owner asks in plain English<br/>'Restock for the weekend, under $300'"] --> Q["Quartermaster<br/>AI purchasing assistant"]
     Q -->|forecast, Channel3 prices,<br/>supplier comparison| C["Proposed carts"]
     C --> T{"TrustRail<br/>policy in code"}
