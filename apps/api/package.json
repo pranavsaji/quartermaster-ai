@@ -18,7 +18,7 @@
     "@qm/payments": "workspace:*",
     "@qm/quartermaster": "workspace:*",
     "@qm/trustrail": "workspace:*",
-    "@electric-sql/pglite": "^0.5.15",
+    "@electric-sql/pglite": "^0.5.16",
     "cookie-parser": "^1.4.7",
     "drizzle-orm": "^0.45.4",
     "express": "^5.3.0",
