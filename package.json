@@ -45,7 +45,7 @@
     "@qm/payments": "workspace:*",
     "@qm/quartermaster": "workspace:*",
     "@qm/trustrail": "workspace:*",
-    "@types/node": "^24.0.0",
+    "@types/node": "^26.6.6",
     "@types/supertest": "^7.2.1",
     "@vitest/coverage-v8": "5.1.0",
     "ajv": "^8.20.0",
