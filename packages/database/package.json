@@ -17,7 +17,7 @@
     "reset": "tsx src/cli/reset.ts"
   },
   "dependencies": {
-    "@electric-sql/pglite": "^0.5.15",
+    "@electric-sql/pglite": "^0.5.16",
     "@qm/contracts": "workspace:*",
     "drizzle-orm": "^0.45.4",
     "pg": "^8.23.1"
